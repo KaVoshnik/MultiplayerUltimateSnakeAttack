@@ -70,6 +70,15 @@ html, body.gameBody {
   50% { box-shadow: 0 0 12px rgba(242,95,76,.3); }
 }
 
+.canvasStage.bossRage {
+  animation: arenaRage 0.5s ease infinite alternate;
+}
+
+@keyframes arenaRage {
+  from { box-shadow: inset 0 0 40px rgba(255,30,20,.15); }
+  to { box-shadow: inset 0 0 80px rgba(255,30,20,.35); }
+}
+
 .canvasStage {
   position: relative;
   min-height: 0;
@@ -80,6 +89,176 @@ html, body.gameBody {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+.crtOverlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 4;
+  mix-blend-mode: screen;
+  opacity: 0.85;
+}
+
+.heatMeter {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 72px;
+}
+
+.heatMeter span {
+  font-size: .55rem;
+  letter-spacing: .12em;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.heatBar {
+  height: 6px;
+  border-radius: 99px;
+  background: rgba(255,255,255,.08);
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+
+.heatFill {
+  height: 100%;
+  width: 0%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #33d17a, #f9f06b, #f66151);
+  transition: width .25s ease;
+  box-shadow: 0 0 10px rgba(249,240,107,.5);
+}
+
+.killFeed {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: min(260px, 42vw);
+  max-height: 220px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(3,6,10,.82);
+  border: 1px solid rgba(61,232,138,.2);
+  backdrop-filter: blur(10px);
+  z-index: 6;
+  overflow: hidden;
+}
+
+.killFeed h3 {
+  margin: 0 0 8px;
+  font-family: var(--font-display);
+  font-size: .58rem;
+  letter-spacing: .14em;
+  color: var(--green);
+}
+
+.killFeed ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 5px;
+  max-height: 170px;
+  overflow: hidden;
+}
+
+.killFeed li {
+  font-size: .72rem;
+  color: var(--muted);
+  line-height: 1.3;
+  animation: feedIn .35s ease;
+  border-left: 2px solid transparent;
+  padding-left: 6px;
+}
+
+.killFeed li.death { border-color: var(--red); color: #ffb4a9; }
+.killFeed li.combo { border-color: var(--yellow); color: #ffe8a3; }
+.killFeed li.bonus { border-color: var(--purple); color: #e9c4ff; }
+.killFeed li.boss { border-color: #ff3b2e; color: #ff9b93; font-weight: 700; }
+
+@keyframes feedIn {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.epicDeath .deathKicker {
+  margin: 0 0 4px;
+  font-size: .65rem;
+  letter-spacing: .2em;
+  color: var(--green);
+  font-family: var(--font-display);
+}
+
+.glitchTitle {
+  margin: 0 0 10px;
+  font-family: var(--font-display);
+  font-size: clamp(1.6rem, 5vw, 2.2rem);
+  letter-spacing: .12em;
+  color: var(--red);
+  position: relative;
+  animation: glitchSkew 2.5s infinite;
+}
+
+.glitchTitle::before,
+.glitchTitle::after {
+  content: attr(data-text);
+  position: absolute;
+  left: 0; top: 0;
+  width: 100%;
+}
+
+.glitchTitle::before {
+  color: #62a0ea;
+  clip-path: inset(0 0 55% 0);
+  animation: glitchTop 2s infinite;
+}
+
+.glitchTitle::after {
+  color: #3de88a;
+  clip-path: inset(45% 0 0 0);
+  animation: glitchBot 1.8s infinite;
+}
+
+@keyframes glitchSkew {
+  0%, 90%, 100% { transform: skew(0); }
+  92% { transform: skew(-2deg); }
+  94% { transform: skew(2deg); }
+}
+
+@keyframes glitchTop {
+  0%, 88%, 100% { transform: translate(0); }
+  90% { transform: translate(-3px, 1px); }
+}
+
+@keyframes glitchBot {
+  0%, 86%, 100% { transform: translate(0); }
+  88% { transform: translate(3px, -1px); }
+}
+
+.deathReasonText {
+  display: block;
+  color: var(--muted);
+  margin-bottom: 8px;
+  font-size: .9rem;
+}
+
+.hudStat.hidden { display: none; }
+
+#comboHud strong {
+  color: var(--yellow);
+  text-shadow: 0 0 12px rgba(249,240,107,.5);
+}
+
+#comboHud.pulse strong {
+  animation: comboPulse .4s ease;
+}
+
+@keyframes comboPulse {
+  50% { transform: scale(1.25); color: #fff; }
 }
 
 .gameControls {

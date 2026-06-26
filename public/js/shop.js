@@ -49,7 +49,7 @@ async function loadCatalog() {
 }
 
 function connect() {
-  const socket = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`);
+  const socket = new WebSocket(getWebSocketUrl());
   state.socket = socket;
 
   socket.addEventListener("open", () => {
@@ -61,6 +61,7 @@ function connect() {
   socket.addEventListener("close", () => setTimeout(connect, 1200));
   socket.addEventListener("message", (event) => {
     const msg = JSON.parse(event.data);
+    if (msg.type === "ping") return;
     if (msg.type === "hello") {
       state.catalog = msg.catalog || state.catalog;
       renderItems();

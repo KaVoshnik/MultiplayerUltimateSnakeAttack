@@ -6,6 +6,7 @@
   <title>Ultimate Snake Attack</title>
   <link rel="stylesheet" href="css/common.css" />
   <link rel="stylesheet" href="css/lobby.css" />
+  <link rel="stylesheet" href="css/lobby-megapatch.css" />
 </head>
 <body class="menuPage" data-page="lobby">
   <canvas id="particles" class="particlesCanvas" aria-hidden="true"></canvas>
@@ -25,12 +26,27 @@
 
   <main class="menuMain">
     <div class="menuTitleBlock cascade" style="--i:1">
+      <div class="megaBanner" id="megaBanner">
+        <span class="megaTag">NEW</span>
+        <span>NEON DISTRICT — звук · комбо · босс VØIDR · CRT</span>
+      </div>
       <p class="menuKicker">PRIMEVAL SERPENT EMPIRE · 2026</p>
       <h1 class="menuTitle">SNAKE<span>ATTACK</span></h1>
       <p class="menuTagline">Киберпанк-змейка · LAN · Босс · Бонусы</p>
       <div class="onlineBadge">
         <span class="dot"></span>
         <span id="onlineCount">Подключение...</span>
+      </div>
+      <div class="liveFeedWrap glass" id="liveFeedWrap">
+        <span class="liveFeedLabel">// LIVE</span>
+        <div class="liveFeed" id="liveFeed">Ожидание событий с сервера…</div>
+      </div>
+      <div class="shareBox glass hidden" id="shareBox">
+        <span class="shareLabel">ПОДКЛЮЧЕНИЕ ДЛЯ ДРУЗЕЙ</span>
+        <div class="shareRow">
+          <code id="publicUrl">…</code>
+          <button type="button" class="btn ghost small" id="copyUrlBtn">Копировать</button>
+        </div>
       </div>
     </div>
 
@@ -58,7 +74,7 @@
     </nav>
   </main>
 
-  <footer class="menuFooter cascade" style="--i:7">Director's Cut · Complete Edition</footer>
+  <footer class="menuFooter cascade" style="--i:7">NEON DISTRICT · Director's Mega Patch · 2026</footer>
 
   <!-- SETTINGS MODAL -->
   <div class="modalOverlay hidden" id="settingsModal">
@@ -66,6 +82,11 @@
       <h2>НАСТРОЙКИ</h2>
       <label for="nameInput">Никнейм</label>
       <input id="nameInput" maxlength="16" placeholder="До 16 символов" />
+
+      <label class="toggleRow">
+        <input type="checkbox" id="audioToggle" checked />
+        <span>Синтвейв-звук и эмбиент</span>
+      </label>
 
       <div class="modalActions">
         <button type="button" class="btn primary" id="saveSettings">Сохранить</button>
@@ -76,6 +97,7 @@
 
   <div class="toastWrap"></div>
   <script src="js/common.js"></script>
+  <script src="js/audio.js"></script>
   <script src="js/lobby.js"></script>
 </body>
 </html>

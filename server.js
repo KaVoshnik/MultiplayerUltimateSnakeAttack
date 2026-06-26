@@ -4,8 +4,53 @@ const path = require("path");
 const crypto = require("crypto");
 const os = require("os");
 
-const PORT = Number(process.env.PORT || 8080);
-const HOST = process.env.HOST || "0.0.0.0";
+const CONFIG_FILE = path.join(__dirname, "config.json");
+
+function loadConfig() {
+  const defaults = {
+    bindHost: "0.0.0.0",
+    port: 8080,
+    publicHost: "176.123.166.78",
+    publicProtocol: "http",
+  };
+  let fileConfig = {};
+  try {
+    if (fs.existsSync(CONFIG_FILE)) {
+      fileConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8"));
+    }
+  } catch (error) {
+    console.warn("config.json не читается, используются значения по умолчанию:", error.message);
+  }
+  return {
+    ...defaults,
+    ...fileConfig,
+    bindHost: process.env.HOST || fileConfig.bindHost || defaults.bindHost,
+    port: Number(process.env.PORT || fileConfig.port || defaults.port),
+    publicHost: process.env.PUBLIC_HOST || fileConfig.publicHost || defaults.publicHost,
+    publicProtocol: process.env.PUBLIC_PROTOCOL || fileConfig.publicProtocol || defaults.publicProtocol,
+  };
+}
+
+function getPublicUrl(config) {
+  const standardPort = (config.publicProtocol === "https" && config.port === 443)
+    || (config.publicProtocol === "http" && config.port === 80);
+  const portPart = standardPort ? "" : `:${config.port}`;
+  return `${config.publicProtocol}://${config.publicHost}${portPart}`;
+}
+
+function getWsPublicUrl(config) {
+  const wsProtocol = config.publicProtocol === "https" ? "wss" : "ws";
+  const standardPort = (wsProtocol === "wss" && config.port === 443)
+    || (wsProtocol === "ws" && config.port === 80);
+  const portPart = standardPort ? "" : `:${config.port}`;
+  return `${wsProtocol}://${config.publicHost}${portPart}`;
+}
+
+const CONFIG = loadConfig();
+const PORT = CONFIG.port;
+const HOST = CONFIG.bindHost;
+const PUBLIC_URL = getPublicUrl(CONFIG);
+const WS_PUBLIC_URL = getWsPublicUrl(CONFIG);
 const PUBLIC_DIR = path.join(__dirname, "public");
 const LEADERBOARD_FILE = path.join(__dirname, "leaderboard.json");
 const SHOP_FILE = path.join(__dirname, "shop.json");
@@ -49,7 +94,7 @@ const MODES = {
 // Бонусы появляются на поле как особые клетки
 const BONUS_TYPES = {
   shield: { label: "SH", duration: 5000, color: "#62a0ea", desc: "защита от яда" },
-  speed_up: { label: "SP", duration: 4000, color: "#f9f06b", desc: "ускорение" },
+  speed_up: { label: "SP", duration: 4000, color: "#f9f06b", desc: "оверклок +30% очков" },
   slow_down: { label: "SL", duration: 5000, color: "#dc8add", desc: "замедление" },
   double: { label: "x2", duration: 6000, color: "#33d17a", desc: "двойные очки" },
   ghost: { label: "GH", duration: 4000, color: "#8ff0a4", desc: "призрак" },
@@ -135,6 +180,7 @@ const shopClients = new Map(); // socket id -> player name (shop-only sessions)
 let tickCount = 0;
 let gameMode = "classic";
 let taggedPlayerId = null; // для Tag Time
+const feedLog = [];
 
 // Тик-интервалы по сложности (отдельный тик для каждого игрока не делаем — берём минимальный)
 let currentTickMs = DIFFICULTIES.normal.tickMs;
@@ -153,7 +199,34 @@ function restartTickInterval() {
 }
 
 const server = http.createServer((req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host}`);
+  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, corsHeaders());
+    res.end();
+    return;
+  }
+
+  if (url.pathname === "/health") {
+    sendJson(res, { ok: true, uptime: process.uptime(), players: players.size, sockets: sockets.size });
+    return;
+  }
+
+  if (url.pathname === "/info") {
+    sendJson(res, {
+      name: "THE ULTIMATE MULTIPLAYER SNAKE ATTACK",
+      publicUrl: PUBLIC_URL,
+      wsUrl: WS_PUBLIC_URL,
+      host: CONFIG.publicHost,
+      port: CONFIG.port,
+      protocol: CONFIG.publicProtocol,
+      bindHost: CONFIG.bindHost,
+      playersOnline: players.size,
+      lanAddresses: getLanAddresses(),
+    });
+    return;
+  }
+
   if (url.pathname === "/leaderboard") { sendJson(res, getEnrichedLeaderboard()); return; }
   if (url.pathname === "/shop") { sendJson(res, { skins: SHOP_SKINS, catalog: SHOP_CATALOG, playerData: shopData }); return; }
   if (url.pathname === "/catalog") { sendJson(res, { catalog: SHOP_CATALOG, skins: SHOP_SKINS, avatars: AVATAR_PRESETS }); return; }
@@ -172,7 +245,11 @@ const server = http.createServer((req, res) => {
 
   fs.readFile(filePath, (error, content) => {
     if (error) { res.writeHead(404); res.end("Not found"); return; }
-    res.writeHead(200, { "Content-Type": MIME[path.extname(filePath)] || "application/octet-stream", "Cache-Control": "no-store" });
+    res.writeHead(200, {
+      "Content-Type": MIME[path.extname(filePath)] || "application/octet-stream",
+      "Cache-Control": "no-store",
+      ...corsHeaders(),
+    });
     res.end(content);
   });
 });
@@ -201,6 +278,7 @@ server.on("upgrade", (req, socket) => {
     skins: SHOP_SKINS, catalog: SHOP_CATALOG, avatars: AVATAR_PRESETS,
     modes: MODES, difficulties: DIFFICULTIES,
     shopData: defaultShopEntry(),
+    server: { publicUrl: PUBLIC_URL, wsUrl: WS_PUBLIC_URL, host: CONFIG.publicHost, port: CONFIG.port },
   });
 });
 
@@ -209,20 +287,86 @@ server.listen(PORT, HOST, () => {
   fillFood();
   tickInterval = setInterval(tick, DIFFICULTIES.normal.tickMs);
   setInterval(broadcastState, 250);
-  setInterval(spawnBonuses, 8000); // каждые 8 сек новый бонус
-  console.log(`THE ULTIMATE MULTIPLAYER SNAKE ATTACK is running at http://localhost:${PORT}`);
-  for (const address of getLanAddresses()) console.log(`LAN: http://${address}:${PORT}`);
+  setInterval(spawnBonuses, 8000);
+  setInterval(pingClients, 25000);
+  printStartupBanner();
 });
+
+server.on("error", (error) => {
+  if (error.code === "EADDRINUSE") {
+    console.error(`Порт ${PORT} уже занят. Смени port в config.json или переменную PORT.`);
+  } else if (error.code === "EADDRNOTAVAIL") {
+    console.error(`Нельзя слушать ${HOST}:${PORT}. Оставь bindHost = "0.0.0.0" в config.json.`);
+  } else {
+    console.error("Ошибка сервера:", error.message);
+  }
+  process.exit(1);
+});
+
+function shutdown(signal) {
+  console.log(`\n${signal}: останавливаю сервер…`);
+  if (tickInterval) clearInterval(tickInterval);
+  for (const socket of sockets.values()) {
+    try { socket.destroy(); } catch { /* ignore */ }
+  }
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(1), 5000).unref();
+}
+
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+
+function printStartupBanner() {
+  const lan = getLanAddresses();
+  console.log("");
+  console.log("══════════════════════════════════════════════════════");
+  console.log("  THE ULTIMATE MULTIPLAYER SNAKE ATTACK — ONLINE");
+  console.log("══════════════════════════════════════════════════════");
+  console.log(`  Слушаю:     ${HOST}:${PORT}`);
+  console.log(`  Публично:   ${PUBLIC_URL}`);
+  console.log(`  WebSocket:  ${WS_PUBLIC_URL}`);
+  console.log(`  Локально:   http://localhost:${PORT}`);
+  if (lan.length) {
+    console.log("  LAN:");
+    for (const ip of lan) console.log(`    → http://${ip}:${PORT}`);
+  }
+  console.log("──────────────────────────────────────────────────────");
+  console.log("  Друзья подключаются по публичному адресу ↑");
+  console.log(`  Открой в файрволе TCP-порт ${PORT}`);
+  console.log("══════════════════════════════════════════════════════");
+  console.log("");
+}
+
+function pingClients() {
+  const frame = makeFrame(JSON.stringify({ type: "ping", t: Date.now() }));
+  for (const [id, socket] of sockets) {
+    if (socket.destroyed || socket.writableEnded) continue;
+    try { socket.write(frame); } catch { removeClient(id); }
+  }
+}
 
 // ============================================================
 // GAME LOGIC
 // ============================================================
 
+function pushFeed(kind, text, playerName = "") {
+  feedLog.unshift({ id: `${Date.now()}-${Math.random()}`, kind, text, playerName, at: Date.now() });
+  if (feedLog.length > 16) feedLog.length = 16;
+  broadcast({ type: "feed", feed: feedLog.slice(0, 10) });
+}
+
+function comboMultiplier(combo) {
+  if (combo >= 10) return 2;
+  if (combo >= 6) return 1.5;
+  if (combo >= 3) return 1.25;
+  return 1;
+}
+
 function tick() {
   if (players.size === 0) return;
   tickCount += 1;
   fillFood();
-  if (tickCount % BOSS_MOVE_EVERY === 0) moveBoss();
+  if (tickCount % (boss.enragedTicks > 0 ? 4 : BOSS_MOVE_EVERY) === 0) moveBoss();
   tickBonusEffects();
 
   const occupied = new Map();
@@ -294,11 +438,19 @@ function tick() {
     if (eaten) {
       food.splice(eatenIdx, 1);
       if (eaten.good) {
-        const mult = player.activeBonus === "double" ? 2 : 1;
-        player.score += eaten.points * mult;
-        player.coins = (player.coins || 0) + eaten.points;
+        player.combo = (player.combo || 0) + 1;
+        player.maxCombo = Math.max(player.maxCombo || 0, player.combo);
+        let mult = comboMultiplier(player.combo);
+        if (player.activeBonus === "double") mult *= 2;
+        if (player.activeBonus === "speed_up") mult *= 1.3;
+        const pts = Math.round(eaten.points * mult);
+        player.score += pts;
+        player.coins = (player.coins || 0) + pts;
         player.best = Math.max(player.best, player.score);
         savePlayerCoins(player);
+        if (player.combo === 3 || player.combo === 6 || player.combo === 10) {
+          pushFeed("combo", `🔥 ${player.name}: COMBO ×${player.combo}!`, player.name);
+        }
       } else if (player.activeBonus === "shield") {
         player.activeBonus = null;
         broadcast({ type: "notice", text: `${player.name}: щит поглотил ${FOOD_TYPES[eaten.kind]?.label || "яд"}!` });
@@ -319,6 +471,7 @@ function activateBonus(player, bonusType) {
   if (!def) return;
   player.activeBonus = bonusType;
   player.bonusExpires = Date.now() + def.duration;
+  pushFeed("bonus", `⚡ ${player.name} → ${def.label}`, player.name);
   broadcast({ type: "notice", text: `${player.name} получил бонус ${def.label} ${def.desc}!` });
 }
 
@@ -350,12 +503,22 @@ function spawnBonuses() {
 function killPlayer(player, reason) {
   savePlayerCoins(player);
   trackDeathStats(player);
+  const wasBoss = reason.toLowerCase().includes("босс");
   player.alive = false;
   player.deaths += 1;
   player.reason = reason;
   player.activeBonus = null;
   player.bonusExpires = null;
+  player.combo = 0;
   recordScore(player);
+  pushFeed("death", `💀 ${player.name}: ${reason}`, player.name);
+  if (wasBoss) {
+    boss.kills = (boss.kills || 0) + 1;
+    boss.enragedTicks = 50;
+    boss.size = 2;
+    boss.phase = "enraged";
+    pushFeed("boss", `👹 БОСС уничтожил ${player.name}!`, player.name);
+  }
 }
 
 function recordScore(player) {
@@ -385,11 +548,14 @@ function broadcastState() {
         best: Math.max(p.best, bestForName(p.name)), reason: p.reason,
         activeBonus: p.activeBonus, bonusExpires: p.bonusExpires,
         difficulty: p.difficulty, skin: p.skin, rainbow: p.rainbow,
+        combo: p.combo || 0, maxCombo: p.maxCombo || 0,
+        heat: Math.min(100, Math.round((p.score || 0) * 0.4 + (p.combo || 0) * 9)),
         isTagged: gameMode === "tag_time" && p.id === taggedPlayerId,
         avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji,
       };
     }),
     boss, leaderboard: getEnrichedLeaderboard(), gameMode, taggedPlayerId,
+    feed: feedLog.slice(0, 10),
     shopMeta: { skins: SHOP_SKINS, catalog: SHOP_CATALOG },
   });
 }
@@ -404,11 +570,29 @@ function createBoss() {
     y: 2,
     size: 1,
     color: "#f66151",
-    name: "BOSS",
+    name: "VØIDR",
     pulse: 0,
     angry: false,
+    phase: "idle",
+    enragedTicks: 0,
+    kills: 0,
     moveCooldown: 0,
   };
+}
+
+function updateBossPhase(dist) {
+  if (boss.enragedTicks > 0) {
+    boss.enragedTicks -= 1;
+    boss.phase = "enraged";
+    boss.size = 2;
+    if (boss.enragedTicks <= 0) {
+      boss.size = 1;
+      boss.phase = dist <= 5 ? "hunt" : "idle";
+    }
+    return;
+  }
+  boss.size = 1;
+  boss.phase = dist <= 5 ? "hunt" : dist <= BOSS_CHASE_RANGE ? "stalk" : "idle";
 }
 
 function moveBoss() {
@@ -421,10 +605,13 @@ function moveBoss() {
   const alive = [...players.values()].filter((p) => p.alive);
   const target = alive.sort((a, b) => distanceToBoss(a.snake[0]) - distanceToBoss(b.snake[0]))[0];
   const dist = target ? distanceToBoss(target.snake[0]) : 999;
-  boss.angry = dist <= 5;
+  boss.angry = dist <= 5 || boss.phase === "enraged";
+  updateBossPhase(dist);
 
   let nextMove = null;
-  if (target && dist <= BOSS_CHASE_RANGE && Math.random() > BOSS_RANDOM_MOVE_CHANCE) {
+  const chaseRange = boss.phase === "enraged" ? BOSS_CHASE_RANGE + 6 : BOSS_CHASE_RANGE;
+  const randomChance = boss.phase === "enraged" ? 0.15 : BOSS_RANDOM_MOVE_CHANCE;
+  if (target && dist <= chaseRange && Math.random() > randomChance) {
     const moves = bossMovesToward(target.snake[0]);
     nextMove = moves.find((m) => bossCanMove(m));
   } else {
@@ -440,7 +627,7 @@ function moveBoss() {
     const head = player.snake[0];
     if (bossOccupies(head)) {
       killPlayer(player, "Босс схватил за голову");
-      boss.moveCooldown = 6;
+      boss.moveCooldown = boss.phase === "enraged" ? 3 : 6;
     }
   }
 }
@@ -515,6 +702,8 @@ function getAverageBadFoodRatio() {
 // ============================================================
 
 function handleMessage(id, message) {
+  if (message.type === "ping") return;
+
   if (message.type === "shop_connect") {
     const name = cleanName(message.name);
     shopClients.set(id, name);
@@ -843,6 +1032,7 @@ function createPlayer(id, name, difficulty, skin) {
     alive: true, score: 0, coins: shopEntry.coins || 0,
     best: bestForName(name), deaths: 0, reason: "",
     activeBonus: null, bonusExpires: null,
+    combo: 0, maxCombo: 0,
     avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji,
   };
   return player;
@@ -963,4 +1153,16 @@ function isOpposite(a, b) { return a.x + b.x === 0 && a.y + b.y === 0; }
 function shuffledDirs() { return [{ x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 }].sort(() => Math.random() - 0.5); }
 function bestForName(name) { return leaderboard.find((e) => e.name.toLowerCase() === name.toLowerCase())?.score || 0; }
 function getLanAddresses() { return Object.values(os.networkInterfaces()).flat().filter((i) => i && i.family === "IPv4" && !i.internal).map((i) => i.address); }
-function sendJson(res, payload) { res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" }); res.end(JSON.stringify(payload)); }
+
+function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+  };
+}
+
+function sendJson(res, payload) {
+  res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", ...corsHeaders() });
+  res.end(JSON.stringify(payload));
+}

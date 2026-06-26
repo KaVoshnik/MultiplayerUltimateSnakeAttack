@@ -1,3 +1,25 @@
+function getWebSocketUrl() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  return `${proto}://${location.host}`;
+}
+
+function connectWebSocket(handlers = {}) {
+  const socket = new WebSocket(getWebSocketUrl());
+  socket.addEventListener("open", () => handlers.onOpen?.(socket));
+  socket.addEventListener("close", () => {
+    handlers.onClose?.();
+    if (handlers.reconnect !== false) {
+      setTimeout(() => connectWebSocket(handlers), handlers.reconnectMs || 1500);
+    }
+  });
+  socket.addEventListener("message", (event) => {
+    const msg = JSON.parse(event.data);
+    if (msg.type === "ping") return;
+    handlers.onMessage?.(msg, socket);
+  });
+  return socket;
+}
+
 const SnakeStore = {
   KEY: "snakeSettings",
 
@@ -96,7 +118,7 @@ function updateUserBar(shopData, name) {
 }
 
 function connectProfileSocket(onMessage) {
-  const socket = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`);
+  const socket = new WebSocket(getWebSocketUrl());
   let clientId = null;
 
   socket.addEventListener("open", () => {
@@ -106,6 +128,7 @@ function connectProfileSocket(onMessage) {
 
   socket.addEventListener("message", (event) => {
     const msg = JSON.parse(event.data);
+    if (msg.type === "ping") return;
     if (msg.type === "hello") clientId = msg.id;
     if (msg.type === "hello" && SnakeStore.getName()) {
       socket.send(JSON.stringify({ type: "shop_connect", name: SnakeStore.getName() }));
