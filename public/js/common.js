@@ -22,6 +22,9 @@ const SnakeStore = {
   },
 };
 
+const RARITY_ORDER = { common: 0, rare: 1, epic: 2, legendary: 3 };
+const RARITY_LABELS = { common: "Common", rare: "Rare", epic: "Epic", legendary: "Legendary" };
+
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (char) => {
     const map = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" };
@@ -48,6 +51,63 @@ function markActiveNav() {
   document.querySelectorAll(".siteNav .links a").forEach((link) => {
     link.classList.toggle("active", link.dataset.page === page);
   });
+}
+
+function formatPlayTime(ms) {
+  const sec = Math.floor((ms || 0) / 1000);
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  if (h > 0) return `${h}ч ${m}м`;
+  return `${m}м ${sec % 60}с`;
+}
+
+function sortCatalog(items, sortBy, dir) {
+  const list = [...items];
+  const mult = dir === "desc" ? -1 : 1;
+  list.sort((a, b) => {
+    if (sortBy === "rarity") {
+      return (RARITY_ORDER[a.rarity] - RARITY_ORDER[b.rarity]) * mult || a.price - b.price;
+    }
+    return (a.price - b.price) * mult || a.name.localeCompare(b.name, "ru");
+  });
+  return list;
+}
+
+function isItemEquipped(shopData, itemId) {
+  if (!shopData?.equipped) return false;
+  if (shopData.equipped.snakeHat === itemId) return true;
+  return (shopData.equipped.equipment || []).includes(itemId);
+}
+
+function updateUserBar(shopData, name) {
+  const avatarEl = document.querySelector("#userAvatar");
+  const nameEl = document.querySelector("#userName");
+  const coinsEl = document.querySelector("#headerCoins");
+  if (avatarEl) avatarEl.textContent = shopData?.avatar || "😎";
+  if (nameEl) nameEl.textContent = name || SnakeStore.getName() || "Гость";
+  if (coinsEl) coinsEl.textContent = shopData?.coins ?? 0;
+}
+
+function connectProfileSocket(onMessage) {
+  const socket = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`);
+  let clientId = null;
+
+  socket.addEventListener("open", () => {
+    const name = SnakeStore.getName();
+    if (name) socket.send(JSON.stringify({ type: "shop_connect", name }));
+  });
+
+  socket.addEventListener("message", (event) => {
+    const msg = JSON.parse(event.data);
+    if (msg.type === "hello") clientId = msg.id;
+    if (msg.type === "hello" && SnakeStore.getName()) {
+      socket.send(JSON.stringify({ type: "shop_connect", name: SnakeStore.getName() }));
+    }
+    onMessage?.(msg, socket);
+  });
+
+  socket.addEventListener("close", () => setTimeout(() => connectProfileSocket(onMessage), 1500));
+  return () => socket;
 }
 
 if (document.readyState === "loading") {

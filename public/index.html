@@ -3,94 +3,92 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Лобби — Ultimate Snake Attack</title>
+  <title>Ultimate Snake Attack</title>
   <link rel="stylesheet" href="css/common.css" />
   <link rel="stylesheet" href="css/lobby.css" />
 </head>
-<body class="lobbyPage" data-page="lobby">
-  <nav class="siteNav">
-    <span class="brand">ULTIMATE SNAKE ATTACK</span>
-    <div class="links">
-      <a href="/" data-page="lobby" class="active">Лобби</a>
-      <a href="/game.html" data-page="game">Игра</a>
-      <a href="/shop.html" data-page="shop">Магазин</a>
-      <a href="/leaderboard.html" data-page="leaderboard">Рекорды</a>
-    </div>
-    <span class="status" id="connectionStatus">...</span>
-  </nav>
+<body class="menuPage" data-page="lobby">
+  <canvas id="particles" class="particlesCanvas" aria-hidden="true"></canvas>
 
-  <main class="lobbyHero">
-    <div class="glass lobbyCard">
+  <header class="menuHeader cascade" style="--i:0">
+    <div class="menuBrand">
+      <span class="brandGlow">ULTIMATE SNAKE ATTACK</span>
+    </div>
+    <div class="userBar" id="userBar">
+      <span class="coinPill">🪙 <strong id="headerCoins">0</strong></span>
+      <div class="userChip">
+        <span class="userAvatar" id="userAvatar">😎</span>
+        <span class="userName" id="userName">Гость</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="menuMain">
+    <div class="menuTitleBlock cascade" style="--i:1">
+      <p class="menuKicker">PRIMEVAL SERPENT EMPIRE · 2026</p>
+      <h1 class="menuTitle">SNAKE<span>ATTACK</span></h1>
+      <p class="menuTagline">Киберпанк-змейка · LAN · Босс · Бонусы</p>
       <div class="onlineBadge">
         <span class="dot"></span>
         <span id="onlineCount">Подключение...</span>
       </div>
-
-      <p class="lobbyKicker">2026 Remastered · LAN Multiplayer</p>
-      <h1 class="lobbyTitle">ULTIMATE <span class="accent">SNAKE</span> ATTACK</h1>
-      <p class="lobbySubtitle">Собери фрукты, убегай от босса, бери бонусы. Играй с друзьями в одной сети.</p>
-
-      <div class="lobbyGrid">
-        <section class="lobbyForm">
-          <label for="nameInput">Имя игрока</label>
-          <input id="nameInput" maxlength="18" placeholder="Например, Max" />
-
-          <label>Сложность</label>
-          <div class="diffRow" id="diffRow">
-            <button type="button" class="diffBtn" data-diff="easy">Easy</button>
-            <button type="button" class="diffBtn active" data-diff="normal">Normal</button>
-            <button type="button" class="diffBtn" data-diff="hard">Hard</button>
-            <button type="button" class="diffBtn" data-diff="insane">Insane</button>
-          </div>
-
-          <label>Режим</label>
-          <div class="diffRow" id="modeRow">
-            <button type="button" class="diffBtn active" data-mode="classic">Classic</button>
-            <button type="button" class="diffBtn" data-mode="tag_time">Tag Time</button>
-          </div>
-
-          <div class="lobbyRules">
-            <span>🍎 🍒 🍇 — очки и монеты</span>
-            <span>☠️ яд на поле — смерть</span>
-            <span>Бонусы: щит, скорость, x2, призрак</span>
-          </div>
-
-          <div style="margin-top:20px">
-            <button type="button" class="btn primary" id="playBtn" style="width:100%">▶ Играть</button>
-          </div>
-        </section>
-
-        <section class="navCards">
-          <a class="navCard" href="/game.html" id="quickPlay">
-            <span class="icon">🎮</span>
-            <div>
-              <h3>Быстрый старт</h3>
-              <p>Полноэкранная игра</p>
-            </div>
-            <span class="arrow">→</span>
-          </a>
-          <a class="navCard" href="/shop.html">
-            <span class="icon">🛒</span>
-            <div>
-              <h3>Магазин скинов</h3>
-              <p>Трать монеты на легендарные скины</p>
-            </div>
-            <span class="arrow">→</span>
-          </a>
-          <a class="navCard" href="/leaderboard.html">
-            <span class="icon">🏆</span>
-            <div>
-              <h3>Таблица рекордов</h3>
-              <p>Лучшие игроки сервера</p>
-            </div>
-            <span class="arrow">→</span>
-          </a>
-        </section>
-      </div>
     </div>
+
+    <nav class="menuGrid">
+      <button type="button" class="menuBtn cascade playBtn" style="--i:2" id="btnPlay">
+        <span class="menuBtnIcon">▶</span>
+        <span class="menuBtnLabel">ИГРАТЬ</span>
+      </button>
+      <a href="/shop.html" class="menuBtn cascade" style="--i:3">
+        <span class="menuBtnIcon">🛒</span>
+        <span class="menuBtnLabel">МАГАЗИН</span>
+      </a>
+      <a href="/profile.html" class="menuBtn cascade" style="--i:4">
+        <span class="menuBtnIcon">👤</span>
+        <span class="menuBtnLabel">ПРОФИЛЬ</span>
+      </a>
+      <a href="/leaderboard.html" class="menuBtn cascade" style="--i:5">
+        <span class="menuBtnIcon">🏆</span>
+        <span class="menuBtnLabel">ЛИДЕРЫ</span>
+      </a>
+      <button type="button" class="menuBtn cascade" style="--i:6" id="btnSettings">
+        <span class="menuBtnIcon">⚙️</span>
+        <span class="menuBtnLabel">НАСТРОЙКИ</span>
+      </button>
+    </nav>
   </main>
 
-  <footer class="lobbyFooter">THE PRIMEVAL SERPENT EMPIRE · Director's Cut 2026</footer>
+  <footer class="menuFooter cascade" style="--i:7">Director's Cut · Complete Edition</footer>
+
+  <!-- SETTINGS MODAL -->
+  <div class="modalOverlay hidden" id="settingsModal">
+    <div class="modalBox glass">
+      <h2>НАСТРОЙКИ</h2>
+      <label for="nameInput">Никнейм</label>
+      <input id="nameInput" maxlength="16" placeholder="До 16 символов" />
+
+      <label>Сложность</label>
+      <div class="diffRow" id="diffRow">
+        <button type="button" class="diffBtn" data-diff="easy">Easy</button>
+        <button type="button" class="diffBtn active" data-diff="normal">Normal</button>
+        <button type="button" class="diffBtn" data-diff="hard">Hard</button>
+        <button type="button" class="diffBtn" data-diff="insane">Insane</button>
+      </div>
+
+      <label>Режим</label>
+      <div class="diffRow" id="modeRow">
+        <button type="button" class="diffBtn active" data-mode="classic">Classic</button>
+        <button type="button" class="diffBtn" data-mode="tag_time">Tag Time</button>
+      </div>
+
+      <div class="modalActions">
+        <button type="button" class="btn primary" id="saveSettings">Сохранить</button>
+        <button type="button" class="btn ghost" id="closeSettings">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toastWrap"></div>
   <script src="js/common.js"></script>
   <script src="js/lobby.js"></script>
 </body>

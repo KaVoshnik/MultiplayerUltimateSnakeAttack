@@ -6,27 +6,32 @@
   <title>Рекорды — Ultimate Snake Attack</title>
   <link rel="stylesheet" href="css/common.css" />
   <link rel="stylesheet" href="css/pages.css" />
+  <link rel="stylesheet" href="css/leaderboard.css" />
 </head>
 <body data-page="leaderboard">
   <nav class="siteNav">
-    <span class="brand">ULTIMATE SNAKE ATTACK</span>
+    <a href="/" class="brand">← ЛОББИ</a>
     <div class="links">
       <a href="/" data-page="lobby">Лобби</a>
       <a href="/game.html" data-page="game">Игра</a>
       <a href="/shop.html" data-page="shop">Магазин</a>
+      <a href="/profile.html" data-page="profile">Профиль</a>
       <a href="/leaderboard.html" data-page="leaderboard" class="active">Рекорды</a>
     </div>
   </nav>
 
-  <main class="pageWrap">
+  <main class="pageWrap lbPage">
     <header class="pageHeader">
-      <h1>🏆 ТАБЛИЦА РЕКОРДОВ</h1>
-      <p>Лучшие результаты на этом сервере.</p>
+      <h1>🏆 ЗАЛ СЛАВЫ</h1>
+      <p>Лучшие змеи сервера</p>
     </header>
 
-    <section class="glass pageCard">
+    <section class="podium" id="podium"></section>
+
+    <section class="glass pageCard lbRest">
       <ol class="leaderList" id="leaderboard"></ol>
-      <div class="emptyState hidden" id="emptyState">Пока никто не попал в рекорды. Будь первым!</div>
+      <div class="lbPagination" id="pagination"></div>
+      <div class="emptyState hidden" id="emptyState">Пока никто не попал в рекорды.</div>
     </section>
   </main>
 

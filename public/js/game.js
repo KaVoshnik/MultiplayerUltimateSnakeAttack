@@ -430,6 +430,7 @@ function drawPlayers(cell, offsetX, offsetY) {
         roundRect(px + cell * 0.24, py + cell * 0.24, cell * 0.52, cell * 0.52, cell * 0.14);
         ctx.fill();
         drawSnakeEyes(px, py, cell, dirX, dirY);
+        drawSnakeCosmetics(px, py, cell, player);
       }
     });
     ctx.globalAlpha = 1;
@@ -448,6 +449,21 @@ function drawSnakeEyes(x, y, cell, dirX, dirY) {
   ctx.arc(ex1, ey1, cell * 0.07, 0, Math.PI * 2);
   ctx.arc(ex2, ey2, cell * 0.07, 0, Math.PI * 2);
   ctx.fill();
+}
+
+function drawSnakeCosmetics(x, y, cell, player) {
+  const cx = x + cell / 2;
+  const cy = y + cell / 2;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  if (player.snakeHatEmoji) {
+    ctx.font = `${cell * 0.55}px sans-serif`;
+    ctx.fillText(player.snakeHatEmoji, cx, cy - cell * 0.55);
+  }
+  (player.gearEmojis || []).forEach((emoji, i) => {
+    ctx.font = `${cell * 0.32}px sans-serif`;
+    ctx.fillText(emoji, cx + (i - 0.5) * cell * 0.35, cy + cell * 0.42);
+  });
 }
 
 function spawnEatParticles(player) {

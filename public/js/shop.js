@@ -1,93 +1,106 @@
-const nameInput = document.querySelector("#shopName");
 const shopCoins = document.querySelector("#shopCoins");
-const skinGrid = document.querySelector("#skinGrid");
+const headerCoins = document.querySelector("#headerCoins");
+const itemGrid = document.querySelector("#itemGrid");
+const sortSelect = document.querySelector("#sortBy");
 
 const state = {
   socket: null,
-  id: null,
-  skins: [],
-  shopData: { coins: 0, unlockedSkins: ["default"], activeSkin: "default" },
+  catalog: [],
+  shopData: { coins: 0, inventory: [], equipped: { equipment: [], snakeHat: null } },
+  activeTab: "equipment",
 };
 
-nameInput.value = SnakeStore.getName();
+document.querySelectorAll(".shopTab").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".shopTab").forEach((t) => t.classList.remove("active"));
+    tab.classList.add("active");
+    state.activeTab = tab.dataset.tab;
+    renderItems();
+  });
+});
+
+sortSelect.addEventListener("change", renderItems);
 
 function connect() {
   const socket = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`);
   state.socket = socket;
 
   socket.addEventListener("open", () => {
-    sendShopConnect();
+    const name = SnakeStore.getName();
+    if (name) send({ type: "shop_connect", name });
+    else showToast("Задай никнейм в лобби или профиле!");
   });
+
   socket.addEventListener("close", () => setTimeout(connect, 1200));
   socket.addEventListener("message", (event) => {
     const msg = JSON.parse(event.data);
     if (msg.type === "hello") {
-      state.id = msg.id;
-      state.skins = msg.skins || [];
-      sendShopConnect();
+      state.catalog = msg.catalog || [];
+      const name = SnakeStore.getName();
+      if (name) send({ type: "shop_connect", name });
     }
     if (msg.type === "shop_update") {
       state.shopData = msg.shopData;
-      if (msg.skins) state.skins = msg.skins;
-      renderShop();
+      if (msg.catalog) state.catalog = msg.catalog;
+      renderItems();
     }
     if (msg.type === "notice") showToast(msg.text);
   });
 }
 
-function sendShopConnect() {
-  const name = nameInput.value.trim();
-  if (!name || state.socket?.readyState !== WebSocket.OPEN) return;
-  SnakeStore.save({ name });
-  send({ type: "shop_connect", name });
-}
-
-nameInput.addEventListener("change", sendShopConnect);
-nameInput.addEventListener("blur", sendShopConnect);
-
 function send(payload) {
   if (state.socket?.readyState === WebSocket.OPEN) {
-    state.socket.send(JSON.stringify(payload));
+    state.socket.send(JSON.stringify({ ...payload, name: SnakeStore.getName() }));
   }
 }
 
-function renderShop() {
+function renderItems() {
   const coins = state.shopData.coins ?? 0;
   shopCoins.textContent = coins;
-  skinGrid.innerHTML = "";
+  if (headerCoins) headerCoins.textContent = coins;
 
-  for (const skin of state.skins) {
-    const owned = state.shopData.unlockedSkins.includes(skin.id) || skin.price === 0;
-    const active = state.shopData.activeSkin === skin.id;
+  const [sortBy, dir] = sortSelect.value.split("-");
+  const filtered = state.catalog.filter((i) => i.category === state.activeTab);
+  const sorted = sortCatalog(filtered, sortBy, dir);
+
+  itemGrid.innerHTML = "";
+  for (const item of sorted) {
+    const owned = state.shopData.inventory?.includes(item.id);
+    const equipped = isItemEquipped(state.shopData, item.id);
+
     const card = document.createElement("div");
-    card.className = `skinCard${owned ? " owned" : ""}${active ? " active-skin" : ""}`;
+    card.className = `itemCard rarity-${item.rarity}${owned ? " owned" : ""}${equipped ? " equipped" : ""}`;
 
-    const previewColor = skin.color === "rainbow"
-      ? "linear-gradient(135deg,#f66151,#f9f06b,#33d17a,#62a0ea,#dc8add)"
-      : skin.color;
+    let actionText = `${item.price} 🪙`;
+    let actionClass = "buy";
+    if (owned) {
+      actionText = equipped ? "СНЯТЬ" : "НАДЕТЬ";
+      actionClass = equipped ? "unequip" : "equip";
+    } else if (coins < item.price) {
+      actionClass = "buy";
+    }
 
     card.innerHTML = `
-      <div class="skinPreview" style="background:${previewColor}">🐍</div>
-      <div class="skinName">${escapeHtml(skin.label)}</div>
-      <div class="skinPrice ${owned ? "owned-label" : skin.price === 0 ? "free" : ""}">
-        ${active ? "✓ Активен" : owned ? "Выбрать" : skin.price === 0 ? "Бесплатно" : `${skin.price} 🪙`}
-      </div>
+      <div class="itemEmoji">${item.emoji}</div>
+      <div class="itemName">${escapeHtml(item.name)}</div>
+      <div class="itemRarity ${item.rarity}">${RARITY_LABELS[item.rarity]}</div>
+      <div class="itemAction ${actionClass}">${actionText}</div>
     `;
 
     card.addEventListener("click", () => {
-      const name = nameInput.value.trim();
-      if (!name) { showToast("Введи имя!"); return; }
+      const name = SnakeStore.getName();
+      if (!name) { showToast("Введи никнейм!"); return; }
       if (owned) {
-        send({ type: "equip_skin", skinId: skin.id });
-        state.shopData.activeSkin = skin.id;
-      } else if (coins >= skin.price) {
-        send({ type: "buy_skin", skinId: skin.id });
+        if (equipped) send({ type: "unequip_item", itemId: item.id });
+        else send({ type: "equip_item", itemId: item.id });
+      } else if (coins >= item.price) {
+        send({ type: "buy_item", itemId: item.id });
       } else {
-        showToast("Недостаточно монет — играй и собирай фрукты!");
+        showToast("Недостаточно монет!");
       }
     });
 
-    skinGrid.append(card);
+    itemGrid.append(card);
   }
 }
 

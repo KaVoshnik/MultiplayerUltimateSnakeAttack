@@ -6,36 +6,51 @@
   <title>Магазин — Ultimate Snake Attack</title>
   <link rel="stylesheet" href="css/common.css" />
   <link rel="stylesheet" href="css/pages.css" />
+  <link rel="stylesheet" href="css/shop.css" />
 </head>
 <body data-page="shop">
   <nav class="siteNav">
-    <span class="brand">ULTIMATE SNAKE ATTACK</span>
+    <a href="/" class="brand">← ЛОББИ</a>
     <div class="links">
       <a href="/" data-page="lobby">Лобби</a>
       <a href="/game.html" data-page="game">Игра</a>
       <a href="/shop.html" data-page="shop" class="active">Магазин</a>
+      <a href="/profile.html" data-page="profile">Профиль</a>
       <a href="/leaderboard.html" data-page="leaderboard">Рекорды</a>
     </div>
+    <span class="coinPill">🪙 <strong id="headerCoins">0</strong></span>
   </nav>
 
-  <main class="pageWrap">
+  <main class="pageWrap shopPage">
     <header class="pageHeader">
-      <h1>🛒 МАГАЗИН СКИНОВ</h1>
-      <p>Покупай и выбирай скины за монеты, заработанные в игре.</p>
+      <h1>🛒 МАГАЗИН</h1>
+      <p>25 уникальных предметов для твоей змеи</p>
     </header>
 
-    <section class="glass pageCard">
-      <label for="shopName">Имя игрока</label>
-      <input id="shopName" maxlength="18" placeholder="Твоё имя в игре" style="margin-bottom:16px" />
-
-      <div class="shopCoinsBar">
-        Твои монеты: <strong id="shopCoins">0</strong> 🪙
+    <div class="shopToolbar glass">
+      <div class="shopTabs">
+        <button type="button" class="shopTab active" data-tab="equipment">СНАРЯЖЕНИЕ</button>
+        <button type="button" class="shopTab" data-tab="snake_hat">ШЛЯПЫ ДЛЯ ЗМЕЙ</button>
       </div>
+      <div class="shopSort">
+        <label>Сортировка</label>
+        <select id="sortBy">
+          <option value="price-asc">Цена ↑</option>
+          <option value="price-desc">Цена ↓</option>
+          <option value="rarity-asc">Редкость ↑</option>
+          <option value="rarity-desc">Редкость ↓</option>
+        </select>
+      </div>
+    </div>
 
-      <div class="skinGrid" id="skinGrid"></div>
-    </section>
+    <div class="shopCoinsBar glass">
+      Баланс: <strong id="shopCoins">0</strong> 🪙
+    </div>
+
+    <div class="itemGrid" id="itemGrid"></div>
   </main>
 
+  <div class="toastWrap"></div>
   <script src="js/common.js"></script>
   <script src="js/shop.js"></script>
 </body>
