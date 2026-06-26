@@ -4,8 +4,53 @@ const path = require("path");
 const crypto = require("crypto");
 const os = require("os");
 
-const PORT = Number(process.env.PORT || 8080);
-const HOST = process.env.HOST || "0.0.0.0";
+const CONFIG_FILE = path.join(__dirname, "config.json");
+
+function loadConfig() {
+  const defaults = {
+    bindHost: "0.0.0.0",
+    port: 8080,
+    publicHost: "176.123.166.78",
+    publicProtocol: "http",
+  };
+  let fileConfig = {};
+  try {
+    if (fs.existsSync(CONFIG_FILE)) {
+      fileConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8"));
+    }
+  } catch (error) {
+    console.warn("config.json не читается, используются значения по умолчанию:", error.message);
+  }
+  return {
+    ...defaults,
+    ...fileConfig,
+    bindHost: process.env.HOST || fileConfig.bindHost || defaults.bindHost,
+    port: Number(process.env.PORT || fileConfig.port || defaults.port),
+    publicHost: process.env.PUBLIC_HOST || fileConfig.publicHost || defaults.publicHost,
+    publicProtocol: process.env.PUBLIC_PROTOCOL || fileConfig.publicProtocol || defaults.publicProtocol,
+  };
+}
+
+function getPublicUrl(config) {
+  const standardPort = (config.publicProtocol === "https" && config.port === 443)
+    || (config.publicProtocol === "http" && config.port === 80);
+  const portPart = standardPort ? "" : `:${config.port}`;
+  return `${config.publicProtocol}://${config.publicHost}${portPart}`;
+}
+
+function getWsPublicUrl(config) {
+  const wsProtocol = config.publicProtocol === "https" ? "wss" : "ws";
+  const standardPort = (wsProtocol === "wss" && config.port === 443)
+    || (wsProtocol === "ws" && config.port === 80);
+  const portPart = standardPort ? "" : `:${config.port}`;
+  return `${wsProtocol}://${config.publicHost}${portPart}`;
+}
+
+const CONFIG = loadConfig();
+const PORT = CONFIG.port;
+const HOST = CONFIG.bindHost;
+const PUBLIC_URL = getPublicUrl(CONFIG);
+const WS_PUBLIC_URL = getWsPublicUrl(CONFIG);
 const PUBLIC_DIR = path.join(__dirname, "public");
 const LEADERBOARD_FILE = path.join(__dirname, "leaderboard.json");
 const SHOP_FILE = path.join(__dirname, "shop.json");
@@ -49,21 +94,69 @@ const MODES = {
 // Бонусы появляются на поле как особые клетки
 const BONUS_TYPES = {
   shield: { label: "SH", duration: 5000, color: "#62a0ea", desc: "защита от яда" },
-  speed_up: { label: "SP", duration: 4000, color: "#f9f06b", desc: "ускорение" },
+  speed_up: { label: "SP", duration: 4000, color: "#f9f06b", desc: "оверклок +30% очков" },
   slow_down: { label: "SL", duration: 5000, color: "#dc8add", desc: "замедление" },
   double: { label: "x2", duration: 6000, color: "#33d17a", desc: "двойные очки" },
   ghost: { label: "GH", duration: 4000, color: "#8ff0a4", desc: "призрак" },
 };
 
-// --- SHOP SKINS ---
-const SHOP_SKINS = [
-  { id: "default", label: "Default", price: 0, color: "#33d17a", headColor: "#ffffff", trailColor: "#33d17a" },
-  { id: "fire", label: "Fire", price: 50, color: "#f66151", headColor: "#ffbe6f", trailColor: "#f66151" },
-  { id: "ocean", label: "Ocean", price: 50, color: "#62a0ea", headColor: "#8ff0a4", trailColor: "#62a0ea" },
-  { id: "neon", label: "Neon", price: 100, color: "#f9f06b", headColor: "#dc8add", trailColor: "#f9f06b" },
-  { id: "void", label: "Void", price: 150, color: "#323a46", headColor: "#aab4c2", trailColor: "#323a46" },
-  { id: "rainbow", label: "Rainbow", price: 300, color: "rainbow", headColor: "#ffffff", trailColor: "rainbow" },
+// --- СКИНЫ (цвет тела) + ШЛЯПЫ в едином каталоге ---
+const SHOP_CATALOG = [
+  { id: "default", name: "Классик", emoji: "🟢", price: 0, rarity: "common", category: "skin", color: "#33d17a", headColor: "#ffffff" },
+  { id: "fire", name: "Огненная", emoji: "🔥", price: 50, rarity: "common", category: "skin", color: "#f66151", headColor: "#ffbe6f" },
+  { id: "ocean", name: "Океан", emoji: "🌊", price: 50, rarity: "common", category: "skin", color: "#62a0ea", headColor: "#8ff0a4" },
+  { id: "toxic", name: "Токсичная", emoji: "☢️", price: 40, rarity: "common", category: "skin", color: "#84cc16", headColor: "#ecfccb" },
+  { id: "coral", name: "Коралл", emoji: "🪸", price: 45, rarity: "common", category: "skin", color: "#ff7f7f", headColor: "#ffe4e6" },
+  { id: "ice", name: "Ледяная", emoji: "❄️", price: 75, rarity: "rare", category: "skin", color: "#67e8f9", headColor: "#ecfeff" },
+  { id: "midnight", name: "Полночь", emoji: "🌑", price: 80, rarity: "rare", category: "skin", color: "#475569", headColor: "#cbd5e1" },
+  { id: "neon", name: "Неон", emoji: "💛", price: 100, rarity: "rare", category: "skin", color: "#f9f06b", headColor: "#dc8add" },
+  { id: "gold", name: "Золото", emoji: "✨", price: 90, rarity: "rare", category: "skin", color: "#ffd166", headColor: "#fff8e7" },
+  { id: "candy", name: "Кэнди", emoji: "🍬", price: 120, rarity: "epic", category: "skin", color: "#f9a8d4", headColor: "#fce7f3" },
+  { id: "void", name: "Пустота", emoji: "🕳️", price: 150, rarity: "epic", category: "skin", color: "#323a46", headColor: "#aab4c2" },
+  { id: "plasma", name: "Плазма", emoji: "⚡", price: 180, rarity: "epic", category: "skin", color: "#e879f9", headColor: "#fae8ff" },
+  { id: "shadow", name: "Тень", emoji: "🌚", price: 160, rarity: "epic", category: "skin", color: "#1e293b", headColor: "#94a3b8" },
+  { id: "rainbow", name: "Радуга", emoji: "🌈", price: 300, rarity: "legendary", category: "skin", color: "rainbow", headColor: "#ffffff" },
+  { id: "royal", name: "Королевская", emoji: "💜", price: 400, rarity: "legendary", category: "skin", color: "#7c3aed", headColor: "#ffd166" },
+  { id: "lime", name: "Лайм", emoji: "🍋", price: 35, rarity: "common", category: "skin", color: "#a3e635", headColor: "#f7fee7" },
+  { id: "crimson", name: "Багровая", emoji: "🩸", price: 55, rarity: "common", category: "skin", color: "#dc2626", headColor: "#fecaca" },
+  { id: "azure", name: "Лазурь", emoji: "💎", price: 70, rarity: "rare", category: "skin", color: "#0ea5e9", headColor: "#e0f2fe" },
+  { id: "ember", name: "Угли", emoji: "🌋", price: 110, rarity: "rare", category: "skin", color: "#ea580c", headColor: "#fdba74" },
+  { id: "mint", name: "Мята", emoji: "🌿", price: 65, rarity: "common", category: "skin", color: "#2dd4bf", headColor: "#ccfbf1" },
+  { id: "hat_top", name: "Цилиндр змеи", emoji: "🎩", price: 120, rarity: "epic", category: "snake_hat" },
+  { id: "hat_cap", name: "Кепка змеи", emoji: "🧢", price: 20, rarity: "common", category: "snake_hat" },
+  { id: "hat_beanie", name: "Вязаная шапка", emoji: "🧶", price: 30, rarity: "common", category: "snake_hat" },
+  { id: "hat_straw", name: "Соломенная шляпа", emoji: "👒", price: 75, rarity: "rare", category: "snake_hat" },
+  { id: "hat_grad", name: "Выпускная шапка", emoji: "🎓", price: 85, rarity: "rare", category: "snake_hat" },
+  { id: "hat_hard", name: "Строительная каска", emoji: "⛑️", price: 45, rarity: "common", category: "snake_hat" },
+  { id: "hat_party", name: "Праздничный колпак", emoji: "🎉", price: 130, rarity: "epic", category: "snake_hat" },
+  { id: "hat_mushroom", name: "Грибная шляпка", emoji: "🍄", price: 95, rarity: "rare", category: "snake_hat" },
+  { id: "hat_flame", name: "Огненная корона", emoji: "🔥", price: 160, rarity: "epic", category: "snake_hat" },
+  { id: "hat_royal", name: "Королевская корона", emoji: "👸", price: 450, rarity: "legendary", category: "snake_hat" },
 ];
+
+const AVATAR_PRESETS = [
+  "😎", "🤠", "🧙‍♂️", "🦸‍♂️", "🧝‍♂️", "👾", "🤖", "👽", "🐍", "🐲",
+  "🦊", "🐺", "🦁", "🐯", "🐼", "🐸", "🐙", "🦄", "🎃", "💀",
+];
+
+const RARITY_ORDER = { common: 0, rare: 1, epic: 2, legendary: 3 };
+
+function getSkinDef(id) {
+  const item = SHOP_CATALOG.find((i) => i.id === id && i.category === "skin");
+  if (!item) return getSkinDef("default");
+  return { id: item.id, label: item.name, price: item.price, color: item.color, headColor: item.headColor, trailColor: item.color };
+}
+
+function ownsItem(entry, itemId) {
+  const item = SHOP_CATALOG.find((i) => i.id === itemId);
+  if (!item) return false;
+  if (item.category === "skin" && item.price === 0) return true;
+  return entry.inventory.includes(itemId);
+}
+
+const SHOP_SKINS = SHOP_CATALOG.filter((i) => i.category === "skin").map((s) => ({
+  id: s.id, label: s.name, price: s.price, color: s.color, headColor: s.headColor, trailColor: s.color,
+}));
 
 const COLORS = ["#33d17a", "#62a0ea", "#ffbe6f", "#dc8add", "#f66151", "#8ff0a4", "#99c1f1", "#f9f06b"];
 
@@ -87,6 +180,7 @@ const shopClients = new Map(); // socket id -> player name (shop-only sessions)
 let tickCount = 0;
 let gameMode = "classic";
 let taggedPlayerId = null; // для Tag Time
+const feedLog = [];
 
 // Тик-интервалы по сложности (отдельный тик для каждого игрока не делаем — берём минимальный)
 let currentTickMs = DIFFICULTIES.normal.tickMs;
@@ -105,11 +199,45 @@ function restartTickInterval() {
 }
 
 const server = http.createServer((req, res) => {
-  if (req.url === "/leaderboard") { sendJson(res, leaderboard); return; }
-  if (req.url === "/shop") { sendJson(res, { skins: SHOP_SKINS, playerData: shopData }); return; }
-  if (req.url === "/modes") { sendJson(res, { modes: MODES, difficulties: DIFFICULTIES }); return; }
+  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
 
-  const requestPath = decodeURIComponent(req.url.split("?")[0]);
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, corsHeaders());
+    res.end();
+    return;
+  }
+
+  if (url.pathname === "/health") {
+    sendJson(res, { ok: true, uptime: process.uptime(), players: players.size, sockets: sockets.size });
+    return;
+  }
+
+  if (url.pathname === "/info") {
+    sendJson(res, {
+      name: "THE ULTIMATE MULTIPLAYER SNAKE ATTACK",
+      publicUrl: PUBLIC_URL,
+      wsUrl: WS_PUBLIC_URL,
+      host: CONFIG.publicHost,
+      port: CONFIG.port,
+      protocol: CONFIG.publicProtocol,
+      bindHost: CONFIG.bindHost,
+      playersOnline: players.size,
+      lanAddresses: getLanAddresses(),
+    });
+    return;
+  }
+
+  if (url.pathname === "/leaderboard") { sendJson(res, getEnrichedLeaderboard()); return; }
+  if (url.pathname === "/shop") { sendJson(res, { skins: SHOP_SKINS, catalog: SHOP_CATALOG, playerData: shopData }); return; }
+  if (url.pathname === "/catalog") { sendJson(res, { catalog: SHOP_CATALOG, skins: SHOP_SKINS, avatars: AVATAR_PRESETS }); return; }
+  if (url.pathname === "/profile") {
+    const name = cleanName(url.searchParams.get("name") || "");
+    sendJson(res, name ? getProfile(name) : { error: "no name" });
+    return;
+  }
+  if (url.pathname === "/modes") { sendJson(res, { modes: MODES, difficulties: DIFFICULTIES }); return; }
+
+  const requestPath = decodeURIComponent(url.pathname);
   const safePath = path.normalize(requestPath === "/" ? "/index.html" : requestPath).replace(/^(\.\.[/\\])+/, "");
   const filePath = path.join(PUBLIC_DIR, safePath);
 
@@ -117,7 +245,11 @@ const server = http.createServer((req, res) => {
 
   fs.readFile(filePath, (error, content) => {
     if (error) { res.writeHead(404); res.end("Not found"); return; }
-    res.writeHead(200, { "Content-Type": MIME[path.extname(filePath)] || "application/octet-stream", "Cache-Control": "no-store" });
+    res.writeHead(200, {
+      "Content-Type": MIME[path.extname(filePath)] || "application/octet-stream",
+      "Cache-Control": "no-store",
+      ...corsHeaders(),
+    });
     res.end(content);
   });
 });
@@ -142,9 +274,11 @@ server.on("upgrade", (req, socket) => {
   socket.on("close", () => removeClient(id));
   socket.on("error", () => removeClient(id));
   send(id, {
-    type: "hello", id, grid: GRID, leaderboard,
-    skins: SHOP_SKINS, modes: MODES, difficulties: DIFFICULTIES,
-    shopData: shopData[id] || defaultShopEntry(),
+    type: "hello", id, grid: GRID, leaderboard: getEnrichedLeaderboard(),
+    skins: SHOP_SKINS, catalog: SHOP_CATALOG, avatars: AVATAR_PRESETS,
+    modes: MODES, difficulties: DIFFICULTIES,
+    shopData: defaultShopEntry(),
+    server: { publicUrl: PUBLIC_URL, wsUrl: WS_PUBLIC_URL, host: CONFIG.publicHost, port: CONFIG.port },
   });
 });
 
@@ -153,20 +287,86 @@ server.listen(PORT, HOST, () => {
   fillFood();
   tickInterval = setInterval(tick, DIFFICULTIES.normal.tickMs);
   setInterval(broadcastState, 250);
-  setInterval(spawnBonuses, 8000); // каждые 8 сек новый бонус
-  console.log(`THE ULTIMATE MULTIPLAYER SNAKE ATTACK is running at http://localhost:${PORT}`);
-  for (const address of getLanAddresses()) console.log(`LAN: http://${address}:${PORT}`);
+  setInterval(spawnBonuses, 8000);
+  setInterval(pingClients, 25000);
+  printStartupBanner();
 });
+
+server.on("error", (error) => {
+  if (error.code === "EADDRINUSE") {
+    console.error(`Порт ${PORT} уже занят. Смени port в config.json или переменную PORT.`);
+  } else if (error.code === "EADDRNOTAVAIL") {
+    console.error(`Нельзя слушать ${HOST}:${PORT}. Оставь bindHost = "0.0.0.0" в config.json.`);
+  } else {
+    console.error("Ошибка сервера:", error.message);
+  }
+  process.exit(1);
+});
+
+function shutdown(signal) {
+  console.log(`\n${signal}: останавливаю сервер…`);
+  if (tickInterval) clearInterval(tickInterval);
+  for (const socket of sockets.values()) {
+    try { socket.destroy(); } catch { /* ignore */ }
+  }
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(1), 5000).unref();
+}
+
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+
+function printStartupBanner() {
+  const lan = getLanAddresses();
+  console.log("");
+  console.log("══════════════════════════════════════════════════════");
+  console.log("  THE ULTIMATE MULTIPLAYER SNAKE ATTACK — ONLINE");
+  console.log("══════════════════════════════════════════════════════");
+  console.log(`  Слушаю:     ${HOST}:${PORT}`);
+  console.log(`  Публично:   ${PUBLIC_URL}`);
+  console.log(`  WebSocket:  ${WS_PUBLIC_URL}`);
+  console.log(`  Локально:   http://localhost:${PORT}`);
+  if (lan.length) {
+    console.log("  LAN:");
+    for (const ip of lan) console.log(`    → http://${ip}:${PORT}`);
+  }
+  console.log("──────────────────────────────────────────────────────");
+  console.log("  Друзья подключаются по публичному адресу ↑");
+  console.log(`  Открой в файрволе TCP-порт ${PORT}`);
+  console.log("══════════════════════════════════════════════════════");
+  console.log("");
+}
+
+function pingClients() {
+  const frame = makeFrame(JSON.stringify({ type: "ping", t: Date.now() }));
+  for (const [id, socket] of sockets) {
+    if (socket.destroyed || socket.writableEnded) continue;
+    try { socket.write(frame); } catch { removeClient(id); }
+  }
+}
 
 // ============================================================
 // GAME LOGIC
 // ============================================================
 
+function pushFeed(kind, text, playerName = "") {
+  feedLog.unshift({ id: `${Date.now()}-${Math.random()}`, kind, text, playerName, at: Date.now() });
+  if (feedLog.length > 16) feedLog.length = 16;
+  broadcast({ type: "feed", feed: feedLog.slice(0, 10) });
+}
+
+function comboMultiplier(combo) {
+  if (combo >= 10) return 2;
+  if (combo >= 6) return 1.5;
+  if (combo >= 3) return 1.25;
+  return 1;
+}
+
 function tick() {
   if (players.size === 0) return;
   tickCount += 1;
   fillFood();
-  if (tickCount % BOSS_MOVE_EVERY === 0) moveBoss();
+  if (tickCount % (boss.enragedTicks > 0 ? 4 : BOSS_MOVE_EVERY) === 0) moveBoss();
   tickBonusEffects();
 
   const occupied = new Map();
@@ -238,11 +438,19 @@ function tick() {
     if (eaten) {
       food.splice(eatenIdx, 1);
       if (eaten.good) {
-        const mult = player.activeBonus === "double" ? 2 : 1;
-        player.score += eaten.points * mult;
-        player.coins = (player.coins || 0) + eaten.points;
+        player.combo = (player.combo || 0) + 1;
+        player.maxCombo = Math.max(player.maxCombo || 0, player.combo);
+        let mult = comboMultiplier(player.combo);
+        if (player.activeBonus === "double") mult *= 2;
+        if (player.activeBonus === "speed_up") mult *= 1.3;
+        const pts = Math.round(eaten.points * mult);
+        player.score += pts;
+        player.coins = (player.coins || 0) + pts;
         player.best = Math.max(player.best, player.score);
         savePlayerCoins(player);
+        if (player.combo === 3 || player.combo === 6 || player.combo === 10) {
+          pushFeed("combo", `🔥 ${player.name}: COMBO ×${player.combo}!`, player.name);
+        }
       } else if (player.activeBonus === "shield") {
         player.activeBonus = null;
         broadcast({ type: "notice", text: `${player.name}: щит поглотил ${FOOD_TYPES[eaten.kind]?.label || "яд"}!` });
@@ -263,6 +471,7 @@ function activateBonus(player, bonusType) {
   if (!def) return;
   player.activeBonus = bonusType;
   player.bonusExpires = Date.now() + def.duration;
+  pushFeed("bonus", `⚡ ${player.name} → ${def.label}`, player.name);
   broadcast({ type: "notice", text: `${player.name} получил бонус ${def.label} ${def.desc}!` });
 }
 
@@ -293,12 +502,23 @@ function spawnBonuses() {
 
 function killPlayer(player, reason) {
   savePlayerCoins(player);
+  trackDeathStats(player);
+  const wasBoss = reason.toLowerCase().includes("босс");
   player.alive = false;
   player.deaths += 1;
   player.reason = reason;
   player.activeBonus = null;
   player.bonusExpires = null;
+  player.combo = 0;
   recordScore(player);
+  pushFeed("death", `💀 ${player.name}: ${reason}`, player.name);
+  if (wasBoss) {
+    boss.kills = (boss.kills || 0) + 1;
+    boss.enragedTicks = 50;
+    boss.size = 2;
+    boss.phase = "enraged";
+    pushFeed("boss", `👹 БОСС уничтожил ${player.name}!`, player.name);
+  }
 }
 
 function recordScore(player) {
@@ -310,7 +530,7 @@ function recordScore(player) {
     leaderboard.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, "ru"));
     leaderboard = leaderboard.slice(0, MAX_LEADERS);
     saveLeaderboard();
-    broadcast({ type: "leaderboard", leaderboard });
+    broadcast({ type: "leaderboard", leaderboard: getEnrichedLeaderboard() });
   }
 }
 
@@ -320,16 +540,23 @@ function broadcastState() {
     grid: GRID,
     food,
     bonuses: bonuses.map((b) => ({ ...b, def: BONUS_TYPES[b.bonusType] })),
-    players: [...players.values()].map((p) => ({
-      id: p.id, name: p.name, color: p.color, headColor: p.headColor,
-      snake: p.snake, alive: p.alive, score: p.score, coins: p.coins || 0,
-      best: Math.max(p.best, bestForName(p.name)), reason: p.reason,
-      activeBonus: p.activeBonus, bonusExpires: p.bonusExpires,
-      difficulty: p.difficulty, skin: p.skin, rainbow: p.rainbow,
-      isTagged: gameMode === "tag_time" && p.id === taggedPlayerId,
-    })),
-    boss, leaderboard, gameMode, taggedPlayerId,
-    shopMeta: { skins: SHOP_SKINS },
+    players: [...players.values()].map((p) => {
+      const cos = getPlayerCosmetics(p.name);
+      return {
+        id: p.id, name: p.name, color: p.color, headColor: p.headColor,
+        snake: p.snake, alive: p.alive, score: p.score, coins: p.coins || 0,
+        best: Math.max(p.best, bestForName(p.name)), reason: p.reason,
+        activeBonus: p.activeBonus, bonusExpires: p.bonusExpires,
+        difficulty: p.difficulty, skin: p.skin, rainbow: p.rainbow,
+        combo: p.combo || 0, maxCombo: p.maxCombo || 0,
+        heat: Math.min(100, Math.round((p.score || 0) * 0.4 + (p.combo || 0) * 9)),
+        isTagged: gameMode === "tag_time" && p.id === taggedPlayerId,
+        avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji,
+      };
+    }),
+    boss, leaderboard: getEnrichedLeaderboard(), gameMode, taggedPlayerId,
+    feed: feedLog.slice(0, 10),
+    shopMeta: { skins: SHOP_SKINS, catalog: SHOP_CATALOG },
   });
 }
 
@@ -343,11 +570,29 @@ function createBoss() {
     y: 2,
     size: 1,
     color: "#f66151",
-    name: "BOSS",
+    name: "VØIDR",
     pulse: 0,
     angry: false,
+    phase: "idle",
+    enragedTicks: 0,
+    kills: 0,
     moveCooldown: 0,
   };
+}
+
+function updateBossPhase(dist) {
+  if (boss.enragedTicks > 0) {
+    boss.enragedTicks -= 1;
+    boss.phase = "enraged";
+    boss.size = 2;
+    if (boss.enragedTicks <= 0) {
+      boss.size = 1;
+      boss.phase = dist <= 5 ? "hunt" : "idle";
+    }
+    return;
+  }
+  boss.size = 1;
+  boss.phase = dist <= 5 ? "hunt" : dist <= BOSS_CHASE_RANGE ? "stalk" : "idle";
 }
 
 function moveBoss() {
@@ -360,10 +605,13 @@ function moveBoss() {
   const alive = [...players.values()].filter((p) => p.alive);
   const target = alive.sort((a, b) => distanceToBoss(a.snake[0]) - distanceToBoss(b.snake[0]))[0];
   const dist = target ? distanceToBoss(target.snake[0]) : 999;
-  boss.angry = dist <= 5;
+  boss.angry = dist <= 5 || boss.phase === "enraged";
+  updateBossPhase(dist);
 
   let nextMove = null;
-  if (target && dist <= BOSS_CHASE_RANGE && Math.random() > BOSS_RANDOM_MOVE_CHANCE) {
+  const chaseRange = boss.phase === "enraged" ? BOSS_CHASE_RANGE + 6 : BOSS_CHASE_RANGE;
+  const randomChance = boss.phase === "enraged" ? 0.15 : BOSS_RANDOM_MOVE_CHANCE;
+  if (target && dist <= chaseRange && Math.random() > randomChance) {
     const moves = bossMovesToward(target.snake[0]);
     nextMove = moves.find((m) => bossCanMove(m));
   } else {
@@ -379,7 +627,7 @@ function moveBoss() {
     const head = player.snake[0];
     if (bossOccupies(head)) {
       killPlayer(player, "Босс схватил за голову");
-      boss.moveCooldown = 6;
+      boss.moveCooldown = boss.phase === "enraged" ? 3 : 6;
     }
   }
 }
@@ -454,11 +702,32 @@ function getAverageBadFoodRatio() {
 // ============================================================
 
 function handleMessage(id, message) {
+  if (message.type === "ping") return;
+
   if (message.type === "shop_connect") {
     const name = cleanName(message.name);
     shopClients.set(id, name);
-    const entry = shopData[name] || defaultShopEntry();
-    send(id, { type: "shop_update", shopData: entry, skins: SHOP_SKINS });
+    sendShopPayload(id, name);
+    return;
+  }
+
+  if (message.type === "save_profile") {
+    saveProfile(id, message);
+    return;
+  }
+
+  if (message.type === "buy_item") {
+    buyItem(id, message.itemId, message.name);
+    return;
+  }
+
+  if (message.type === "equip_item") {
+    equipItem(id, message.itemId, message.name);
+    return;
+  }
+
+  if (message.type === "unequip_item") {
+    unequipItem(id, message.itemId, message.name);
     return;
   }
 
@@ -467,7 +736,12 @@ function handleMessage(id, message) {
     const difficulty = DIFFICULTIES[message.difficulty] ? message.difficulty : "normal";
     const mode = MODES[message.mode] ? message.mode : "classic";
     gameMode = mode;
-    const skin = SHOP_SKINS.find((s) => s.id === message.skin) || SHOP_SKINS[0];
+    const prof = getProfile(name);
+    const skin = getSkinDef(prof.activeSkin);
+    prof.stats.games = (prof.stats.games || 0) + 1;
+    prof.stats.sessionStart = Date.now();
+    shopData[name] = prof;
+    saveShop();
     players.set(id, createPlayer(id, name, difficulty, skin));
     if (mode === "tag_time" && !taggedPlayerId) taggedPlayerId = id; // первый — тэгер
     restartTickInterval();
@@ -508,47 +782,222 @@ function handleMessage(id, message) {
   }
 }
 
-function buySkin(playerId, skinId) {
-  const name = players.get(playerId)?.name || shopClients.get(playerId);
+function sendShopPayload(clientId, name) {
+  const entry = getProfile(name);
+  send(clientId, { type: "shop_update", shopData: entry, skins: SHOP_SKINS, catalog: SHOP_CATALOG, avatars: AVATAR_PRESETS });
+}
+
+function buyItem(clientId, itemId, nameHint) {
+  const name = resolveName(clientId, nameHint);
   if (!name) return;
-  const player = players.get(playerId);
-  const skin = SHOP_SKINS.find((s) => s.id === skinId);
-  if (!skin) return;
-  const entry = shopData[name] || defaultShopEntry();
+  const item = SHOP_CATALOG.find((i) => i.id === itemId);
+  if (!item) return;
+  const entry = getProfile(name);
+  const player = players.get(clientId);
   const coins = player?.coins ?? entry.coins ?? 0;
-  if (skin.price > 0 && entry.unlockedSkins.includes(skinId)) {
-    equipSkin(playerId, skinId);
+
+  if (entry.inventory.includes(itemId)) {
+    equipItem(clientId, itemId, name);
     return;
   }
-  if (coins < skin.price) { send(playerId, { type: "notice", text: "Недостаточно монет!" }); return; }
-  if (player) player.coins = coins - skin.price;
-  entry.coins = coins - skin.price;
-  if (!entry.unlockedSkins.includes(skinId)) entry.unlockedSkins.push(skinId);
-  entry.activeSkin = skinId;
+  if (item.price === 0) {
+    if (!entry.inventory.includes(itemId)) entry.inventory.push(itemId);
+    shopData[name] = entry;
+    equipItem(clientId, itemId, name);
+    return;
+  }
+  if (coins < item.price) {
+    send(clientId, { type: "notice", text: "Недостаточно монет!" });
+    return;
+  }
+  if (player) player.coins = coins - item.price;
+  entry.coins = coins - item.price;
+  entry.inventory.push(itemId);
   shopData[name] = entry;
-  if (player) applySkinToPlayer(player, skin);
   saveShop();
-  send(playerId, { type: "shop_update", shopData: entry, skins: SHOP_SKINS });
+  equipItem(clientId, itemId, name);
+  send(clientId, { type: "notice", text: `Куплено: ${item.name}!` });
+}
+
+function equipItem(clientId, itemId, nameHint) {
+  const name = resolveName(clientId, nameHint);
+  if (!name) return;
+  const item = SHOP_CATALOG.find((i) => i.id === itemId);
+  if (!item) return;
+  const entry = getProfile(name);
+  if (!ownsItem(entry, itemId)) {
+    send(clientId, { type: "notice", text: "Сначала купи предмет!" });
+    return;
+  }
+
+  const player = players.get(clientId);
+
+  if (item.category === "skin") {
+    entry.activeSkin = entry.activeSkin === itemId && itemId !== "default" ? "default" : itemId;
+    if (player) applySkinToPlayer(player, getSkinDef(entry.activeSkin));
+  } else if (item.category === "snake_hat") {
+    entry.equipped.snakeHat = entry.equipped.snakeHat === itemId ? null : itemId;
+    applyCosmeticsToPlayer(player, name);
+  }
+
+  shopData[name] = entry;
+  saveShop();
+  sendShopPayload(clientId, name);
   broadcastState();
 }
 
-function equipSkin(playerId, skinId) {
-  const name = players.get(playerId)?.name || shopClients.get(playerId);
+function unequipItem(clientId, itemId, nameHint) {
+  const name = resolveName(clientId, nameHint);
   if (!name) return;
-  const player = players.get(playerId);
-  const skin = SHOP_SKINS.find((s) => s.id === skinId);
-  if (!skin) return;
-  const entry = shopData[name] || defaultShopEntry();
-  if (skin.price > 0 && !entry.unlockedSkins.includes(skinId)) {
-    send(playerId, { type: "notice", text: "Сначала купи скин!" });
+  const item = SHOP_CATALOG.find((i) => i.id === itemId);
+  if (!item) return;
+  const entry = getProfile(name);
+  const player = players.get(clientId);
+
+  if (item.category === "skin") {
+    if (itemId !== "default") entry.activeSkin = "default";
+    if (player) applySkinToPlayer(player, getSkinDef("default"));
+  } else if (item.category === "snake_hat") {
+    entry.equipped.snakeHat = null;
+    applyCosmeticsToPlayer(player, name);
+  }
+
+  shopData[name] = entry;
+  saveShop();
+  sendShopPayload(clientId, name);
+  broadcastState();
+}
+
+function saveProfile(clientId, message) {
+  const oldName = resolveName(clientId, message.oldName || message.name);
+  const newName = profileName(message.name);
+  if (!newName) {
+    send(clientId, { type: "notice", text: "Никнейм не может быть пустым!" });
     return;
   }
-  entry.activeSkin = skinId;
-  shopData[name] = entry;
-  if (player) applySkinToPlayer(player, skin);
+  const avatar = AVATAR_PRESETS.includes(message.avatar) ? message.avatar : "😎";
+  let entry = getProfile(oldName || newName);
+  entry.avatar = avatar;
+
+  if (oldName && oldName !== newName) {
+    const taken = Object.keys(shopData).some((k) => k.toLowerCase() === newName.toLowerCase() && k !== oldName);
+    if (taken) {
+      send(clientId, { type: "notice", text: "Это имя уже занято!" });
+      return;
+    }
+    delete shopData[oldName];
+    entry = { ...getProfile(oldName), avatar };
+    shopClients.set(clientId, newName);
+    const player = players.get(clientId);
+    if (player) player.name = newName;
+  }
+
+  shopData[newName] = entry;
   saveShop();
-  send(playerId, { type: "shop_update", shopData: entry, skins: SHOP_SKINS });
-  broadcastState();
+  send(clientId, { type: "profile_saved", shopData: entry, name: newName });
+  sendShopPayload(clientId, newName);
+}
+
+function resolveName(clientId, hint) {
+  return profileName(hint) || players.get(clientId)?.name || shopClients.get(clientId) || null;
+}
+
+function profileName(name) {
+  const v = String(name || "").trim().replace(/\s+/g, " ").slice(0, 16);
+  return v || null;
+}
+
+function getProfile(name) {
+  if (!name) return defaultShopEntry();
+  const key = Object.keys(shopData).find((k) => k.toLowerCase() === name.toLowerCase()) || name;
+  return normalizeProfile(shopData[key] || defaultShopEntry());
+}
+
+function normalizeProfile(raw) {
+  const entry = {
+    coins: raw.coins || 0,
+    unlockedSkins: raw.unlockedSkins || ["default"],
+    activeSkin: raw.activeSkin || "default",
+    avatar: AVATAR_PRESETS.includes(raw.avatar) ? raw.avatar : "😎",
+    inventory: Array.isArray(raw.inventory) ? [...raw.inventory] : [],
+    equipped: { snakeHat: raw.equipped?.snakeHat || null },
+    stats: {
+      games: raw.stats?.games || 0,
+      wins: raw.stats?.wins || 0,
+      losses: raw.stats?.losses || 0,
+      best: raw.stats?.best || 0,
+      playTimeMs: raw.stats?.playTimeMs || 0,
+      sessionStart: raw.stats?.sessionStart || null,
+    },
+  };
+  for (const id of entry.unlockedSkins) {
+    if (!entry.inventory.includes(id)) entry.inventory.push(id);
+  }
+  if (!entry.inventory.includes("default")) entry.inventory.unshift("default");
+  if (!SHOP_CATALOG.find((i) => i.id === entry.activeSkin && i.category === "skin")) {
+    entry.activeSkin = "default";
+  }
+  return entry;
+}
+
+function getPlayerCosmetics(name) {
+  const entry = getProfile(name);
+  const snakeHatEmoji = entry.equipped.snakeHat
+    ? SHOP_CATALOG.find((i) => i.id === entry.equipped.snakeHat)?.emoji || null
+    : null;
+  return { avatar: entry.avatar, snakeHatEmoji };
+}
+
+function applyCosmeticsToPlayer(player, name) {
+  if (!player) return;
+  const cos = getPlayerCosmetics(name);
+  player.avatar = cos.avatar;
+  player.snakeHatEmoji = cos.snakeHatEmoji;
+}
+
+function trackDeathStats(player) {
+  const entry = getProfile(player.name);
+  entry.stats.losses = (entry.stats.losses || 0) + 1;
+  entry.stats.best = Math.max(entry.stats.best || 0, player.score);
+  if (entry.stats.sessionStart) {
+    entry.stats.playTimeMs = (entry.stats.playTimeMs || 0) + (Date.now() - entry.stats.sessionStart);
+    entry.stats.sessionStart = Date.now();
+  }
+  const topScore = Math.max(...[...players.values()].filter((p) => p.alive).map((p) => p.score), player.score);
+  if (player.score > 0 && player.score >= topScore) entry.stats.wins = (entry.stats.wins || 0) + 1;
+  shopData[player.name] = entry;
+  saveShop();
+}
+
+function trackDisconnectStats(player) {
+  const entry = getProfile(player.name);
+  if (entry.stats.sessionStart) {
+    entry.stats.playTimeMs = (entry.stats.playTimeMs || 0) + (Date.now() - entry.stats.sessionStart);
+    entry.stats.sessionStart = null;
+  }
+  shopData[player.name] = entry;
+  saveShop();
+}
+
+function getEnrichedLeaderboard() {
+  return leaderboard.map((e, index) => {
+    const prof = getProfile(e.name);
+    return {
+      ...e,
+      rank: index + 1,
+      avatar: prof.avatar,
+      wins: prof.stats?.wins || 0,
+      best: Math.max(e.score, prof.stats?.best || 0),
+    };
+  });
+}
+
+function buySkin(playerId, skinId) {
+  buyItem(playerId, skinId);
+}
+
+function equipSkin(playerId, skinId) {
+  equipItem(playerId, skinId);
 }
 
 function applySkinToPlayer(player, skin) {
@@ -559,7 +1008,7 @@ function applySkinToPlayer(player, skin) {
 }
 
 function savePlayerCoins(player) {
-  const entry = shopData[player.name] || defaultShopEntry();
+  const entry = getProfile(player.name);
   entry.coins = player.coins;
   shopData[player.name] = entry;
   saveShop();
@@ -571,8 +1020,9 @@ function createPlayer(id, name, difficulty, skin) {
   const snake = [head];
   const tailDir = { x: -direction.x, y: -direction.y };
   for (let i = 1; i < 4; i++) snake.push(wrapPoint({ x: head.x + tailDir.x * i, y: head.y + tailDir.y * i }));
-  const shopEntry = shopData[name] || defaultShopEntry();
-  return {
+  const shopEntry = getProfile(name);
+  const cos = getPlayerCosmetics(name);
+  const player = {
     id, name, difficulty,
     color: skin.color !== "rainbow" ? skin.color : COLORS[(Number(id) - 1) % COLORS.length],
     headColor: skin.headColor || "#ffffff",
@@ -582,7 +1032,10 @@ function createPlayer(id, name, difficulty, skin) {
     alive: true, score: 0, coins: shopEntry.coins || 0,
     best: bestForName(name), deaths: 0, reason: "",
     activeBonus: null, bonusExpires: null,
+    combo: 0, maxCombo: 0,
+    avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji,
   };
+  return player;
 }
 
 // ============================================================
@@ -633,7 +1086,12 @@ function removeClient(id) {
   sockets.delete(id);
   shopClients.delete(id);
   const player = players.get(id);
-  if (player) { recordScore(player); players.delete(id); broadcastState(); }
+  if (player) {
+    trackDisconnectStats(player);
+    recordScore(player);
+    players.delete(id);
+    broadcastState();
+  }
 }
 
 // ============================================================
@@ -654,7 +1112,9 @@ function loadShop() {
 
 function saveShop() { fs.writeFile(SHOP_FILE, JSON.stringify(shopData, null, 2), () => { }); }
 
-function defaultShopEntry() { return { coins: 0, unlockedSkins: ["default"], activeSkin: "default" }; }
+function defaultShopEntry() {
+  return normalizeProfile({ coins: 0, unlockedSkins: ["default"], activeSkin: "default" });
+}
 
 // ============================================================
 // UTILS
@@ -693,4 +1153,16 @@ function isOpposite(a, b) { return a.x + b.x === 0 && a.y + b.y === 0; }
 function shuffledDirs() { return [{ x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 }].sort(() => Math.random() - 0.5); }
 function bestForName(name) { return leaderboard.find((e) => e.name.toLowerCase() === name.toLowerCase())?.score || 0; }
 function getLanAddresses() { return Object.values(os.networkInterfaces()).flat().filter((i) => i && i.family === "IPv4" && !i.internal).map((i) => i.address); }
-function sendJson(res, payload) { res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" }); res.end(JSON.stringify(payload)); }
+
+function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+  };
+}
+
+function sendJson(res, payload) {
+  res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", ...corsHeaders() });
+  res.end(JSON.stringify(payload));
+}

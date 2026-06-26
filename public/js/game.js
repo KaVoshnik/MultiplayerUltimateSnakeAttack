@@ -5,17 +5,19 @@ const statusEl = document.querySelector("#connectionStatus");
 const scoreEl = document.querySelector("#score");
 const bestEl = document.querySelector("#best");
 const coinsEl = document.querySelector("#coins");
-const deathsEl = document.querySelector("#deaths");
-const goodStock = document.querySelector("#goodStock");
+const comboHud = document.querySelector("#comboHud");
+const comboVal = document.querySelector("#comboVal");
+const heatFill = document.querySelector("#heatFill");
+const feedList = document.querySelector("#feedList");
 const bonusActive = document.querySelector("#bonusActive");
 const bonusHud = document.querySelector("#bonusHud");
 const bossHud = document.querySelector("#bossHud");
+const bossLabel = document.querySelector("#bossLabel");
 const playersEl = document.querySelector("#players");
 const deathPanel = document.querySelector("#deathPanel");
 const deathReason = document.querySelector("#deathReason");
 const deathStats = document.querySelector("#deathStats");
 const pausePanel = document.querySelector("#pausePanel");
-const toastWrap = document.querySelector("#toastWrap");
 
 const settings = SnakeStore.load();
 if (!settings.name) {
@@ -45,12 +47,23 @@ const state = {
   shopData: { coins: 0, unlockedSkins: ["default"], activeSkin: "default" },
   joined: false,
   name: settings.name,
-  difficulty: settings.difficulty || "normal",
-  mode: settings.mode || "classic",
   menuOpen: false,
   gameMode: "classic",
   taggedPlayerId: null,
+  feed: [],
+  lastCombo: 0,
+  wasAlive: true,
+  personalBest: 0,
+  bossRageSound: false,
 };
+
+SnakeFX.initCrt(canvasStage);
+document.body.addEventListener("pointerdown", () => { SnakeAudio.ensure(); SnakeAudio.startAmbient(); }, { once: true });
+document.querySelector("#audioBtn").addEventListener("click", () => {
+  SnakeAudio.setEnabled(!SnakeAudio.isEnabled());
+  document.querySelector("#audioBtn").textContent = SnakeAudio.isEnabled() ? "🔊" : "🔇";
+});
+document.querySelector("#audioBtn").textContent = SnakeAudio.isEnabled() ? "🔊" : "🔇";
 
 const keys = {
   ArrowUp: "up", KeyW: "up",
@@ -111,7 +124,7 @@ function resolveFoodKind(item) {
 }
 
 function connect() {
-  const socket = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`);
+  const socket = new WebSocket(getWebSocketUrl());
   state.socket = socket;
 
   socket.addEventListener("open", () => {
@@ -126,15 +139,20 @@ function connect() {
   });
   socket.addEventListener("message", (event) => {
     const message = JSON.parse(event.data);
+    if (message.type === "ping") return;
     if (message.type === "hello") {
       state.id = message.id;
       state.grid = message.grid;
       state.skins = message.skins || [];
-      if (message.shopData) state.shopData = message.shopData;
+      if (message.shopData) {
+        state.shopData = message.shopData;
+        state.personalBest = message.shopData.stats?.best || state.personalBest;
+      }
       sendJoin();
     }
     if (message.type === "state") {
       const prevScore = state.players.find((p) => p.id === state.id)?.score || 0;
+      const prevCombo = state.players.find((p) => p.id === state.id)?.combo || 0;
       state.grid = message.grid;
       state.food = message.food;
       state.bonuses = message.bonuses || [];
@@ -142,10 +160,25 @@ function connect() {
       state.boss = message.boss || null;
       state.gameMode = message.gameMode || "classic";
       state.taggedPlayerId = message.taggedPlayerId;
-      updateHud(message.players.find((p) => p.id === state.id), prevScore);
+      if (message.feed) state.feed = message.feed;
+      const me = message.players.find((p) => p.id === state.id);
+      updateHud(me, prevScore, prevCombo);
       renderPlayers();
+      renderFeed();
+      SnakeFX.updateTrails(state.players);
+      if (state.boss?.phase === "enraged" && !state.bossRageSound) {
+        state.bossRageSound = true;
+        SnakeAudio.play("boss");
+        SnakeFX.addShake(8);
+      }
+      if (state.boss?.phase !== "enraged") state.bossRageSound = false;
     }
-    if (message.type === "notice") showToast(message.text);
+    if (message.type === "feed") {
+      state.feed = message.feed || [];
+      renderFeed();
+      SnakeAudio.play("feed");
+    }
+    if (message.type === "notice") { showToast(message.text); SnakeAudio.play("feed"); }
     if (message.type === "tagged") showToast(message.tagger ? "Тэг передан!" : "Тебе передали тэг!");
     if (message.type === "shop_update") {
       state.shopData = message.shopData;
@@ -159,8 +192,6 @@ function sendJoin() {
   send({
     type: "join",
     name: state.name,
-    difficulty: state.difficulty,
-    mode: state.mode,
     skin: state.shopData.activeSkin || "default",
   });
 }
@@ -171,14 +202,37 @@ function send(payload) {
   }
 }
 
-function updateHud(me, prevScore = 0) {
+function updateHud(me, prevScore = 0, prevCombo = 0) {
   scoreEl.textContent = me?.score || 0;
   bestEl.textContent = me?.best || 0;
   coinsEl.textContent = me?.coins ?? state.shopData.coins ?? 0;
-  deathsEl.textContent = me?.deaths || 0;
-  goodStock.textContent = state.food.filter(isGoodFood).length;
 
-  if (me && me.score > prevScore) spawnEatParticles(me);
+  if (me?.combo >= 3) {
+    comboHud.classList.remove("hidden");
+    comboVal.textContent = `×${me.combo}`;
+    if (me.combo > prevCombo) {
+      comboHud.classList.add("pulse");
+      setTimeout(() => comboHud.classList.remove("pulse"), 400);
+      if (me.combo >= 3) SnakeAudio.play("combo");
+      const head = me.snake?.[0];
+      if (head) SnakeFX.spawnFloater(`COMBO ×${me.combo}`, head.x, head.y - 0.5, "#f9f06b");
+    }
+  } else {
+    comboHud.classList.add("hidden");
+  }
+
+  const heat = me?.heat || 0;
+  if (heatFill) {
+    heatFill.style.width = `${heat}%`;
+    heatFill.style.filter = heat > 70 ? "hue-rotate(-40deg) brightness(1.2)" : "";
+  }
+
+  if (me && me.score > prevScore) {
+    spawnEatParticles(me);
+    SnakeAudio.play("eat");
+    const head = me.snake?.[0];
+    if (head) SnakeFX.spawnFloater(`+${me.score - prevScore}`, head.x, head.y - 0.3, me.color);
+  }
 
   if (me?.activeBonus) {
     const left = me.bonusExpires ? Math.max(0, Math.ceil((me.bonusExpires - Date.now()) / 1000)) : "";
@@ -189,17 +243,45 @@ function updateHud(me, prevScore = 0) {
     bonusHud.classList.remove("accent");
   }
 
-  bossHud.classList.toggle("hidden", !state.boss?.angry);
-
-  if (state.joined && me && !me.alive) {
-    deathReason.textContent = me.reason || "Змейка умерла";
-    deathStats.innerHTML = `
-      <span>Очки <b>${me.score}</b></span>
-      <span>Монеты <b>${me.coins || 0}</b></span>
-    `;
-    deathPanel.classList.remove("hidden");
+  if (state.boss) {
+    const enraged = state.boss.phase === "enraged";
+    bossHud.classList.toggle("hidden", !state.boss.angry && !enraged);
+    bossLabel.textContent = enraged ? "ЯРОСТЬ!" : state.boss.angry ? "РЯДОМ!" : "ОХОТА";
+    canvasStage.classList.toggle("bossRage", enraged);
   } else {
-    deathPanel.classList.add("hidden");
+    bossHud.classList.add("hidden");
+    canvasStage.classList.remove("bossRage");
+  }
+
+  if (state.joined && me) {
+    if (me.alive) {
+      state.wasAlive = true;
+      deathPanel.classList.add("hidden");
+    } else if (state.wasAlive) {
+      state.wasAlive = false;
+      deathReason.textContent = me.reason || "Змейка умерла";
+      deathStats.innerHTML = `
+        <span>Очки <b>${me.score}</b></span>
+        <span>Макс. комбо <b>×${me.maxCombo || 0}</b></span>
+        <span>Монеты <b>${me.coins || 0}</b></span>
+      `;
+      deathPanel.classList.remove("hidden");
+      SnakeFX.addShake(14);
+      SnakeFX.burstConfetti(me.score >= (me.best || 0) && me.score > 0 ? 100 : 20);
+      SnakeAudio.play(me.score >= state.personalBest && me.score > 0 ? "highscore" : "death");
+      if (me.score >= state.personalBest) state.personalBest = me.score;
+    }
+  }
+}
+
+function renderFeed() {
+  if (!feedList) return;
+  feedList.innerHTML = "";
+  for (const ev of (state.feed || []).slice(0, 8)) {
+    const li = document.createElement("li");
+    li.className = ev.kind || "";
+    li.textContent = ev.text;
+    feedList.append(li);
   }
 }
 
@@ -230,25 +312,36 @@ function draw() {
   const cell = Math.min(width / state.grid.width, height / state.grid.height);
   const offsetX = (width - cell * state.grid.width) / 2;
   const offsetY = (height - cell * state.grid.height) / 2;
+  const shake = SnakeFX.getShakeOffset();
 
-  ctx.clearRect(0, 0, width, height);
+  ctx.save();
+  ctx.translate(shake.x, shake.y);
+  ctx.clearRect(-shake.x, -shake.y, width, height);
   drawBackground(width, height, cell, offsetX, offsetY);
+  SnakeFX.drawTrails(ctx, cell, offsetX, offsetY);
   drawFood(cell, offsetX, offsetY);
   drawBonuses(cell, offsetX, offsetY);
   drawBoss(cell, offsetX, offsetY);
   drawPlayers(cell, offsetX, offsetY);
   drawParticles(cell, offsetX, offsetY);
+  SnakeFX.drawFloaters(ctx, cell, offsetX, offsetY);
+  ctx.restore();
+
+  SnakeFX.drawConfetti(ctx, width, height);
+  SnakeFX.drawCrt(width, height);
   requestAnimationFrame(draw);
 }
 
 function drawBackground(width, height, cell, offsetX, offsetY) {
-  const grad = ctx.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, width * 0.6);
-  grad.addColorStop(0, "#0c1218");
-  grad.addColorStop(1, "#040608");
+  const enraged = state.boss?.phase === "enraged";
+  const grad = ctx.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, width * 0.65);
+  grad.addColorStop(0, enraged ? "#180808" : "#0c1218");
+  grad.addColorStop(1, enraged ? "#080202" : "#040608");
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, width, height);
 
-  ctx.strokeStyle = "rgba(61, 232, 138, 0.04)";
+  const t = Date.now() / 1000;
+  ctx.strokeStyle = enraged ? "rgba(255,59,46,0.07)" : "rgba(61, 232, 138, 0.04)";
   ctx.lineWidth = Math.max(1, cell * 0.03);
   for (let x = 0; x <= state.grid.width; x++) {
     const px = Math.round(offsetX + x * cell);
@@ -263,6 +356,11 @@ function drawBackground(width, height, cell, offsetX, offsetY) {
     ctx.moveTo(offsetX, py);
     ctx.lineTo(offsetX + state.grid.width * cell, py);
     ctx.stroke();
+  }
+
+  if (enraged) {
+    ctx.fillStyle = `rgba(255,59,46,${0.03 + Math.sin(t * 6) * 0.02})`;
+    ctx.fillRect(offsetX, offsetY, state.grid.width * cell, state.grid.height * cell);
   }
 }
 
@@ -388,10 +486,24 @@ function drawBoss(cell, offsetX, offsetY) {
   const y = offsetY + state.boss.y * cell;
   const size = bossSize * cell;
   const angry = state.boss.angry;
+  const enraged = state.boss.phase === "enraged";
+  const t = Date.now() / 1000;
   ctx.save();
-  if (angry) { ctx.shadowColor = "rgba(246,97,81,.8)"; ctx.shadowBlur = cell * 0.7; }
-  ctx.fillStyle = angry ? "#ff3b2e" : "#f66151";
-  roundRect(x + cell * 0.08, y + cell * 0.08, size - cell * 0.16, size - cell * 0.16, cell * 0.22);
+  if (enraged) {
+    ctx.shadowColor = "rgba(255,30,20,.95)";
+    ctx.shadowBlur = cell * 1.1;
+  } else if (angry) {
+    ctx.shadowColor = "rgba(246,97,81,.8)";
+    ctx.shadowBlur = cell * 0.7;
+  }
+  const pulse = 1 + Math.sin(t * 8) * (enraged ? 0.06 : 0.02);
+  const pad = cell * 0.08;
+  const w = (size - pad * 2) * pulse;
+  const h = (size - pad * 2) * pulse;
+  const ox = x + (size - w) / 2;
+  const oy = y + (size - h) / 2;
+  ctx.fillStyle = enraged ? "#ff1a0a" : angry ? "#ff3b2e" : "#f66151";
+  roundRect(ox, oy, w, h, cell * 0.22);
   ctx.fill();
   const cx = x + size / 2, cy = y + size / 2;
   ctx.fillStyle = "#1a0a0a";
@@ -399,6 +511,12 @@ function drawBoss(cell, offsetX, offsetY) {
   ctx.arc(cx - cell * 0.14, cy - cell * 0.05, cell * 0.09, 0, Math.PI * 2);
   ctx.arc(cx + cell * 0.14, cy - cell * 0.05, cell * 0.09, 0, Math.PI * 2);
   ctx.fill();
+  if (enraged) {
+    ctx.fillStyle = "#ff6b5a";
+    ctx.font = `800 ${cell * 0.22}px Orbitron, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.fillText("VØIDR", cx, cy + cell * 0.35);
+  }
   ctx.restore();
 }
 
@@ -414,10 +532,12 @@ function drawPlayers(cell, offsetX, offsetY) {
       const px = offsetX + part.x * cell;
       const py = offsetY + part.y * cell;
       const bodyColor = player.rainbow ? `hsl(${(index * 40 + Date.now() / 20) % 360}, 80%, 60%)` : player.color;
+      const heatGlow = (player.heat || 0) > 50;
       if (index === 0) {
         ctx.fillStyle = player.headColor || "#fff";
         if (isTagged) { ctx.strokeStyle = "#ffd166"; ctx.lineWidth = cell * 0.1; roundRect(px + cell * 0.04, py + cell * 0.04, cell * 0.92, cell * 0.92, cell * 0.2); ctx.stroke(); }
         if (player.activeBonus === "ghost") ctx.globalAlpha = 0.6;
+        if (heatGlow) { ctx.shadowColor = player.color; ctx.shadowBlur = cell * 0.45; }
       } else {
         ctx.fillStyle = bodyColor;
         ctx.globalAlpha = player.alive ? (player.activeBonus === "ghost" ? 0.5 : 0.9) : 0.35;
@@ -430,6 +550,8 @@ function drawPlayers(cell, offsetX, offsetY) {
         roundRect(px + cell * 0.24, py + cell * 0.24, cell * 0.52, cell * 0.52, cell * 0.14);
         ctx.fill();
         drawSnakeEyes(px, py, cell, dirX, dirY);
+        drawSnakeCosmetics(px, py, cell, player);
+        ctx.shadowBlur = 0;
       }
     });
     ctx.globalAlpha = 1;
@@ -448,6 +570,17 @@ function drawSnakeEyes(x, y, cell, dirX, dirY) {
   ctx.arc(ex1, ey1, cell * 0.07, 0, Math.PI * 2);
   ctx.arc(ex2, ey2, cell * 0.07, 0, Math.PI * 2);
   ctx.fill();
+}
+
+function drawSnakeCosmetics(x, y, cell, player) {
+  const cx = x + cell / 2;
+  const cy = y + cell / 2;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  if (player.snakeHatEmoji) {
+    ctx.font = `${cell * 0.55}px sans-serif`;
+    ctx.fillText(player.snakeHatEmoji, cx, cy - cell * 0.55);
+  }
 }
 
 function spawnEatParticles(player) {

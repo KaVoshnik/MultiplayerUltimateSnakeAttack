@@ -1,0 +1,155 @@
+.lbPage .brand {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: .8rem;
+  color: var(--green);
+  text-decoration: none;
+}
+
+.podium {
+  display: grid;
+  grid-template-columns: 1fr 1.15fr 1fr;
+  gap: 16px;
+  align-items: end;
+  margin-bottom: 28px;
+  min-height: 220px;
+}
+
+.podiumCard {
+  border-radius: 16px;
+  padding: 20px 16px;
+  text-align: center;
+  opacity: 0;
+  transform: translateY(30px);
+  animation: podiumIn .6s ease forwards;
+  position: relative;
+  overflow: hidden;
+}
+
+.podiumCard.place-1 {
+  background: linear-gradient(180deg, rgba(255,209,102,.2), rgba(255,209,102,.05));
+  border: 1px solid rgba(255,209,102,.45);
+  animation-delay: .15s;
+  order: 2;
+}
+
+.podiumCard.place-2 {
+  background: linear-gradient(180deg, rgba(192,192,192,.15), rgba(192,192,192,.04));
+  border: 1px solid rgba(192,192,192,.35);
+  animation-delay: .05s;
+  order: 1;
+}
+
+.podiumCard.place-3 {
+  background: linear-gradient(180deg, rgba(205,127,50,.15), rgba(205,127,50,.04));
+  border: 1px solid rgba(205,127,50,.35);
+  animation-delay: .25s;
+  order: 3;
+}
+
+@keyframes podiumIn {
+  to { opacity: 1; transform: none; }
+}
+
+.podiumCard.place-1::after {
+  content: "👑";
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  font-size: 1.2rem;
+  animation: crownBob 2s ease infinite;
+}
+
+@keyframes crownBob {
+  50% { transform: translateY(-4px) rotate(5deg); }
+}
+
+.podiumMedal {
+  font-size: 2rem;
+  margin-bottom: 8px;
+}
+
+.podiumAvatar {
+  font-size: 2.4rem;
+  margin-bottom: 6px;
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,.4));
+}
+
+.podiumName {
+  font-weight: 800;
+  font-size: .95rem;
+  margin-bottom: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.podiumStats {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  font-size: .78rem;
+  color: var(--muted);
+}
+
+.podiumStats strong {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.podiumScore {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  font-weight: 900;
+  margin-top: 10px;
+}
+
+.place-1 .podiumScore { color: var(--yellow); text-shadow: 0 0 16px rgba(255,209,102,.4); }
+.place-2 .podiumScore { color: #c0c0c0; }
+.place-3 .podiumScore { color: #cd7f32; }
+
+.lbRest .leaderList li {
+  opacity: 0;
+  animation: rowIn .4s ease forwards;
+}
+
+@keyframes rowIn {
+  from { opacity: 0; transform: translateX(-12px); }
+  to { opacity: 1; transform: none; }
+}
+
+.lbPagination {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 20px;
+  flex-wrap: wrap;
+}
+
+.pageBtn {
+  min-width: 36px;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255,255,255,.03);
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.pageBtn:hover { border-color: var(--green); color: var(--text); }
+.pageBtn.active {
+  border-color: var(--green);
+  background: var(--green-dim);
+  color: var(--green);
+}
+
+@media (max-width: 640px) {
+  .podium {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+  .podiumCard { order: unset !important; }
+}

@@ -1,3 +1,25 @@
+function getWebSocketUrl() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  return `${proto}://${location.host}`;
+}
+
+function connectWebSocket(handlers = {}) {
+  const socket = new WebSocket(getWebSocketUrl());
+  socket.addEventListener("open", () => handlers.onOpen?.(socket));
+  socket.addEventListener("close", () => {
+    handlers.onClose?.();
+    if (handlers.reconnect !== false) {
+      setTimeout(() => connectWebSocket(handlers), handlers.reconnectMs || 1500);
+    }
+  });
+  socket.addEventListener("message", (event) => {
+    const msg = JSON.parse(event.data);
+    if (msg.type === "ping") return;
+    handlers.onMessage?.(msg, socket);
+  });
+  return socket;
+}
+
 const SnakeStore = {
   KEY: "snakeSettings",
 
@@ -21,6 +43,9 @@ const SnakeStore = {
     return this.load().name || localStorage.getItem("snakeName") || "";
   },
 };
+
+const RARITY_ORDER = { common: 0, rare: 1, epic: 2, legendary: 3 };
+const RARITY_LABELS = { common: "Common", rare: "Rare", epic: "Epic", legendary: "Legendary" };
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (char) => {
@@ -48,6 +73,71 @@ function markActiveNav() {
   document.querySelectorAll(".siteNav .links a").forEach((link) => {
     link.classList.toggle("active", link.dataset.page === page);
   });
+}
+
+function formatPlayTime(ms) {
+  const sec = Math.floor((ms || 0) / 1000);
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  if (h > 0) return `${h}ч ${m}м`;
+  return `${m}м ${sec % 60}с`;
+}
+
+function sortCatalog(items, sortBy, dir) {
+  const list = [...items];
+  const mult = dir === "desc" ? -1 : 1;
+  list.sort((a, b) => {
+    if (sortBy === "rarity") {
+      return (RARITY_ORDER[a.rarity] - RARITY_ORDER[b.rarity]) * mult || a.price - b.price;
+    }
+    return (a.price - b.price) * mult || a.name.localeCompare(b.name, "ru");
+  });
+  return list;
+}
+
+function isItemEquipped(shopData, item) {
+  if (!shopData || !item) return false;
+  if (item.category === "skin") return shopData.activeSkin === item.id;
+  if (item.category === "snake_hat") return shopData.equipped?.snakeHat === item.id;
+  return false;
+}
+
+function ownsShopItem(shopData, item) {
+  if (!item) return false;
+  if (item.category === "skin" && item.price === 0) return true;
+  return (shopData?.inventory || []).includes(item.id);
+}
+
+function updateUserBar(shopData, name) {
+  const avatarEl = document.querySelector("#userAvatar");
+  const nameEl = document.querySelector("#userName");
+  const coinsEl = document.querySelector("#headerCoins");
+  if (avatarEl) avatarEl.textContent = shopData?.avatar || "😎";
+  if (nameEl) nameEl.textContent = name || SnakeStore.getName() || "Гость";
+  if (coinsEl) coinsEl.textContent = shopData?.coins ?? 0;
+}
+
+function connectProfileSocket(onMessage) {
+  const socket = new WebSocket(getWebSocketUrl());
+  let clientId = null;
+
+  socket.addEventListener("open", () => {
+    const name = SnakeStore.getName();
+    if (name) socket.send(JSON.stringify({ type: "shop_connect", name }));
+  });
+
+  socket.addEventListener("message", (event) => {
+    const msg = JSON.parse(event.data);
+    if (msg.type === "ping") return;
+    if (msg.type === "hello") clientId = msg.id;
+    if (msg.type === "hello" && SnakeStore.getName()) {
+      socket.send(JSON.stringify({ type: "shop_connect", name: SnakeStore.getName() }));
+    }
+    onMessage?.(msg, socket);
+  });
+
+  socket.addEventListener("close", () => setTimeout(() => connectProfileSocket(onMessage), 1500));
+  return () => socket;
 }
 
 if (document.readyState === "loading") {

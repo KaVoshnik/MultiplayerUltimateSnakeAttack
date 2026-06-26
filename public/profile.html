@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Профиль — Ultimate Snake Attack</title>
+  <link rel="stylesheet" href="css/common.css" />
+  <link rel="stylesheet" href="css/pages.css" />
+  <link rel="stylesheet" href="css/profile.css" />
+</head>
+<body data-page="profile">
+  <nav class="siteNav">
+    <a href="/" class="brand">← ЛОББИ</a>
+    <div class="links">
+      <a href="/" data-page="lobby">Лобби</a>
+      <a href="/game.html" data-page="game">Игра</a>
+      <a href="/shop.html" data-page="shop">Магазин</a>
+      <a href="/profile.html" data-page="profile" class="active">Профиль</a>
+      <a href="/leaderboard.html" data-page="leaderboard">Рекорды</a>
+    </div>
+  </nav>
+
+  <main class="pageWrap profilePage">
+    <div class="profileGrid">
+      <section class="glass profilePreview">
+        <h2>Превью змеи</h2>
+        <canvas id="snakePreview" width="280" height="200"></canvas>
+        <div class="equippedList" id="equippedList"></div>
+      </section>
+
+      <section class="glass profileForm">
+        <h2>Кастомизация</h2>
+        <label for="profileName">Никнейм (до 16 символов)</label>
+        <input id="profileName" maxlength="16" placeholder="Твой ник" />
+
+        <label>Аватарка</label>
+        <div class="avatarGrid" id="avatarGrid"></div>
+
+        <button type="button" class="btn primary" id="saveProfile" style="width:100%;margin-top:20px">
+          СОХРАНИТЬ ИЗМЕНЕНИЯ
+        </button>
+      </section>
+
+      <section class="glass profileStats">
+        <h2>Статистика</h2>
+        <div class="statsGrid">
+          <div class="statBox"><span>Игр</span><strong id="statGames">0</strong></div>
+          <div class="statBox"><span>Побед</span><strong id="statWins">0</strong></div>
+          <div class="statBox"><span>Поражений</span><strong id="statLosses">0</strong></div>
+          <div class="statBox"><span>Рекорд</span><strong id="statBest">0</strong></div>
+          <div class="statBox wide"><span>Время в игре</span><strong id="statTime">0м</strong></div>
+          <div class="statBox wide"><span>Монеты</span><strong id="statCoins">0</strong></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <div class="toastWrap"></div>
+  <script src="js/common.js"></script>
+  <script src="js/profile.js"></script>
+</body>
+</html>

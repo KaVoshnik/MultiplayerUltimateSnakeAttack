@@ -2,9 +2,10 @@
   "name": "ultimate-multiplayer-snake-attack",
   "version": "1.0.0",
   "private": true,
-  "description": "THE ULTIMATE MULTIPLAYER SNAKE ATTACK — LAN multiplayer snake game",
+  "description": "THE ULTIMATE MULTIPLAYER SNAKE ATTACK — online multiplayer snake game",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "start:public": "node server.js"
   },
   "engines": {
     "node": ">=18"

@@ -99,10 +99,11 @@ button, input { font: inherit; }
 
 .siteNav .brand {
   font-family: var(--font-display);
-  font-weight: 900;
-  font-size: .95rem;
-  letter-spacing: .08em;
+  font-weight: 700;
+  font-size: .8rem;
+  letter-spacing: .1em;
   color: var(--green);
+  text-decoration: none;
 }
 
 .siteNav .links {
