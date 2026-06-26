@@ -88,13 +88,16 @@ function renderStats() {
 
 function renderEquipped() {
   equippedList.innerHTML = "";
-  const eq = state.shopData?.equipped;
-  if (!eq) return;
+  const data = state.shopData;
+  if (!data) return;
 
-  const items = [
-    ...(eq.equipment || []).map((id) => state.catalog.find((i) => i.id === id)),
-    eq.snakeHat ? state.catalog.find((i) => i.id === eq.snakeHat) : null,
-  ].filter(Boolean);
+  const items = [];
+  const skin = state.catalog.find((i) => i.id === data.activeSkin && i.category === "skin");
+  if (skin) items.push(skin);
+  if (data.equipped?.snakeHat) {
+    const hat = state.catalog.find((i) => i.id === data.equipped.snakeHat);
+    if (hat) items.push(hat);
+  }
 
   if (!items.length) {
     equippedList.innerHTML = "<span>Ничего не надето — зайди в магазин!</span>";
@@ -104,7 +107,11 @@ function renderEquipped() {
   for (const item of items) {
     const tag = document.createElement("span");
     tag.className = "equippedTag";
-    tag.textContent = `${item.emoji} ${item.name}`;
+    if (item.category === "skin") {
+      tag.innerHTML = `<span class="equippedSwatch" style="background:${item.color === "rainbow" ? "linear-gradient(90deg,#f66151,#f9f06b,#33d17a,#62a0ea,#c77dff)" : item.color}"></span> ${escapeHtml(item.name)}`;
+    } else {
+      tag.textContent = `${item.emoji} ${item.name}`;
+    }
     equippedList.append(tag);
   }
 }
@@ -125,33 +132,31 @@ function drawPreview() {
     { x: 130, y: 90 }, { x: 160, y: 80 }, { x: 190, y: 70 },
   ];
 
-  const color = "#3de88a";
+  const skinItem = state.catalog.find((i) => i.id === (state.shopData?.activeSkin || "default") && i.category === "skin");
+  const bodyColor = skinItem?.color === "rainbow" ? "#3de88a" : (skinItem?.color || "#3de88a");
+  const headColor = skinItem?.headColor || "#ffffff";
+
   segments.forEach((seg, i) => {
-    previewCtx.fillStyle = i === segments.length - 1 ? "#fff" : color;
+    previewCtx.fillStyle = i === segments.length - 1 ? headColor : bodyColor;
     roundRect(previewCtx, seg.x, seg.y, 26, 26, 8);
     previewCtx.fill();
     if (i === segments.length - 1) {
-      previewCtx.fillStyle = color;
+      previewCtx.fillStyle = bodyColor;
       roundRect(previewCtx, seg.x + 6, seg.y + 6, 14, 14, 4);
       previewCtx.fill();
     }
   });
 
   const head = segments[segments.length - 1];
-  const eq = state.shopData?.equipped;
-  const hatItem = eq?.snakeHat ? state.catalog.find((i) => i.id === eq.snakeHat) : null;
-  const gearItems = (eq?.equipment || []).map((id) => state.catalog.find((i) => i.id === id)).filter(Boolean);
+  const hatItem = state.shopData?.equipped?.snakeHat
+    ? state.catalog.find((i) => i.id === state.shopData.equipped.snakeHat)
+    : null;
 
   if (hatItem) {
     previewCtx.font = "22px sans-serif";
     previewCtx.textAlign = "center";
     previewCtx.fillText(hatItem.emoji, head.x + 13, head.y - 4);
   }
-
-  gearItems.forEach((g, i) => {
-    previewCtx.font = "14px sans-serif";
-    previewCtx.fillText(g.emoji, head.x + 13 + (i - 1) * 16, head.y + 38);
-  });
 
   previewCtx.font = "28px sans-serif";
   previewCtx.textAlign = "right";

@@ -1,8 +1,6 @@
 let settings = SnakeStore.load();
 const nameInput = document.querySelector("#nameInput");
 const settingsModal = document.querySelector("#settingsModal");
-let difficulty = settings.difficulty || "normal";
-let mode = settings.mode || "classic";
 let shopData = { avatar: "😎", coins: 0 };
 
 if (settings.name) nameInput.value = settings.name;
@@ -55,30 +53,12 @@ drawParticles();
 window.addEventListener("resize", () => { resizeParticles(); initParticles(); });
 
 // Settings
-document.querySelectorAll("#diffRow .diffBtn").forEach((btn) => {
-  if (btn.dataset.diff === difficulty) btn.classList.add("active");
-  btn.addEventListener("click", () => {
-    document.querySelectorAll("#diffRow .diffBtn").forEach((b) => b.classList.remove("active"));
-    btn.classList.add("active");
-    difficulty = btn.dataset.diff;
-  });
-});
-
-document.querySelectorAll("#modeRow .diffBtn").forEach((btn) => {
-  if (btn.dataset.mode === mode) btn.classList.add("active");
-  btn.addEventListener("click", () => {
-    document.querySelectorAll("#modeRow .diffBtn").forEach((b) => b.classList.remove("active"));
-    btn.classList.add("active");
-    mode = btn.dataset.mode;
-  });
-});
-
 document.querySelector("#btnSettings").addEventListener("click", () => settingsModal.classList.remove("hidden"));
 document.querySelector("#closeSettings").addEventListener("click", () => settingsModal.classList.add("hidden"));
 document.querySelector("#saveSettings").addEventListener("click", () => {
   const name = nameInput.value.trim();
   if (!name) { showToast("Введи никнейм!"); return; }
-  SnakeStore.save({ name, difficulty, mode });
+  SnakeStore.save({ name });
   updateUserBar(shopData, name);
   if (socket?.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify({ type: "shop_connect", name }));
@@ -96,7 +76,7 @@ function goPlay() {
     showToast("Сначала введи никнейм в настройках!");
     return;
   }
-  SnakeStore.save({ name, difficulty, mode });
+  SnakeStore.save({ name });
   location.href = "/game.html";
 }
 

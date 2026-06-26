@@ -45,11 +45,21 @@
 }
 
 .equippedTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 6px 10px;
   border-radius: 8px;
   background: var(--green-dim);
   border: 1px solid rgba(61,232,138,.3);
   color: var(--text);
+}
+
+.equippedSwatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,.3);
 }
 
 .avatarGrid {

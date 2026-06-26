@@ -45,8 +45,6 @@ const state = {
   shopData: { coins: 0, unlockedSkins: ["default"], activeSkin: "default" },
   joined: false,
   name: settings.name,
-  difficulty: settings.difficulty || "normal",
-  mode: settings.mode || "classic",
   menuOpen: false,
   gameMode: "classic",
   taggedPlayerId: null,
@@ -159,8 +157,6 @@ function sendJoin() {
   send({
     type: "join",
     name: state.name,
-    difficulty: state.difficulty,
-    mode: state.mode,
     skin: state.shopData.activeSkin || "default",
   });
 }
@@ -460,10 +456,6 @@ function drawSnakeCosmetics(x, y, cell, player) {
     ctx.font = `${cell * 0.55}px sans-serif`;
     ctx.fillText(player.snakeHatEmoji, cx, cy - cell * 0.55);
   }
-  (player.gearEmojis || []).forEach((emoji, i) => {
-    ctx.font = `${cell * 0.32}px sans-serif`;
-    ctx.fillText(emoji, cx + (i - 0.5) * cell * 0.35, cy + cell * 0.42);
-  });
 }
 
 function spawnEatParticles(player) {

@@ -1,1 +1,20 @@
-[]
+[
+  {
+    "name": "Kavo",
+    "score": 128,
+    "date": "2026-06-26T15:31:24.077Z",
+    "difficulty": "hard"
+  },
+  {
+    "name": "DjВок",
+    "score": 105,
+    "date": "2026-06-26T15:42:41.579Z",
+    "difficulty": "normal"
+  },
+  {
+    "name": "Пдпч",
+    "score": 26,
+    "date": "2026-06-26T15:41:36.866Z",
+    "difficulty": "normal"
+  }
+]

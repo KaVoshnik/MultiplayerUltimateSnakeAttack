@@ -6,8 +6,8 @@ const sortSelect = document.querySelector("#sortBy");
 const state = {
   socket: null,
   catalog: [],
-  shopData: { coins: 0, inventory: [], equipped: { equipment: [], snakeHat: null } },
-  activeTab: "equipment",
+  shopData: { coins: 0, inventory: [], activeSkin: "default", equipped: { snakeHat: null } },
+  activeTab: "skin",
 };
 
 document.querySelectorAll(".shopTab").forEach((tab) => {
@@ -20,6 +20,33 @@ document.querySelectorAll(".shopTab").forEach((tab) => {
 });
 
 sortSelect.addEventListener("change", renderItems);
+
+function skinPreviewHtml(item) {
+  const rainbow = item.color === "rainbow";
+  const body = rainbow ? "" : item.color;
+  const head = item.headColor || "#ffffff";
+  return `
+    <div class="skinPreview${rainbow ? " rainbow" : ""}"${body ? ` style="--body:${body};--head:${head}"` : ""}>
+      <span class="skinSegment skinHead"></span>
+      <span class="skinSegment skinBody"></span>
+      <span class="skinSegment skinTail"></span>
+    </div>
+  `;
+}
+
+async function loadCatalog() {
+  try {
+    const res = await fetch("/catalog");
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.catalog?.length) {
+      state.catalog = data.catalog;
+      renderItems();
+    }
+  } catch {
+    /* сервер ещё не поднят */
+  }
+}
 
 function connect() {
   const socket = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`);
@@ -35,7 +62,8 @@ function connect() {
   socket.addEventListener("message", (event) => {
     const msg = JSON.parse(event.data);
     if (msg.type === "hello") {
-      state.catalog = msg.catalog || [];
+      state.catalog = msg.catalog || state.catalog;
+      renderItems();
       const name = SnakeStore.getName();
       if (name) send({ type: "shop_connect", name });
     }
@@ -64,9 +92,17 @@ function renderItems() {
   const sorted = sortCatalog(filtered, sortBy, dir);
 
   itemGrid.innerHTML = "";
+  if (!sorted.length) {
+    const hint = state.catalog.length
+      ? "В этой вкладке пока ничего нет"
+      : "Загрузка каталога…";
+    itemGrid.innerHTML = `<p class="shopEmpty">${hint}</p>`;
+    return;
+  }
+
   for (const item of sorted) {
-    const owned = state.shopData.inventory?.includes(item.id);
-    const equipped = isItemEquipped(state.shopData, item.id);
+    const owned = ownsShopItem(state.shopData, item);
+    const equipped = isItemEquipped(state.shopData, item);
 
     const card = document.createElement("div");
     card.className = `itemCard rarity-${item.rarity}${owned ? " owned" : ""}${equipped ? " equipped" : ""}`;
@@ -80,8 +116,12 @@ function renderItems() {
       actionClass = "buy";
     }
 
+    const preview = item.category === "skin"
+      ? skinPreviewHtml(item)
+      : `<div class="itemEmoji">${item.emoji}</div>`;
+
     card.innerHTML = `
-      <div class="itemEmoji">${item.emoji}</div>
+      ${preview}
       <div class="itemName">${escapeHtml(item.name)}</div>
       <div class="itemRarity ${item.rarity}">${RARITY_LABELS[item.rarity]}</div>
       <div class="itemAction ${actionClass}">${actionText}</div>
@@ -105,3 +145,5 @@ function renderItems() {
 }
 
 connect();
+loadCatalog();
+renderItems();

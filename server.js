@@ -55,40 +55,28 @@ const BONUS_TYPES = {
   ghost: { label: "GH", duration: 4000, color: "#8ff0a4", desc: "призрак" },
 };
 
-// --- SHOP SKINS (цвет тела) ---
-const SHOP_SKINS = [
-  { id: "default", label: "Default", price: 0, color: "#33d17a", headColor: "#ffffff", trailColor: "#33d17a" },
-  { id: "fire", label: "Fire", price: 50, color: "#f66151", headColor: "#ffbe6f", trailColor: "#f66151" },
-  { id: "ocean", label: "Ocean", price: 50, color: "#62a0ea", headColor: "#8ff0a4", trailColor: "#62a0ea" },
-  { id: "neon", label: "Neon", price: 100, color: "#f9f06b", headColor: "#dc8add", trailColor: "#f9f06b" },
-  { id: "void", label: "Void", price: 150, color: "#323a46", headColor: "#aab4c2", trailColor: "#323a46" },
-  { id: "rainbow", label: "Rainbow", price: 300, color: "rainbow", headColor: "#ffffff", trailColor: "rainbow" },
-];
-
-const AVATAR_PRESETS = [
-  "😎", "🤠", "🧙‍♂️", "🦸‍♂️", "🧝‍♂️", "👾", "🤖", "👽", "🐍", "🐲",
-  "🦊", "🐺", "🦁", "🐯", "🐼", "🐸", "🐙", "🦄", "🎃", "💀",
-];
-
-const RARITY_ORDER = { common: 0, rare: 1, epic: 2, legendary: 3 };
-const MAX_EQUIPPED_GEAR = 3;
-
+// --- СКИНЫ (цвет тела) + ШЛЯПЫ в едином каталоге ---
 const SHOP_CATALOG = [
-  { id: "eq_neon_glasses", name: "Неоновые очки", emoji: "🕶️", price: 30, rarity: "common", category: "equipment" },
-  { id: "eq_heart_glasses", name: "Очки-сердечки", emoji: "💕", price: 35, rarity: "common", category: "equipment" },
-  { id: "eq_scarf_red", name: "Красный шарф", emoji: "🧣", price: 25, rarity: "common", category: "equipment" },
-  { id: "eq_scarf_gold", name: "Золотой шарф", emoji: "✨", price: 80, rarity: "rare", category: "equipment" },
-  { id: "eq_bowtie", name: "Бабочка", emoji: "🎀", price: 40, rarity: "common", category: "equipment" },
-  { id: "eq_headphones", name: "Наушники", emoji: "🎧", price: 60, rarity: "rare", category: "equipment" },
-  { id: "eq_eyepatch", name: "Повязка пирата", emoji: "🏴", price: 70, rarity: "rare", category: "equipment" },
-  { id: "eq_halo", name: "Нимб", emoji: "😇", price: 200, rarity: "epic", category: "equipment" },
-  { id: "eq_horns", name: "Рожки", emoji: "😈", price: 180, rarity: "epic", category: "equipment" },
-  { id: "eq_chain", name: "Алмазная цепь", emoji: "💎", price: 400, rarity: "legendary", category: "equipment" },
-  { id: "eq_mask", name: "Театральная маска", emoji: "🎭", price: 90, rarity: "rare", category: "equipment" },
-  { id: "eq_propeller", name: "Пропеллер", emoji: "🚁", price: 150, rarity: "epic", category: "equipment" },
-  { id: "eq_crown", name: "Мини-корона", emoji: "👑", price: 500, rarity: "legendary", category: "equipment" },
-  { id: "eq_ninja", name: "Бандана ниндзя", emoji: "🥷", price: 85, rarity: "rare", category: "equipment" },
-  { id: "eq_santa", name: "Шапка Санты", emoji: "🎅", price: 100, rarity: "rare", category: "equipment" },
+  { id: "default", name: "Классик", emoji: "🟢", price: 0, rarity: "common", category: "skin", color: "#33d17a", headColor: "#ffffff" },
+  { id: "fire", name: "Огненная", emoji: "🔥", price: 50, rarity: "common", category: "skin", color: "#f66151", headColor: "#ffbe6f" },
+  { id: "ocean", name: "Океан", emoji: "🌊", price: 50, rarity: "common", category: "skin", color: "#62a0ea", headColor: "#8ff0a4" },
+  { id: "toxic", name: "Токсичная", emoji: "☢️", price: 40, rarity: "common", category: "skin", color: "#84cc16", headColor: "#ecfccb" },
+  { id: "coral", name: "Коралл", emoji: "🪸", price: 45, rarity: "common", category: "skin", color: "#ff7f7f", headColor: "#ffe4e6" },
+  { id: "ice", name: "Ледяная", emoji: "❄️", price: 75, rarity: "rare", category: "skin", color: "#67e8f9", headColor: "#ecfeff" },
+  { id: "midnight", name: "Полночь", emoji: "🌑", price: 80, rarity: "rare", category: "skin", color: "#475569", headColor: "#cbd5e1" },
+  { id: "neon", name: "Неон", emoji: "💛", price: 100, rarity: "rare", category: "skin", color: "#f9f06b", headColor: "#dc8add" },
+  { id: "gold", name: "Золото", emoji: "✨", price: 90, rarity: "rare", category: "skin", color: "#ffd166", headColor: "#fff8e7" },
+  { id: "candy", name: "Кэнди", emoji: "🍬", price: 120, rarity: "epic", category: "skin", color: "#f9a8d4", headColor: "#fce7f3" },
+  { id: "void", name: "Пустота", emoji: "🕳️", price: 150, rarity: "epic", category: "skin", color: "#323a46", headColor: "#aab4c2" },
+  { id: "plasma", name: "Плазма", emoji: "⚡", price: 180, rarity: "epic", category: "skin", color: "#e879f9", headColor: "#fae8ff" },
+  { id: "shadow", name: "Тень", emoji: "🌚", price: 160, rarity: "epic", category: "skin", color: "#1e293b", headColor: "#94a3b8" },
+  { id: "rainbow", name: "Радуга", emoji: "🌈", price: 300, rarity: "legendary", category: "skin", color: "rainbow", headColor: "#ffffff" },
+  { id: "royal", name: "Королевская", emoji: "💜", price: 400, rarity: "legendary", category: "skin", color: "#7c3aed", headColor: "#ffd166" },
+  { id: "lime", name: "Лайм", emoji: "🍋", price: 35, rarity: "common", category: "skin", color: "#a3e635", headColor: "#f7fee7" },
+  { id: "crimson", name: "Багровая", emoji: "🩸", price: 55, rarity: "common", category: "skin", color: "#dc2626", headColor: "#fecaca" },
+  { id: "azure", name: "Лазурь", emoji: "💎", price: 70, rarity: "rare", category: "skin", color: "#0ea5e9", headColor: "#e0f2fe" },
+  { id: "ember", name: "Угли", emoji: "🌋", price: 110, rarity: "rare", category: "skin", color: "#ea580c", headColor: "#fdba74" },
+  { id: "mint", name: "Мята", emoji: "🌿", price: 65, rarity: "common", category: "skin", color: "#2dd4bf", headColor: "#ccfbf1" },
   { id: "hat_top", name: "Цилиндр змеи", emoji: "🎩", price: 120, rarity: "epic", category: "snake_hat" },
   { id: "hat_cap", name: "Кепка змеи", emoji: "🧢", price: 20, rarity: "common", category: "snake_hat" },
   { id: "hat_beanie", name: "Вязаная шапка", emoji: "🧶", price: 30, rarity: "common", category: "snake_hat" },
@@ -100,6 +88,30 @@ const SHOP_CATALOG = [
   { id: "hat_flame", name: "Огненная корона", emoji: "🔥", price: 160, rarity: "epic", category: "snake_hat" },
   { id: "hat_royal", name: "Королевская корона", emoji: "👸", price: 450, rarity: "legendary", category: "snake_hat" },
 ];
+
+const AVATAR_PRESETS = [
+  "😎", "🤠", "🧙‍♂️", "🦸‍♂️", "🧝‍♂️", "👾", "🤖", "👽", "🐍", "🐲",
+  "🦊", "🐺", "🦁", "🐯", "🐼", "🐸", "🐙", "🦄", "🎃", "💀",
+];
+
+const RARITY_ORDER = { common: 0, rare: 1, epic: 2, legendary: 3 };
+
+function getSkinDef(id) {
+  const item = SHOP_CATALOG.find((i) => i.id === id && i.category === "skin");
+  if (!item) return getSkinDef("default");
+  return { id: item.id, label: item.name, price: item.price, color: item.color, headColor: item.headColor, trailColor: item.color };
+}
+
+function ownsItem(entry, itemId) {
+  const item = SHOP_CATALOG.find((i) => i.id === itemId);
+  if (!item) return false;
+  if (item.category === "skin" && item.price === 0) return true;
+  return entry.inventory.includes(itemId);
+}
+
+const SHOP_SKINS = SHOP_CATALOG.filter((i) => i.category === "skin").map((s) => ({
+  id: s.id, label: s.name, price: s.price, color: s.color, headColor: s.headColor, trailColor: s.color,
+}));
 
 const COLORS = ["#33d17a", "#62a0ea", "#ffbe6f", "#dc8add", "#f66151", "#8ff0a4", "#99c1f1", "#f9f06b"];
 
@@ -374,7 +386,7 @@ function broadcastState() {
         activeBonus: p.activeBonus, bonusExpires: p.bonusExpires,
         difficulty: p.difficulty, skin: p.skin, rainbow: p.rainbow,
         isTagged: gameMode === "tag_time" && p.id === taggedPlayerId,
-        avatar: cos.avatar, gearEmojis: cos.gearEmojis, snakeHatEmoji: cos.snakeHatEmoji,
+        avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji,
       };
     }),
     boss, leaderboard: getEnrichedLeaderboard(), gameMode, taggedPlayerId,
@@ -536,8 +548,7 @@ function handleMessage(id, message) {
     const mode = MODES[message.mode] ? message.mode : "classic";
     gameMode = mode;
     const prof = getProfile(name);
-    const skinId = message.skin || prof.activeSkin || "default";
-    const skin = SHOP_SKINS.find((s) => s.id === skinId) || SHOP_SKINS[0];
+    const skin = getSkinDef(prof.activeSkin);
     prof.stats.games = (prof.stats.games || 0) + 1;
     prof.stats.sessionStart = Date.now();
     shopData[name] = prof;
@@ -600,6 +611,12 @@ function buyItem(clientId, itemId, nameHint) {
     equipItem(clientId, itemId, name);
     return;
   }
+  if (item.price === 0) {
+    if (!entry.inventory.includes(itemId)) entry.inventory.push(itemId);
+    shopData[name] = entry;
+    equipItem(clientId, itemId, name);
+    return;
+  }
   if (coins < item.price) {
     send(clientId, { type: "notice", text: "Недостаточно монет!" });
     return;
@@ -619,25 +636,23 @@ function equipItem(clientId, itemId, nameHint) {
   const item = SHOP_CATALOG.find((i) => i.id === itemId);
   if (!item) return;
   const entry = getProfile(name);
-  if (!entry.inventory.includes(itemId)) {
+  if (!ownsItem(entry, itemId)) {
     send(clientId, { type: "notice", text: "Сначала купи предмет!" });
     return;
   }
 
-  if (item.category === "snake_hat") {
+  const player = players.get(clientId);
+
+  if (item.category === "skin") {
+    entry.activeSkin = entry.activeSkin === itemId && itemId !== "default" ? "default" : itemId;
+    if (player) applySkinToPlayer(player, getSkinDef(entry.activeSkin));
+  } else if (item.category === "snake_hat") {
     entry.equipped.snakeHat = entry.equipped.snakeHat === itemId ? null : itemId;
-  } else {
-    const idx = entry.equipped.equipment.indexOf(itemId);
-    if (idx >= 0) entry.equipped.equipment.splice(idx, 1);
-    else {
-      if (entry.equipped.equipment.length >= MAX_EQUIPPED_GEAR) entry.equipped.equipment.shift();
-      entry.equipped.equipment.push(itemId);
-    }
+    applyCosmeticsToPlayer(player, name);
   }
 
   shopData[name] = entry;
   saveShop();
-  applyCosmeticsToPlayer(players.get(clientId), name);
   sendShopPayload(clientId, name);
   broadcastState();
 }
@@ -648,11 +663,18 @@ function unequipItem(clientId, itemId, nameHint) {
   const item = SHOP_CATALOG.find((i) => i.id === itemId);
   if (!item) return;
   const entry = getProfile(name);
-  if (item.category === "snake_hat") entry.equipped.snakeHat = null;
-  else entry.equipped.equipment = entry.equipped.equipment.filter((id) => id !== itemId);
+  const player = players.get(clientId);
+
+  if (item.category === "skin") {
+    if (itemId !== "default") entry.activeSkin = "default";
+    if (player) applySkinToPlayer(player, getSkinDef("default"));
+  } else if (item.category === "snake_hat") {
+    entry.equipped.snakeHat = null;
+    applyCosmeticsToPlayer(player, name);
+  }
+
   shopData[name] = entry;
   saveShop();
-  applyCosmeticsToPlayer(players.get(clientId), name);
   sendShopPayload(clientId, name);
   broadcastState();
 }
@@ -709,10 +731,7 @@ function normalizeProfile(raw) {
     activeSkin: raw.activeSkin || "default",
     avatar: AVATAR_PRESETS.includes(raw.avatar) ? raw.avatar : "😎",
     inventory: Array.isArray(raw.inventory) ? [...raw.inventory] : [],
-    equipped: {
-      equipment: Array.isArray(raw.equipped?.equipment) ? [...raw.equipped.equipment] : [],
-      snakeHat: raw.equipped?.snakeHat || null,
-    },
+    equipped: { snakeHat: raw.equipped?.snakeHat || null },
     stats: {
       games: raw.stats?.games || 0,
       wins: raw.stats?.wins || 0,
@@ -722,26 +741,28 @@ function normalizeProfile(raw) {
       sessionStart: raw.stats?.sessionStart || null,
     },
   };
-  if (!entry.unlockedSkins.includes("default")) entry.unlockedSkins.unshift("default");
+  for (const id of entry.unlockedSkins) {
+    if (!entry.inventory.includes(id)) entry.inventory.push(id);
+  }
+  if (!entry.inventory.includes("default")) entry.inventory.unshift("default");
+  if (!SHOP_CATALOG.find((i) => i.id === entry.activeSkin && i.category === "skin")) {
+    entry.activeSkin = "default";
+  }
   return entry;
 }
 
 function getPlayerCosmetics(name) {
   const entry = getProfile(name);
-  const gearEmojis = entry.equipped.equipment
-    .map((id) => SHOP_CATALOG.find((i) => i.id === id)?.emoji)
-    .filter(Boolean);
   const snakeHatEmoji = entry.equipped.snakeHat
     ? SHOP_CATALOG.find((i) => i.id === entry.equipped.snakeHat)?.emoji || null
     : null;
-  return { avatar: entry.avatar, gearEmojis, snakeHatEmoji };
+  return { avatar: entry.avatar, snakeHatEmoji };
 }
 
 function applyCosmeticsToPlayer(player, name) {
   if (!player) return;
   const cos = getPlayerCosmetics(name);
   player.avatar = cos.avatar;
-  player.gearEmojis = cos.gearEmojis;
   player.snakeHatEmoji = cos.snakeHatEmoji;
 }
 
@@ -783,46 +804,11 @@ function getEnrichedLeaderboard() {
 }
 
 function buySkin(playerId, skinId) {
-  const name = players.get(playerId)?.name || shopClients.get(playerId);
-  if (!name) return;
-  const player = players.get(playerId);
-  const skin = SHOP_SKINS.find((s) => s.id === skinId);
-  if (!skin) return;
-  const entry = getProfile(name);
-  const coins = player?.coins ?? entry.coins ?? 0;
-  if (skin.price > 0 && entry.unlockedSkins.includes(skinId)) {
-    equipSkin(playerId, skinId);
-    return;
-  }
-  if (coins < skin.price) { send(playerId, { type: "notice", text: "Недостаточно монет!" }); return; }
-  if (player) player.coins = coins - skin.price;
-  entry.coins = coins - skin.price;
-  if (!entry.unlockedSkins.includes(skinId)) entry.unlockedSkins.push(skinId);
-  entry.activeSkin = skinId;
-  shopData[name] = entry;
-  if (player) applySkinToPlayer(player, skin);
-  saveShop();
-  sendShopPayload(playerId, name);
-  broadcastState();
+  buyItem(playerId, skinId);
 }
 
 function equipSkin(playerId, skinId) {
-  const name = players.get(playerId)?.name || shopClients.get(playerId);
-  if (!name) return;
-  const player = players.get(playerId);
-  const skin = SHOP_SKINS.find((s) => s.id === skinId);
-  if (!skin) return;
-  const entry = getProfile(name);
-  if (skin.price > 0 && !entry.unlockedSkins.includes(skinId)) {
-    send(playerId, { type: "notice", text: "Сначала купи скин!" });
-    return;
-  }
-  entry.activeSkin = skinId;
-  shopData[name] = entry;
-  if (player) applySkinToPlayer(player, skin);
-  saveShop();
-  sendShopPayload(playerId, name);
-  broadcastState();
+  equipItem(playerId, skinId);
 }
 
 function applySkinToPlayer(player, skin) {
@@ -857,7 +843,7 @@ function createPlayer(id, name, difficulty, skin) {
     alive: true, score: 0, coins: shopEntry.coins || 0,
     best: bestForName(name), deaths: 0, reason: "",
     activeBonus: null, bonusExpires: null,
-    avatar: cos.avatar, gearEmojis: cos.gearEmojis, snakeHatEmoji: cos.snakeHatEmoji,
+    avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji,
   };
   return player;
 }

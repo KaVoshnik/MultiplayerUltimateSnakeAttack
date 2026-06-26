@@ -1,1 +1,77 @@
-{}
+{
+  "Kavo": {
+    "coins": 73,
+    "unlockedSkins": [
+      "default",
+      "void",
+      "rainbow"
+    ],
+    "activeSkin": "rainbow",
+    "avatar": "😎",
+    "inventory": [
+      "eq_headphones",
+      "eq_scarf_red",
+      "eq_neon_glasses",
+      "eq_heart_glasses",
+      "eq_bowtie",
+      "eq_eyepatch",
+      "eq_scarf_gold",
+      "eq_ninja",
+      "hat_cap",
+      "default",
+      "void",
+      "rainbow",
+      "royal",
+      "ocean"
+    ],
+    "equipped": {
+      "snakeHat": "hat_cap"
+    },
+    "stats": {
+      "games": 9,
+      "wins": 9,
+      "losses": 12,
+      "best": 128,
+      "playTimeMs": 168179,
+      "sessionStart": null
+    }
+  },
+  "Подпяточное чудоищ": {
+    "coins": 49,
+    "unlockedSkins": [
+      "default",
+      "rainbow"
+    ],
+    "activeSkin": "rainbow"
+  },
+  "Чигурчик": {
+    "coins": 159,
+    "unlockedSkins": [
+      "default"
+    ],
+    "activeSkin": "default"
+  },
+  "DjВок": {
+    "coins": 126,
+    "unlockedSkins": [
+      "default"
+    ],
+    "activeSkin": "midnight",
+    "avatar": "🐺",
+    "inventory": [
+      "default",
+      "midnight"
+    ],
+    "equipped": {
+      "snakeHat": null
+    },
+    "stats": {
+      "games": 3,
+      "wins": 6,
+      "losses": 9,
+      "best": 105,
+      "playTimeMs": 121548,
+      "sessionStart": null
+    }
+  }
+}

@@ -73,10 +73,17 @@ function sortCatalog(items, sortBy, dir) {
   return list;
 }
 
-function isItemEquipped(shopData, itemId) {
-  if (!shopData?.equipped) return false;
-  if (shopData.equipped.snakeHat === itemId) return true;
-  return (shopData.equipped.equipment || []).includes(itemId);
+function isItemEquipped(shopData, item) {
+  if (!shopData || !item) return false;
+  if (item.category === "skin") return shopData.activeSkin === item.id;
+  if (item.category === "snake_hat") return shopData.equipped?.snakeHat === item.id;
+  return false;
+}
+
+function ownsShopItem(shopData, item) {
+  if (!item) return false;
+  if (item.category === "skin" && item.price === 0) return true;
+  return (shopData?.inventory || []).includes(item.id);
 }
 
 function updateUserBar(shopData, name) {
