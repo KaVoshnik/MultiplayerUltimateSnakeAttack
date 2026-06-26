@@ -1,0 +1,195 @@
+html, body.gameBody {
+  height: 100%;
+  overflow: hidden;
+}
+
+.gameScreen {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  background: #020304;
+}
+
+.gameHud {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  background: rgba(3, 6, 10, 0.88);
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(14px);
+  z-index: 10;
+}
+
+.gameHudLeft, .gameHudRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.hudStat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid var(--line);
+  min-width: 56px;
+}
+
+.hudStat span {
+  font-size: .62rem;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.hudStat strong {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--text);
+}
+
+.hudStat.accent strong { color: var(--green); }
+.hudStat.warn strong { color: var(--red); }
+.hudStat.bonus strong { color: var(--purple); }
+
+.hudStat.warn {
+  border-color: rgba(242,95,76,.4);
+  background: rgba(242,95,76,.1);
+  animation: bossPulse 1s ease infinite;
+}
+
+@keyframes bossPulse {
+  50% { box-shadow: 0 0 12px rgba(242,95,76,.3); }
+}
+
+.canvasStage {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.canvasStage canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.gameControls {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(52px, 72px));
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px 16px;
+  background: rgba(3, 6, 10, 0.92);
+  border-top: 1px solid var(--line);
+}
+
+.pad {
+  aspect-ratio: 1;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255,255,255,.04);
+  color: var(--text);
+  font-size: 1.4rem;
+  cursor: pointer;
+  transition: all .15s;
+}
+
+.pad:hover, .pad:active {
+  border-color: var(--green);
+  background: var(--green-dim);
+}
+
+.overlayPanel {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(400px, calc(100% - 32px));
+  padding: 28px;
+  z-index: 20;
+  text-align: center;
+}
+
+.overlayPanel h2 {
+  margin: 0 0 12px;
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  letter-spacing: .08em;
+}
+
+.overlayPanel.hidden { display: none; }
+
+.deathStats {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin: 12px 0 20px;
+  color: var(--muted);
+  font-size: .88rem;
+}
+
+.deathStats b { color: var(--text); }
+
+.overlayActions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.playersFloat {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  max-width: 200px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(3,6,10,.85);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(8px);
+  z-index: 5;
+}
+
+.playersFloat h3 {
+  margin: 0 0 6px;
+  font-size: .65rem;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--muted);
+}
+
+.playersFloat ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+  font-size: .78rem;
+  color: var(--muted);
+}
+
+.playersFloat li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.playersFloat .swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+}
+
+@media (min-width: 900px) {
+  .gameControls { display: none; }
+}

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Рекорды — Ultimate Snake Attack</title>
+  <link rel="stylesheet" href="css/common.css" />
+  <link rel="stylesheet" href="css/pages.css" />
+</head>
+<body data-page="leaderboard">
+  <nav class="siteNav">
+    <span class="brand">ULTIMATE SNAKE ATTACK</span>
+    <div class="links">
+      <a href="/" data-page="lobby">Лобби</a>
+      <a href="/game.html" data-page="game">Игра</a>
+      <a href="/shop.html" data-page="shop">Магазин</a>
+      <a href="/leaderboard.html" data-page="leaderboard" class="active">Рекорды</a>
+    </div>
+  </nav>
+
+  <main class="pageWrap">
+    <header class="pageHeader">
+      <h1>🏆 ТАБЛИЦА РЕКОРДОВ</h1>
+      <p>Лучшие результаты на этом сервере.</p>
+    </header>
+
+    <section class="glass pageCard">
+      <ol class="leaderList" id="leaderboard"></ol>
+      <div class="emptyState hidden" id="emptyState">Пока никто не попал в рекорды. Будь первым!</div>
+    </section>
+  </main>
+
+  <script src="js/common.js"></script>
+  <script src="js/leaderboard.js"></script>
+</body>
+</html>

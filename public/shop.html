@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Магазин — Ultimate Snake Attack</title>
+  <link rel="stylesheet" href="css/common.css" />
+  <link rel="stylesheet" href="css/pages.css" />
+</head>
+<body data-page="shop">
+  <nav class="siteNav">
+    <span class="brand">ULTIMATE SNAKE ATTACK</span>
+    <div class="links">
+      <a href="/" data-page="lobby">Лобби</a>
+      <a href="/game.html" data-page="game">Игра</a>
+      <a href="/shop.html" data-page="shop" class="active">Магазин</a>
+      <a href="/leaderboard.html" data-page="leaderboard">Рекорды</a>
+    </div>
+  </nav>
+
+  <main class="pageWrap">
+    <header class="pageHeader">
+      <h1>🛒 МАГАЗИН СКИНОВ</h1>
+      <p>Покупай и выбирай скины за монеты, заработанные в игре.</p>
+    </header>
+
+    <section class="glass pageCard">
+      <label for="shopName">Имя игрока</label>
+      <input id="shopName" maxlength="18" placeholder="Твоё имя в игре" style="margin-bottom:16px" />
+
+      <div class="shopCoinsBar">
+        Твои монеты: <strong id="shopCoins">0</strong> 🪙
+      </div>
+
+      <div class="skinGrid" id="skinGrid"></div>
+    </section>
+  </main>
+
+  <script src="js/common.js"></script>
+  <script src="js/shop.js"></script>
+</body>
+</html>

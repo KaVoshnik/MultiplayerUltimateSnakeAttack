@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Игра — Ultimate Snake Attack</title>
+  <link rel="stylesheet" href="css/common.css" />
+  <link rel="stylesheet" href="css/game.css" />
+</head>
+<body class="gameBody" data-page="game">
+  <div class="gameScreen">
+    <header class="gameHud">
+      <div class="gameHudLeft">
+        <a href="/" class="btn ghost small">← Лобби</a>
+        <div class="hudStat accent"><span>Очки</span><strong id="score">0</strong></div>
+        <div class="hudStat"><span>Рекорд</span><strong id="best">0</strong></div>
+        <div class="hudStat"><span>Монеты</span><strong id="coins">0</strong></div>
+        <div class="hudStat"><span>Смерти</span><strong id="deaths">0</strong></div>
+        <div class="hudStat"><span>Фрукты</span><strong id="goodStock">0</strong></div>
+        <div class="hudStat bonus" id="bonusHud"><span>Бонус</span><strong id="bonusActive">—</strong></div>
+        <div class="hudStat warn hidden" id="bossHud"><span>Босс</span><strong>РЯДОМ!</strong></div>
+      </div>
+      <div class="gameHudRight">
+        <span class="status" id="connectionStatus">...</span>
+        <button type="button" class="btn ghost small" id="pauseBtn">⏸</button>
+      </div>
+    </header>
+
+    <div class="canvasStage" id="canvasStage">
+      <canvas id="board" aria-label="Игровое поле"></canvas>
+
+      <div class="playersFloat">
+        <h3>Игроки</h3>
+        <ol id="players"></ol>
+      </div>
+
+      <div class="overlayPanel glass hidden" id="pausePanel">
+        <h2>ПАУЗА</h2>
+        <div class="overlayActions">
+          <button type="button" class="btn primary" id="resumeBtn">Продолжить</button>
+          <button type="button" class="btn" id="restartBtn">Заново</button>
+          <a href="/" class="btn ghost">В лобби</a>
+        </div>
+      </div>
+
+      <div class="overlayPanel glass hidden" id="deathPanel">
+        <h2>GAME OVER</h2>
+        <strong id="deathReason" style="color:var(--red)"></strong>
+        <div class="deathStats" id="deathStats"></div>
+        <div class="overlayActions">
+          <button type="button" class="btn primary" id="retryBtn">Ещё раз</button>
+          <a href="/" class="btn ghost">В лобби</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="gameControls">
+      <button type="button" class="pad" data-dir="up">↑</button>
+      <button type="button" class="pad" data-dir="left">←</button>
+      <button type="button" class="pad" data-dir="down">↓</button>
+      <button type="button" class="pad" data-dir="right">→</button>
+    </div>
+  </div>
+
+  <div class="toastWrap" id="toastWrap"></div>
+  <script src="js/common.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>
