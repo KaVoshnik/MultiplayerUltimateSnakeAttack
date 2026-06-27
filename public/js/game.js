@@ -55,6 +55,7 @@ const state = {
   wasAlive: true,
   personalBest: 0,
   bossRageSound: false,
+  camera: { x: 0, y: 0, ready: false },
 };
 
 SnakeFX.initCrt(canvasStage);
@@ -174,6 +175,7 @@ function connect() {
     if (message.type === "hello") {
       state.id = message.id;
       state.grid = message.grid;
+      state.camera.ready = false;
       state.skins = message.skins || [];
       if (message.shopData) {
         state.shopData = message.shopData;
@@ -287,6 +289,7 @@ function updateHud(me, prevScore = 0, prevCombo = 0) {
 
   if (state.joined && me) {
     if (me.alive) {
+      if (!state.wasAlive) state.camera.ready = false;
       state.wasAlive = true;
       deathPanel.classList.add("hidden");
     } else if (state.wasAlive) {
@@ -351,26 +354,109 @@ function setMenu(open) {
   pausePanel.classList.toggle("hidden", !open);
 }
 
+function clamp(v, lo, hi) {
+  return Math.max(lo, Math.min(hi, v));
+}
+
+function updateCameraFollow() {
+  const me = state.players.find((p) => p.id === state.id);
+  const head = me?.snake?.[0];
+  const targetX = head ? head.x + 0.5 : state.grid.width / 2;
+  const targetY = head ? head.y + 0.5 : state.grid.height / 2;
+
+  if (!state.camera.ready) {
+    state.camera.x = targetX;
+    state.camera.y = targetY;
+    state.camera.ready = true;
+    return;
+  }
+
+  const ease = head && me.alive ? 0.16 : 0.08;
+  state.camera.x += (targetX - state.camera.x) * ease;
+  state.camera.y += (targetY - state.camera.y) * ease;
+}
+
+function computeCameraView(width, height) {
+  const coarse = window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+  const minCell = coarse ? 26 : 22;
+  const maxViewW = coarse ? 14 : 18;
+  const maxViewH = coarse ? 10 : 13;
+
+  let viewW = Math.min(state.grid.width, maxViewW, Math.max(11, Math.floor(width / minCell)));
+  let viewH = Math.min(state.grid.height, maxViewH, Math.max(9, Math.floor(height / minCell)));
+  const aspect = width / height;
+
+  if (viewW / viewH > aspect) {
+    viewH = Math.min(state.grid.height, maxViewH, Math.max(9, Math.ceil(viewW / aspect)));
+  } else {
+    viewW = Math.min(state.grid.width, maxViewW, Math.max(11, Math.ceil(viewH * aspect)));
+  }
+
+  const cell = Math.min(width / viewW, height / viewH);
+  const viewPxW = viewW * cell;
+  const viewPxH = viewH * cell;
+  const halfW = viewW / 2;
+  const halfH = viewH / 2;
+
+  let camX = state.camera.x;
+  let camY = state.camera.y;
+
+  if (state.grid.width <= viewW) camX = (state.grid.width - 1) / 2;
+  else camX = clamp(camX, halfW - 0.5, state.grid.width - halfW - 0.5);
+
+  if (state.grid.height <= viewH) camY = (state.grid.height - 1) / 2;
+  else camY = clamp(camY, halfH - 0.5, state.grid.height - halfH - 0.5);
+
+  const offsetX = (width - viewPxW) / 2 - camX * cell;
+  const offsetY = (height - viewPxH) / 2 - camY * cell;
+  const mapL = offsetX;
+  const mapT = offsetY;
+  const mapW = state.grid.width * cell;
+  const mapH = state.grid.height * cell;
+
+  return {
+    cell,
+    offsetX,
+    offsetY,
+    viewW,
+    viewH,
+    camX,
+    camY,
+    mapL,
+    mapT,
+    mapW,
+    mapH,
+    left: camX - halfW,
+    right: camX + halfW,
+    top: camY - halfH,
+    bottom: camY + halfH,
+  };
+}
+
+function isInCameraView(gx, gy, view, margin = 1) {
+  return gx >= view.left - margin && gx <= view.right + margin
+    && gy >= view.top - margin && gy <= view.bottom + margin;
+}
+
 function draw() {
   const ratio = window.devicePixelRatio || 1;
   const width = board.width / ratio;
   const height = board.height / ratio;
-  const cell = Math.min(width / state.grid.width, height / state.grid.height);
-  const offsetX = (width - cell * state.grid.width) / 2;
-  const offsetY = (height - cell * state.grid.height) / 2;
+  updateCameraFollow();
+  const view = computeCameraView(width, height);
   const shake = SnakeFX.getShakeOffset();
 
   ctx.save();
   ctx.translate(shake.x, shake.y);
   ctx.clearRect(-shake.x, -shake.y, width, height);
-  drawBackground(width, height, cell, offsetX, offsetY);
-  SnakeFX.drawTrails(ctx, cell, offsetX, offsetY);
-  drawFood(cell, offsetX, offsetY);
-  drawBonuses(cell, offsetX, offsetY);
-  drawBoss(cell, offsetX, offsetY);
-  drawPlayers(cell, offsetX, offsetY);
-  drawParticles(cell, offsetX, offsetY);
-  SnakeFX.drawFloaters(ctx, cell, offsetX, offsetY);
+  drawBackground(width, height, view);
+  SnakeFX.drawTrails(ctx, view.cell, view.offsetX, view.offsetY);
+  drawFood(view);
+  drawBonuses(view);
+  drawBoss(view);
+  drawPlayers(view);
+  drawParticles(view);
+  SnakeFX.drawFloaters(ctx, view.cell, view.offsetX, view.offsetY);
   ctx.restore();
 
   SnakeFX.drawConfetti(ctx, width, height);
@@ -378,41 +464,67 @@ function draw() {
   requestAnimationFrame(draw);
 }
 
-function drawBackground(width, height, cell, offsetX, offsetY) {
+function drawBackground(width, height, view) {
   const enraged = state.boss?.phase === "enraged";
-  const grad = ctx.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, width * 0.65);
-  grad.addColorStop(0, enraged ? "#180808" : "#0c1218");
-  grad.addColorStop(1, enraged ? "#080202" : "#040608");
-  ctx.fillStyle = grad;
+  const { cell, mapL, mapT, mapW, mapH, left, right, top, bottom } = view;
+
+  ctx.fillStyle = "#020304";
   ctx.fillRect(0, 0, width, height);
 
+  const mapGrad = ctx.createRadialGradient(
+    mapL + mapW / 2, mapT + mapH / 2, 0,
+    mapL + mapW / 2, mapT + mapH / 2, Math.max(mapW, mapH) * 0.65,
+  );
+  mapGrad.addColorStop(0, enraged ? "#180808" : "#0c1218");
+  mapGrad.addColorStop(1, enraged ? "#080202" : "#040608");
+  ctx.fillStyle = mapGrad;
+  ctx.fillRect(mapL, mapT, mapW, mapH);
+
   const t = Date.now() / 1000;
-  ctx.strokeStyle = enraged ? "rgba(255,59,46,0.07)" : "rgba(61, 232, 138, 0.04)";
-  ctx.lineWidth = Math.max(1, cell * 0.03);
-  for (let x = 0; x <= state.grid.width; x++) {
-    const px = Math.round(offsetX + x * cell);
+  ctx.strokeStyle = enraged ? "rgba(255,59,46,0.12)" : "rgba(61, 232, 138, 0.07)";
+  ctx.lineWidth = Math.max(1, cell * 0.04);
+
+  const gridLeft = Math.max(0, Math.floor(left - 1));
+  const gridRight = Math.min(state.grid.width, Math.ceil(right + 1));
+  const gridTop = Math.max(0, Math.floor(top - 1));
+  const gridBottom = Math.min(state.grid.height, Math.ceil(bottom + 1));
+
+  for (let x = gridLeft; x <= gridRight; x++) {
+    const px = Math.round(mapL + x * cell);
     ctx.beginPath();
-    ctx.moveTo(px, offsetY);
-    ctx.lineTo(px, offsetY + state.grid.height * cell);
+    ctx.moveTo(px, mapT);
+    ctx.lineTo(px, mapT + mapH);
     ctx.stroke();
   }
-  for (let y = 0; y <= state.grid.height; y++) {
-    const py = Math.round(offsetY + y * cell);
+  for (let y = gridTop; y <= gridBottom; y++) {
+    const py = Math.round(mapT + y * cell);
     ctx.beginPath();
-    ctx.moveTo(offsetX, py);
-    ctx.lineTo(offsetX + state.grid.width * cell, py);
+    ctx.moveTo(mapL, py);
+    ctx.lineTo(mapL + mapW, py);
     ctx.stroke();
   }
+
+  ctx.strokeStyle = enraged ? "rgba(255,59,46,0.55)" : "rgba(61, 232, 138, 0.35)";
+  ctx.lineWidth = Math.max(2, cell * 0.08);
+  ctx.strokeRect(mapL, mapT, mapW, mapH);
 
   if (enraged) {
     ctx.fillStyle = `rgba(255,59,46,${0.03 + Math.sin(t * 6) * 0.02})`;
-    ctx.fillRect(offsetX, offsetY, state.grid.width * cell, state.grid.height * cell);
+    ctx.fillRect(mapL, mapT, mapW, mapH);
   }
+
+  const edge = ctx.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.25, width / 2, height / 2, Math.max(width, height) * 0.58);
+  edge.addColorStop(0, "rgba(0,0,0,0)");
+  edge.addColorStop(1, "rgba(0,0,0,0.45)");
+  ctx.fillStyle = edge;
+  ctx.fillRect(0, 0, width, height);
 }
 
-function drawFood(cell, offsetX, offsetY) {
+function drawFood(view) {
+  const { cell, offsetX, offsetY } = view;
   const t = Date.now() / 1000;
   for (const item of state.food) {
+    if (!isInCameraView(item.x, item.y, view)) continue;
     const kind = resolveFoodKind(item);
     const good = isGoodFood(item);
     const cx = offsetX + item.x * cell + cell / 2;
@@ -499,9 +611,11 @@ function drawFoodShape(kind, cx, cy, r, cell) {
   }
 }
 
-function drawBonuses(cell, offsetX, offsetY) {
+function drawBonuses(view) {
+  const { cell, offsetX, offsetY } = view;
   const t = Date.now() / 1000;
   for (const bonus of state.bonuses) {
+    if (!isInCameraView(bonus.x, bonus.y, view)) continue;
     const x = offsetX + bonus.x * cell;
     const y = offsetY + bonus.y * cell;
     const color = bonus.def?.color || "#c77dff";
@@ -525,9 +639,11 @@ function drawBonuses(cell, offsetX, offsetY) {
   }
 }
 
-function drawBoss(cell, offsetX, offsetY) {
+function drawBoss(view) {
   if (!state.boss) return;
   const bossSize = state.boss.size || 1;
+  if (!isInCameraView(state.boss.x + bossSize / 2, state.boss.y + bossSize / 2, view, bossSize + 1)) return;
+  const { cell, offsetX, offsetY } = view;
   const x = offsetX + state.boss.x * cell;
   const y = offsetY + state.boss.y * cell;
   const size = bossSize * cell;
@@ -566,15 +682,18 @@ function drawBoss(cell, offsetX, offsetY) {
   ctx.restore();
 }
 
-function drawPlayers(cell, offsetX, offsetY) {
+function drawPlayers(view) {
+  const { cell, offsetX, offsetY } = view;
   for (const player of state.players) {
     ctx.globalAlpha = player.alive ? 1 : 0.35;
     const isTagged = state.gameMode === "tag_time" && player.id === state.taggedPlayerId;
     const head = player.snake[0];
     const neck = player.snake[1] || head;
-    const dirX = head.x - neck.x, dirY = head.y - neck.y;
+    const dirX = head.x - neck.x;
+    const dirY = head.y - neck.y;
 
     player.snake.forEach((part, index) => {
+      if (!isInCameraView(part.x, part.y, view, 0.5)) return;
       const px = offsetX + part.x * cell;
       const py = offsetY + part.y * cell;
       const bodyColor = player.rainbow ? `hsl(${(index * 40 + Date.now() / 20) % 360}, 80%, 60%)` : player.color;
@@ -637,9 +756,11 @@ function spawnEatParticles(player) {
   }
 }
 
-function drawParticles(cell, offsetX, offsetY) {
+function drawParticles(view) {
+  const { cell, offsetX, offsetY } = view;
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
+    if (!isInCameraView(p.x, p.y, view, 0.5)) continue;
     p.x += p.vx; p.y += p.vy; p.life -= 0.04;
     if (p.life <= 0) { particles.splice(i, 1); continue; }
     ctx.globalAlpha = p.life;
