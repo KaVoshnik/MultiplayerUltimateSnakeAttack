@@ -174,57 +174,6 @@ let feedBroadcastTimer = null;
 const FEED_DEDUPE_MS = 4000;
 const FEED_BROADCAST_MS = 1200;
 
-const INPUT_LIMITS = {
-  maxMsgsPerSec: 45,
-  maxTurnsPerSec: 20,
-  maxViolations: 8,
-};
-const socketInputStats = new Map();
-
-function getInputStats(clientId) {
-  if (!socketInputStats.has(clientId)) {
-    socketInputStats.set(clientId, { msgs: [], turns: [], violations: 0 });
-  }
-  return socketInputStats.get(clientId);
-}
-
-function pruneInputStats(stats, now) {
-  stats.msgs = stats.msgs.filter((t) => now - t < 1000);
-  stats.turns = stats.turns.filter((t) => now - t < 1000);
-}
-
-function allowClientMessage(clientId, type) {
-  const stats = getInputStats(clientId);
-  const now = Date.now();
-  pruneInputStats(stats, now);
-  stats.msgs.push(now);
-  if (type === "turn") stats.turns.push(now);
-
-  if (stats.msgs.length > INPUT_LIMITS.maxMsgsPerSec || stats.turns.length > INPUT_LIMITS.maxTurnsPerSec) {
-    stats.violations += 1;
-    if (stats.violations >= INPUT_LIMITS.maxViolations) {
-      send(clientId, { type: "notice", text: "Слишком много команд. Соединение закрыто." });
-      removeClient(clientId);
-      return false;
-    }
-    return false;
-  }
-  return true;
-}
-
-function kickDuplicateGoogleSession(clientId) {
-  const session = socketSessions.get(clientId);
-  if (!session?.google_id) return;
-  for (const otherId of sockets.keys()) {
-    if (otherId === clientId) continue;
-    const otherSession = socketSessions.get(otherId);
-    if (otherSession?.google_id === session.google_id) {
-      send(otherId, { type: "notice", text: "Вход с другого устройства." });
-      removeClient(otherId);
-    }
-  }
-}
-
 // Тик-интервалы по сложности (отдельный тик для каждого игрока не делаем — берём минимальный)
 let currentTickMs = DIFFICULTIES.normal.tickMs;
 let tickInterval = null;
@@ -708,7 +657,6 @@ function broadcastState() {
       };
     }),
     bosses, leaderboard: getEnrichedLeaderboard(), gameMode, taggedPlayerId,
-    tickMs: currentTickMs,
     shopMeta: { skins: SHOP_SKINS, catalog: SHOP_CATALOG },
   });
 }
@@ -977,11 +925,7 @@ function getAverageBadFoodRatio() {
 // ============================================================
 
 function handleMessage(id, message) {
-  if (message.type === "ping" || message.type === "pong") return;
-
-  if (message.type !== "shop_connect" && message.type !== "hello") {
-    if (!allowClientMessage(id, message.type)) return;
-  }
+  if (message.type === "ping") return;
 
   if (message.type === "shop_connect") {
     handleShopConnect(id, message).catch((err) => console.error("shop_connect:", err.message));
@@ -1027,10 +971,9 @@ function handleMessage(id, message) {
   if (!player) return;
 
   if (message.type === "turn") {
+    if (player.frozenUntil && Date.now() < player.frozenUntil) return;
     const next = directionFromKey(message.direction);
-    if (!next) return;
-    if (!isOpposite(player.nextDirection, next)) player.nextDirection = next;
-    return;
+    if (next && !isOpposite(player.direction, next)) player.nextDirection = next;
   }
 
   if (message.type === "restart") {
@@ -1190,7 +1133,6 @@ async function handleShopConnect(id, message) {
 }
 
 async function handleJoin(id, message) {
-  kickDuplicateGoogleSession(id);
   const resolved = await resolvePlayName(id, message.name);
   if (!resolved.ok) {
     send(id, { type: "notice", text: resolved.text });
@@ -1506,7 +1448,6 @@ function removeClient(id) {
   sockets.delete(id);
   shopClients.delete(id);
   socketSessions.delete(id);
-  socketInputStats.delete(id);
   const player = players.get(id);
   if (player) {
     trackDisconnectStats(player);
