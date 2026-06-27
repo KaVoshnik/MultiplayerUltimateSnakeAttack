@@ -444,7 +444,8 @@ function renderPlayers() {
     const tag = state.gameMode === "tag_time" && player.id === state.taggedPlayerId ? " 🏷" : "";
     const scoreText = player.alive ? String(player.score) : "💀";
     // Обновляем только если изменилось
-    const newHtml = `<span><span class="swatch" style="background:${player.color}"></span>${escapeHtml(player.name)}${tag}</span><span>${scoreText}</span>`;
+    const nameStyle = player.nickColor ? ` style="color:${player.nickColor}"` : "";
+    const newHtml = `<span><span class="swatch" style="background:${player.color}"></span><span class="playerNick"${nameStyle}>${escapeHtml(player.name)}</span>${tag}</span><span>${scoreText}</span>`;
     if (li.innerHTML !== newHtml) li.innerHTML = newHtml;
   }
 }
@@ -1053,6 +1054,12 @@ function drawPlayers(view) {
   }
 }
 
+function getPlayerNickFill(player) {
+  if (player.nickColor) return player.nickColor;
+  if (player.id === state.id) return "#3de88a";
+  return "rgba(255,255,255,0.92)";
+}
+
 function drawPlayerNameLabel(x, y, cell, player) {
   if (!player.alive || !player.name) return;
   const cx = x + cell / 2;
@@ -1065,7 +1072,7 @@ function drawPlayerNameLabel(x, y, cell, player) {
   ctx.textBaseline = "top";
   ctx.lineWidth = Math.max(2, fontSize * 0.18);
   ctx.strokeStyle = "rgba(0,0,0,0.75)";
-  ctx.fillStyle = player.id === state.id ? "#3de88a" : "rgba(255,255,255,0.92)";
+  ctx.fillStyle = getPlayerNickFill(player);
   ctx.strokeText(label, cx, cy);
   ctx.fillText(label, cx, cy);
   ctx.restore();

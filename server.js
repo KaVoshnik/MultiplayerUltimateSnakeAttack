@@ -56,14 +56,57 @@ const MODES = {
 // --- BONUSES ---
 // Бонусы появляются на поле как особые клетки
 const BONUS_TYPES = {
-  shield: { label: "SH", duration: 5000, color: "#62a0ea", desc: "защита от яда" },
-  speed_up: { label: "SP", duration: 4000, color: "#f9f06b", desc: "оверклок +30% очков" },
-  slow_down: { label: "SL", duration: 5000, color: "#dc8add", desc: "замедление" },
-  double: { label: "x2", duration: 6000, color: "#33d17a", desc: "двойные очки" },
-  ghost: { label: "GH", duration: 4000, color: "#8ff0a4", desc: "призрак" },
+  shield: { label: "SH", duration: 10000, color: "#62a0ea", desc: "защита от яда" },
+  speed_up: { label: "SP", duration: 8000, color: "#f9f06b", desc: "оверклок +30% очков" },
+  slow_down: { label: "SL", duration: 10000, color: "#dc8add", desc: "замедление" },
+  double: { label: "x2", duration: 12000, color: "#33d17a", desc: "двойные очки" },
+  ghost: { label: "GH", duration: 8000, color: "#8ff0a4", desc: "призрак" },
 };
 
 const SPAWN_FREEZE_MS = 3000;
+const KILL_REWARD_COINS = 50;
+const BATTLE_PASS_SCORE_STEP = 1000;
+const BATTLE_PASS_MAX_TIER = 12;
+
+const BATTLE_PASS_NICK_COLORS = [
+  { id: "bp_gold", label: "Золото", color: "#ffd166" },
+  { id: "bp_cyan", label: "Бирюза", color: "#22d3ee" },
+  { id: "bp_magenta", label: "Магента", color: "#f472b6" },
+  { id: "bp_lime", label: "Лайм", color: "#a3e635" },
+  { id: "bp_crimson", label: "Багряный", color: "#f87171" },
+  { id: "bp_violet", label: "Фиолет", color: "#a78bfa" },
+  { id: "bp_orange", label: "Оранж", color: "#fb923c" },
+  { id: "bp_ice", label: "Лёд", color: "#93c5fd" },
+  { id: "bp_neon", label: "Неон", color: "#3de88a" },
+  { id: "bp_royal", label: "Корона", color: "#fcd34d" },
+  { id: "bp_plasma", label: "Плазма", color: "#e879f9" },
+  { id: "bp_sunset", label: "Закат", color: "#fb7185" },
+];
+
+function getBattlePassTierDef(tier) {
+  const nickColor = BATTLE_PASS_NICK_COLORS[Math.min(tier - 1, BATTLE_PASS_NICK_COLORS.length - 1)];
+  return {
+    tier,
+    scoreRequired: tier * BATTLE_PASS_SCORE_STEP,
+    coins: 50 + (tier - 1) * 30,
+    nickColor,
+  };
+}
+
+function getBattlePassConfig() {
+  return {
+    scoreStep: BATTLE_PASS_SCORE_STEP,
+    maxTier: BATTLE_PASS_MAX_TIER,
+    tiers: Array.from({ length: BATTLE_PASS_MAX_TIER }, (_, i) => getBattlePassTierDef(i + 1)),
+    nickColors: [{ id: "default", label: "Стандарт", color: null }, ...BATTLE_PASS_NICK_COLORS],
+  };
+}
+
+function resolveNickColorHex(entry) {
+  const id = entry.stats?.activeNickColor;
+  if (!id || id === "default") return null;
+  return BATTLE_PASS_NICK_COLORS.find((c) => c.id === id)?.color || null;
+}
 
 // --- СКИНЫ (цвет тела) + ШЛЯПЫ в едином каталоге ---
 const SHOP_CATALOG = [
@@ -248,7 +291,10 @@ function handleHttpRequest(req, res, url) {
     return;
   }
   if (url.pathname === "/shop") { sendJson(res, { skins: SHOP_SKINS, catalog: SHOP_CATALOG, playerData: shopData }); return; }
-  if (url.pathname === "/catalog") { sendJson(res, { catalog: SHOP_CATALOG, skins: SHOP_SKINS, avatars: AVATAR_PRESETS }); return; }
+  if (url.pathname === "/catalog") {
+    sendJson(res, { catalog: SHOP_CATALOG, skins: SHOP_SKINS, avatars: AVATAR_PRESETS, battlePass: getBattlePassConfig() });
+    return;
+  }
   if (url.pathname === "/profile") {
     const name = profileName(url.searchParams.get("name") || "");
     if (!name) { sendJson(res, { error: "no name" }); return; }
@@ -344,6 +390,7 @@ server.on("upgrade", (req, socket) => {
     shopData: defaultShopEntry(),
     feed: feedLog.slice(0, 8),
     presence: gameSync.buildPresence(buildSyncCtx()),
+    battlePass: getBattlePassConfig(),
   });
 });
 
@@ -461,6 +508,7 @@ function extrasForPlayer(p) {
     avatar: cos.avatar,
     snakeHatEmoji: cos.snakeHatEmoji,
     snakeHatId: cos.snakeHatId,
+    nickColor: resolveNickColorHex(getProfile(p.name)),
   };
 }
 
@@ -724,7 +772,9 @@ function killPlayer(player, reason, opts = {}) {
     pushFeed("bonus", `💰 ${player.name}: +${reward} монет`, player.name);
   }
   recordScore(player);
-  if (opts.killerPlayer) {
+  if (opts.killerPlayer?.alive) {
+    awardKillCoins(opts.killerPlayer, player);
+  } else if (opts.killerPlayer) {
     pushFeed("kill", `⚔ ${opts.killerPlayer.name} убил ${player.name}`, opts.killerPlayer.name);
   } else {
     pushFeed("death", `💀 ${player.name}: ${reason}`, player.name);
@@ -1049,6 +1099,11 @@ function handleMessage(id, message) {
     return;
   }
 
+  if (message.type === "equip_nick_color") {
+    equipNickColor(id, message.colorId, message.name);
+    return;
+  }
+
   if (message.type === "join") {
     handleJoin(id, message).catch((err) => console.error("join:", err.message));
     return;
@@ -1095,7 +1150,14 @@ function sendShopPayload(clientId, name) {
   const entry = getProfile(name);
   syncProfileCoins(name, entry);
   shopData[name] = entry;
-  send(clientId, { type: "shop_update", shopData: entry, skins: SHOP_SKINS, catalog: SHOP_CATALOG, avatars: AVATAR_PRESETS });
+  send(clientId, {
+    type: "shop_update",
+    shopData: entry,
+    skins: SHOP_SKINS,
+    catalog: SHOP_CATALOG,
+    avatars: AVATAR_PRESETS,
+    battlePass: getBattlePassConfig(),
+  });
 }
 
 function syncProfileCoins(name, entry) {
@@ -1341,10 +1403,15 @@ function normalizeProfile(raw) {
     stats: {
       games: raw.stats?.games || 0,
       deaths: raw.stats?.deaths ?? raw.stats?.losses ?? 0,
+      kills: raw.stats?.kills || 0,
       best: raw.stats?.best || 0,
       playTimeMs: raw.stats?.playTimeMs || 0,
       sessionStart: raw.stats?.sessionStart || null,
       googlePicture: raw.stats?.googlePicture || null,
+      battlePassScore: raw.stats?.battlePassScore || 0,
+      battlePassClaimed: Array.isArray(raw.stats?.battlePassClaimed) ? [...raw.stats.battlePassClaimed] : [],
+      battlePassUnlocked: Array.isArray(raw.stats?.battlePassUnlocked) ? [...raw.stats.battlePassUnlocked] : [],
+      activeNickColor: raw.stats?.activeNickColor || null,
     },
   };
   for (const id of entry.unlockedSkins) {
@@ -1374,9 +1441,90 @@ function getPlayerCosmetics(name) {
 function applyCosmeticsToPlayer(player, name) {
   if (!player) return;
   const cos = getPlayerCosmetics(name);
+  const entry = getProfile(name);
   player.avatar = cos.avatar;
   player.snakeHatEmoji = cos.snakeHatEmoji;
   player.snakeHatId = cos.snakeHatId;
+  player.nickColor = resolveNickColorHex(entry);
+}
+
+function processBattlePassRewards(name, entry) {
+  entry.stats.battlePassClaimed = entry.stats.battlePassClaimed || [];
+  entry.stats.battlePassUnlocked = entry.stats.battlePassUnlocked || [];
+  const granted = [];
+
+  for (let tier = 1; tier <= BATTLE_PASS_MAX_TIER; tier += 1) {
+    const required = tier * BATTLE_PASS_SCORE_STEP;
+    if ((entry.stats.battlePassScore || 0) < required) break;
+    if (entry.stats.battlePassClaimed.includes(tier)) continue;
+
+    const def = getBattlePassTierDef(tier);
+    entry.stats.battlePassClaimed.push(tier);
+    entry.coins = (Number(entry.coins) || 0) + def.coins;
+    if (def.nickColor?.id && !entry.stats.battlePassUnlocked.includes(def.nickColor.id)) {
+      entry.stats.battlePassUnlocked.push(def.nickColor.id);
+    }
+    granted.push(def);
+    pushFeed("bonus", `🎖 ${name}: боевой пропуск ур.${tier} — +${def.coins}🪙, цвет «${def.nickColor.label}»`, name);
+  }
+
+  if (!granted.length) return granted;
+
+  shopData[name] = entry;
+  persistProfile(name, entry);
+
+  for (const p of players.values()) {
+    if (p.name.toLowerCase() !== name.toLowerCase()) continue;
+    p.coins = entry.coins;
+    send(p.id, { type: "notice", text: `Боевой пропуск: +${granted.reduce((s, r) => s + r.coins, 0)} монет!` });
+    sendShopPayload(p.id, name);
+    resyncPlayer(p.id);
+  }
+
+  for (const [clientId, clientName] of shopClients) {
+    if (clientName.toLowerCase() === name.toLowerCase() && !players.has(clientId)) {
+      sendShopPayload(clientId, name);
+    }
+  }
+
+  return granted;
+}
+
+function awardKillCoins(killer, victim) {
+  const reward = KILL_REWARD_COINS;
+  killer.coins = (killer.coins || 0) + reward;
+  const entry = getProfile(killer.name);
+  entry.stats.kills = (entry.stats.kills || 0) + 1;
+  entry.coins = killer.coins;
+  shopData[killer.name] = entry;
+  persistProfile(killer.name, entry);
+  pushFeed("kill", `💰 ${killer.name}: +${reward} за убийство ${victim.name}`, killer.name);
+  send(killer.id, { type: "notice", text: `+${reward} монет за убийство!` });
+}
+
+function equipNickColor(clientId, colorId, nameHint) {
+  const name = resolveName(clientId, nameHint);
+  if (!name) return;
+  const entry = getProfile(name);
+
+  if (!colorId || colorId === "default") {
+    entry.stats.activeNickColor = null;
+  } else if (!entry.stats.battlePassUnlocked?.includes(colorId)) {
+    send(clientId, { type: "notice", text: "Сначала открой цвет в боевом пропуске!" });
+    return;
+  } else {
+    entry.stats.activeNickColor = colorId;
+  }
+
+  shopData[name] = entry;
+  persistProfile(name, entry);
+  const player = players.get(clientId);
+  if (player) {
+    applyCosmeticsToPlayer(player, name);
+    resyncPlayer(clientId);
+    broadcastGameSync();
+  }
+  sendShopPayload(clientId, name);
 }
 
 function trackDeathStats(player) {
@@ -1392,8 +1540,10 @@ function trackDeathStats(player) {
   const rivalScores = [...players.values()].filter((p) => p.id !== player.id).map((p) => p.score);
   const sessionTop = Math.max(player.score, ...rivalScores, 0);
   player.sessionMvp = player.score > 0 && player.score >= sessionTop;
+  entry.stats.battlePassScore = (entry.stats.battlePassScore || 0) + (player.score || 0);
   shopData[player.name] = entry;
   persistProfile(player.name, entry);
+  processBattlePassRewards(player.name, entry);
 }
 
 function awardSessionCoins(player) {
@@ -1416,6 +1566,10 @@ function trackDisconnectStats(player) {
   if (entry.stats.sessionStart) {
     entry.stats.playTimeMs = (entry.stats.playTimeMs || 0) + (Date.now() - entry.stats.sessionStart);
     entry.stats.sessionStart = null;
+  }
+  if (player.alive && player.score > 0) {
+    entry.stats.battlePassScore = (entry.stats.battlePassScore || 0) + player.score;
+    processBattlePassRewards(player.name, entry);
   }
   shopData[player.name] = entry;
   persistProfile(player.name, entry);
@@ -1497,6 +1651,7 @@ function createPlayer(id, name, difficulty, skin) {
     activeBonus: null, bonusExpires: null,
     combo: 0, maxCombo: 0,
     avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji, snakeHatId: cos.snakeHatId,
+    nickColor: resolveNickColorHex(shopEntry),
     frozenUntil: Date.now() + SPAWN_FREEZE_MS,
   };
   removeEntitiesUnderSnake(player);
