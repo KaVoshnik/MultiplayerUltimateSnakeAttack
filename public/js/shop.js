@@ -85,9 +85,11 @@ function connect() {
 }
 
 function send(payload) {
-  if (state.socket?.readyState === WebSocket.OPEN) {
-    state.socket.send(JSON.stringify({ ...payload, name: SnakeStore.getName() }));
+  if (state.socket?.readyState !== WebSocket.OPEN) {
+    showToast("Нет связи с сервером");
+    return;
   }
+  state.socket.send(JSON.stringify(payload));
 }
 
 function hatPreviewHtml(item) {
@@ -102,7 +104,7 @@ function hatPreviewHtml(item) {
 }
 
 function renderItems() {
-  const coins = state.shopData.coins ?? 0;
+  const coins = Number(state.shopData.coins) || 0;
   shopCoins.textContent = coins;
   if (headerCoins) headerCoins.textContent = coins;
 
@@ -126,12 +128,13 @@ function renderItems() {
     const card = document.createElement("div");
     card.className = `itemCard rarity-${item.rarity}${owned ? " owned" : ""}${equipped ? " equipped" : ""}`;
 
-    let actionText = `${item.price} 🪙`;
+    const price = Number(item.price) || 0;
+    let actionText = `${price} 🪙`;
     let actionClass = "buy";
     if (owned) {
       actionText = equipped ? "СНЯТЬ" : "НАДЕТЬ";
       actionClass = equipped ? "unequip" : "equip";
-    } else if (coins < item.price) {
+    } else if (coins < price) {
       actionClass = "buy";
     }
 
@@ -152,7 +155,7 @@ function renderItems() {
       if (owned) {
         if (equipped) send({ type: "unequip_item", itemId: item.id });
         else send({ type: "equip_item", itemId: item.id });
-      } else if (coins >= item.price) {
+      } else if (price === 0 || coins >= price) {
         send({ type: "buy_item", itemId: item.id });
       } else {
         showToast("Недостаточно монет!");

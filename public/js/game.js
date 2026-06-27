@@ -20,7 +20,6 @@ const playersEl = document.querySelector("#players");
 const deathPanel = document.querySelector("#deathPanel");
 const deathReason = document.querySelector("#deathReason");
 const deathStats = document.querySelector("#deathStats");
-const pausePanel = document.querySelector("#pausePanel");
 
 const settings = SnakeStore.load();
 if (!settings.name || !settings.google) {
@@ -50,7 +49,6 @@ const state = {
   shopData: { coins: 0, unlockedSkins: ["default"], activeSkin: "default" },
   joined: false,
   name: settings.name,
-  menuOpen: false,
   gameMode: "classic",
   taggedPlayerId: null,
   feed: [],
@@ -67,7 +65,7 @@ const state = {
   // FPS / ping
   fps: 0,
   ping: 0,
-  showStats: false,
+  showStats: Boolean(settings.showStats),
   _fpsFrames: 0,
   _fpsLast: 0,
   _pingSentAt: 0,
@@ -96,23 +94,11 @@ const keys = {
 connect();
 requestAnimationFrame(draw);
 
-document.querySelector("#pauseBtn").addEventListener("click", () => toggleMenu());
-document.querySelector("#resumeBtn").addEventListener("click", () => setMenu(false));
-document.querySelector("#restartBtn").addEventListener("click", () => { send({ type: "restart" }); setMenu(false); });
 document.querySelector("#retryBtn").addEventListener("click", () => { send({ type: "restart" }); deathPanel.classList.add("hidden"); });
-document.querySelector("#statsToggleBtn").addEventListener("click", () => {
-  state.showStats = !state.showStats;
-  document.querySelector("#statsToggleBtn").textContent = state.showStats ? "Скрыть FPS / Пинг" : "Показать FPS / Пинг";
-});
 
 document.addEventListener("keydown", (event) => {
-  if (event.code === "Escape") {
-    event.preventDefault();
-    toggleMenu();
-    return;
-  }
   const direction = keys[event.code];
-  if (!direction || state.menuOpen || !state.joined) return;
+  if (!direction || !state.joined) return;
   event.preventDefault();
   if (isSpawnFrozen()) {
     // Буферизируем — отправим сразу как freeze снимется
@@ -129,7 +115,7 @@ function setupTouchControls() {
   const SWIPE_MIN = 18;
 
   const sendTurn = (direction) => {
-    if (state.menuOpen || !state.joined) return;
+    if (!state.joined) return;
     if (isSpawnFrozen()) {
       state.bufferedDirection = direction;
       return;
@@ -421,16 +407,6 @@ function renderPlayers() {
     const newHtml = `<span><span class="swatch" style="background:${player.color}"></span>${escapeHtml(player.name)}${tag}</span><span>${scoreText}</span>`;
     if (li.innerHTML !== newHtml) li.innerHTML = newHtml;
   }
-}
-
-function toggleMenu() {
-  if (!state.joined) return;
-  setMenu(!state.menuOpen);
-}
-
-function setMenu(open) {
-  state.menuOpen = open;
-  pausePanel.classList.toggle("hidden", !open);
 }
 
 function clamp(v, lo, hi) {

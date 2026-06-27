@@ -104,8 +104,7 @@ function isItemEquipped(shopData, item) {
 
 function ownsShopItem(shopData, item) {
   if (!item) return false;
-  if (item.customTexture && item.price === 0) return true;
-  if (item.category === "skin" && item.price === 0) return true;
+  if (Number(item.price) === 0) return true;
   return (shopData?.inventory || []).includes(item.id);
 }
 
@@ -133,7 +132,11 @@ async function syncSessionUser(options = {}) {
   } catch { /* offline */ }
 
   if (me.loggedIn) {
-    SnakeStore.save({ name: me.name, google: true });
+    SnakeStore.save({
+      name: me.name,
+      google: true,
+      playerId: me.playerId || me.shopData?.id || null,
+    });
     updateUserBar(me.shopData || {}, me.name);
     options.onLogin?.(me);
   } else {
@@ -167,7 +170,11 @@ async function initProfileAuth(options = {}) {
   } catch { /* ignore */ }
 
   if (me.loggedIn) {
-    SnakeStore.save({ name: me.name, google: true });
+    SnakeStore.save({
+      name: me.name,
+      google: true,
+      playerId: me.playerId || me.shopData?.id || null,
+    });
     loginBtn?.classList.add("hidden");
     accountGuest?.classList.add("hidden");
     accountUser?.classList.remove("hidden");

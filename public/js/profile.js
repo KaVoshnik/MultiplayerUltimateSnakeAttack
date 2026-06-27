@@ -17,6 +17,7 @@ const state = {
   selectedAvatar: "😎",
   oldName: "",
   loggedIn: false,
+  wsAuthed: false,
   me: null,
   viewMode: false,
 };
@@ -87,6 +88,12 @@ function connect() {
   socket.addEventListener("message", (event) => {
     const msg = JSON.parse(event.data);
     if (msg.type === "ping") return;
+    if (msg.type === "auth_ready") {
+      state.wsAuthed = true;
+      state.oldName = msg.name || state.oldName;
+      socket.send(JSON.stringify({ type: "shop_connect", name: msg.name }));
+      return;
+    }
     if (msg.type === "hello") {
       state.avatars = msg.avatars || [];
       state.catalog = msg.catalog || [];
@@ -97,6 +104,7 @@ function connect() {
     }
     if (msg.type === "shop_update") {
       state.shopData = msg.shopData;
+      if (state.loggedIn) state.wsAuthed = true;
       if (msg.catalog) state.catalog = msg.catalog;
       if (msg.avatars) state.avatars = msg.avatars;
       state.selectedAvatar = state.shopData.avatar || "😎";
@@ -108,24 +116,32 @@ function connect() {
     if (msg.type === "profile_saved") {
       if (msg.name) {
         state.oldName = msg.name;
-        SnakeStore.save({ name: msg.name, google: true });
+        SnakeStore.save({ name: msg.name, google: true, playerId: msg.playerId || state.me?.playerId || null });
         profileNameInput.value = msg.name;
         const displayName = document.querySelector("#accountDisplayName");
         if (displayName) displayName.textContent = msg.name;
       }
+      if (msg.shopData) {
+        state.shopData = msg.shopData;
+        renderStats();
+        renderEquipped();
+        drawPreview();
+      }
       showToast("Профиль сохранён!");
     }
     if (msg.type === "notice") {
-      if (!state.loggedIn) return;
       showToast(msg.text);
     }
   });
 }
 
 function send(payload) {
-  if (state.socket?.readyState === WebSocket.OPEN) {
-    state.socket.send(JSON.stringify(payload));
+  if (state.socket?.readyState !== WebSocket.OPEN) {
+    showToast("Нет связи с сервером. Подожди пару секунд…");
+    return false;
   }
+  state.socket.send(JSON.stringify(payload));
+  return true;
 }
 
 function renderAvatars() {
@@ -327,17 +343,21 @@ saveBtn.addEventListener("click", () => {
     showToast("Сначала войди через Google!");
     return;
   }
+  if (!state.wsAuthed) {
+    showToast("Подожди подключения к серверу…");
+    return;
+  }
   const name = profileNameInput.value.trim();
   if (!name) {
     showToast("Никнейм не может быть пустым!");
     return;
   }
-  send({
+  if (!send({
     type: "save_profile",
     name,
     oldName: state.oldName,
     avatar: state.selectedAvatar,
-  });
+  })) return;
 });
 
 async function boot() {
@@ -352,7 +372,11 @@ async function boot() {
       state.loggedIn = true;
       state.me = loginMe;
       state.shopData = loginMe.shopData || state.shopData;
-      SnakeStore.save({ name: loginMe.name, google: true });
+      SnakeStore.save({
+        name: loginMe.name,
+        google: true,
+        playerId: loginMe.playerId || loginMe.shopData?.id || null,
+      });
       renderAccount(loginMe);
       if (state.socket?.readyState === WebSocket.OPEN) {
         state.socket.send(JSON.stringify({ type: "shop_connect", name: loginMe.name }));
