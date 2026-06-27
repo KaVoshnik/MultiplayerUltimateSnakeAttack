@@ -2,16 +2,29 @@ const podiumEl = document.querySelector("#podium");
 const listEl = document.querySelector("#leaderboard");
 const paginationEl = document.querySelector("#pagination");
 const emptyEl = document.querySelector("#emptyState");
+const tabButtons = document.querySelectorAll(".lbTab");
 
 const PAGE_SIZE = 7;
 let allEntries = [];
 let currentPage = 0;
+let sortMode = "score";
 
 const MEDALS = ["🥇", "🥈", "🥉"];
 
+tabButtons.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const next = btn.dataset.sort;
+    if (next === sortMode) return;
+    sortMode = next;
+    tabButtons.forEach((b) => b.classList.toggle("active", b === btn));
+    loadLeaderboard();
+  });
+});
+
 async function loadLeaderboard() {
   try {
-    const res = await fetch("/leaderboard");
+    const url = sortMode === "coins" ? "/leaderboard?sort=coins" : "/leaderboard";
+    const res = await fetch(url);
     allEntries = await res.json();
     currentPage = 0;
     render();
@@ -19,6 +32,14 @@ async function loadLeaderboard() {
     emptyEl.classList.remove("hidden");
     emptyEl.textContent = "Не удалось загрузить рекорды.";
   }
+}
+
+function valueLabel() {
+  return sortMode === "coins" ? "монет" : "очков";
+}
+
+function entryValue(entry) {
+  return sortMode === "coins" ? (entry.coins ?? entry.score) : entry.score;
 }
 
 function renderPodium(top3) {
@@ -39,7 +60,7 @@ function renderPodium(top3) {
         <span>🏆 Побед<strong>${entry.wins || 0}</strong></span>
         <span>📈 Рекорд<strong>${entry.best || entry.score}</strong></span>
       </div>
-      <div class="podiumScore">${entry.score}</div>
+      <div class="podiumScore">${sortMode === "coins" ? "💰 " : ""}${entryValue(entry)}</div>
     `;
     podiumEl.append(card);
   }
@@ -53,13 +74,16 @@ function renderList(rest) {
   page.forEach((entry, i) => {
     const li = document.createElement("li");
     li.style.animationDelay = `${i * 0.05}s`;
-    const diff = entry.difficulty
+    const diff = sortMode === "score" && entry.difficulty
       ? `<span class="diffBadge ${entry.difficulty}">${entry.difficulty}</span>`
       : "";
+    const extra = sortMode === "coins"
+      ? `<br><small style="color:var(--muted)">📈 рекорд ${entry.best || 0}</small>`
+      : `<br><small style="color:var(--muted)">🏆 ${entry.wins || 0} побед · 💰 ${entry.coins || 0}</small>`;
     li.innerHTML = `
       <span class="rank">#${entry.rank}</span>
-      <span class="name">${entry.avatar || "😎"} ${escapeHtml(entry.name)}${diff}<br><small style="color:var(--muted)">🏆 ${entry.wins || 0} побед</small></span>
-      <span class="score">${entry.score}</span>
+      <span class="name">${entry.avatar || "😎"} ${escapeHtml(entry.name)}${diff}${extra}</span>
+      <span class="score">${sortMode === "coins" ? "💰 " : ""}${entryValue(entry)}</span>
     `;
     listEl.append(li);
   });
@@ -88,6 +112,9 @@ function renderPagination(total) {
 function render() {
   if (!allEntries.length) {
     emptyEl.classList.remove("hidden");
+    emptyEl.textContent = sortMode === "coins"
+      ? "Пока никто не разбогател."
+      : "Пока никто не попал в рекорды.";
     podiumEl.innerHTML = "";
     listEl.innerHTML = "";
     return;

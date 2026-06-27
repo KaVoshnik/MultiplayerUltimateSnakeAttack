@@ -187,7 +187,11 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (url.pathname === "/leaderboard") { sendJson(res, getEnrichedLeaderboard()); return; }
+  if (url.pathname === "/leaderboard") {
+    const sort = url.searchParams.get("sort");
+    sendJson(res, sort === "coins" ? getWealthLeaderboard() : getEnrichedLeaderboard());
+    return;
+  }
   if (url.pathname === "/shop") { sendJson(res, { skins: SHOP_SKINS, catalog: SHOP_CATALOG, playerData: shopData }); return; }
   if (url.pathname === "/catalog") { sendJson(res, { catalog: SHOP_CATALOG, skins: SHOP_SKINS, avatars: AVATAR_PRESETS }); return; }
   if (url.pathname === "/profile") {
@@ -384,7 +388,11 @@ function tick() {
     if (targetCounts.get(key) > 1) { killPlayer(player, "Столкновение лоб в лоб"); continue; }
 
     // Босс
-    if (bossAt(nextHead)) { killPlayer(player, "Босс поймал змейку"); continue; }
+    const killer = bossAt(nextHead);
+    if (killer) {
+      killPlayer(player, `${killer.name} поймал змейку`, { at: nextHead, boss: killer });
+      continue;
+    }
 
     // Другая змейка (ghost бонус позволяет проходить сквозь)
     if (player.activeBonus !== "ghost" && occupied.has(key)) {
@@ -473,7 +481,7 @@ function spawnBonuses() {
   }, 15000);
 }
 
-function killPlayer(player, reason) {
+function killPlayer(player, reason, opts = {}) {
   if (!player.alive) return;
   trackDeathStats(player);
   player.alive = false;
@@ -491,7 +499,8 @@ function killPlayer(player, reason) {
   }
   recordScore(player);
   pushFeed("death", `💀 ${player.name}: ${reason}`, player.name);
-  const killerBoss = bossAt(player.snake[0]) || bosses.find((b) => reason.includes(b.name));
+  const hitCell = opts.at || player.snake[0];
+  const killerBoss = opts.boss || bossAt(hitCell) || bosses.find((b) => reason.includes(b.name));
   if (killerBoss) enrageBoss(killerBoss);
 }
 
@@ -540,9 +549,9 @@ function broadcastState() {
 
 function createBosses() {
   const defs = [
-    { id: "void", name: "VØIDR", color: "#f66151", x: 10, y: 10 },
-    { id: "nyx", name: "NYX-7", color: "#7c3aed", x: GRID.width - 14, y: 10 },
-    { id: "scrap", name: "SCR4P", color: "#ea580c", x: Math.floor(GRID.width / 2) - 2, y: GRID.height - 14 },
+    { id: "void", name: "VØIDR", color: "#f66151", trait: "dash", x: 20, y: 20 },
+    { id: "nyx", name: "NYX-7", color: "#7c3aed", trait: "blink", x: GRID.width - 24, y: 20 },
+    { id: "scrap", name: "SCR4P", color: "#ea580c", trait: "poison", x: Math.floor(GRID.width / 2) - 2, y: GRID.height - 24 },
   ];
   return defs.map((def) => ({
     ...def,
@@ -551,16 +560,32 @@ function createBosses() {
     angry: false,
     phase: "idle",
     enragedTicks: 0,
+    agitatedTicks: 0,
     kills: 0,
     moveCooldown: 0,
   }));
 }
 
+function clampBossInGrid(boss) {
+  boss.x = Math.max(0, Math.min(boss.x, GRID.width - boss.size));
+  boss.y = Math.max(0, Math.min(boss.y, GRID.height - boss.size));
+}
+
 function enrageBoss(boss) {
   boss.kills = (boss.kills || 0) + 1;
-  boss.enragedTicks = 50;
+  const wasEnraged = boss.enragedTicks > 0;
+  boss.enragedTicks = Math.max(boss.enragedTicks || 0, 90);
   boss.size = 2;
   boss.phase = "enraged";
+  boss.angry = true;
+  clampBossInGrid(boss);
+  if (!wasEnraged) {
+    pushFeed("boss", `👹 ${boss.name} в ЯРОСТИ!`, "");
+    broadcast({ type: "notice", text: `⚠ ${boss.name} вошёл в ярость!` });
+    for (const other of bosses) {
+      if (other.id !== boss.id) other.agitatedTicks = Math.max(other.agitatedTicks || 0, 50);
+    }
+  }
 }
 
 function updateBossPhase(boss, dist) {
@@ -583,31 +608,37 @@ function moveBosses() {
   removeFoodUnderBosses();
 
   for (const boss of bosses) {
+    if (boss.agitatedTicks > 0) boss.agitatedTicks -= 1;
+
     if (boss.moveCooldown > 0) {
       boss.moveCooldown -= 1;
       boss.pulse = (boss.pulse + 1) % 1000;
       continue;
     }
 
-    const target = alive.sort((a, b) => distanceToBoss(a.snake[0], boss) - distanceToBoss(b.snake[0], boss))[0];
+    const target = alive.length
+      ? alive.reduce((best, p) => {
+        const d = distanceToBoss(p.snake[0], boss);
+        return !best || d < best.dist ? { player: p, dist: d } : best;
+      }, null)?.player
+      : null;
     const dist = target ? distanceToBoss(target.snake[0], boss) : 999;
     boss.angry = dist <= BOSS_HUNT_RANGE || boss.phase === "enraged";
     updateBossPhase(boss, dist);
 
-    let nextMove = null;
-    const chaseRange = boss.phase === "enraged" ? BOSS_CHASE_RANGE + 10 : BOSS_CHASE_RANGE;
-    const randomChance = boss.phase === "enraged" ? 0.06 : BOSS_RANDOM_MOVE_CHANCE;
-    if (target && dist <= chaseRange && Math.random() > randomChance) {
-      const moves = bossMovesToward(boss, target.snake[0]);
-      nextMove = moves.find((m) => bossCanMove(boss, m));
-    } else {
-      nextMove = shuffledDirs().find((m) => bossCanMove(boss, m));
+    const head = target?.snake?.[0];
+    let move = pickBossMove(boss, head, dist);
+    if (move) applyBossStep(boss, move);
+
+    if (boss.trait === "dash" && boss.phase === "enraged" && head && Math.random() < 0.38) {
+      move = pickBossMove(boss, head, distanceToBoss(head, boss));
+      if (move) applyBossStep(boss, move);
+    }
+    if (boss.trait === "blink" && (boss.phase === "stalk" || boss.agitatedTicks > 0) && head && dist <= BOSS_CHASE_RANGE && Math.random() < 0.22) {
+      move = pickBossMove(boss, head, distanceToBoss(head, boss));
+      if (move) applyBossStep(boss, move);
     }
 
-    if (nextMove) {
-      boss.x += nextMove.x;
-      boss.y += nextMove.y;
-    }
     boss.pulse = (boss.pulse + 1) % 1000;
   }
 
@@ -615,10 +646,62 @@ function moveBosses() {
     const head = player.snake[0];
     const killer = bossAt(head);
     if (killer) {
-      killPlayer(player, `${killer.name} схватил за голову`);
+      killPlayer(player, `${killer.name} схватил за голову`, { at: head, boss: killer });
       killer.moveCooldown = killer.phase === "enraged" ? 2 : 4;
     }
   }
+}
+
+function applyBossStep(boss, move) {
+  const prevX = boss.x;
+  const prevY = boss.y;
+  boss.x += move.x;
+  boss.y += move.y;
+  clampBossInGrid(boss);
+
+  if (boss.trait === "poison" && boss.phase === "enraged") {
+    leavePoisonCell(boss, prevX, prevY);
+  }
+}
+
+function leavePoisonCell(boss, x, y) {
+  if (Math.random() > 0.45) return;
+  if (!insideGrid({ x, y }) || anyBossOccupies({ x, y })) return;
+  if (food.some((item) => item.x === x && item.y === y)) return;
+  if (food.length >= FOOD_TARGET + 24) return;
+  food.push(createBadFood({ x, y }));
+}
+
+function pickBossMove(boss, target, dist) {
+  const legal = shuffledDirs().filter((m) => bossCanMove(boss, m));
+  if (!legal.length) return null;
+
+  const chaseRange = boss.phase === "enraged"
+    ? BOSS_CHASE_RANGE + 12
+    : boss.agitatedTicks > 0
+      ? BOSS_CHASE_RANGE + 8
+      : boss.trait === "blink"
+        ? BOSS_CHASE_RANGE + 6
+        : BOSS_CHASE_RANGE;
+  const randomChance = boss.phase === "enraged" ? 0.03 : boss.agitatedTicks > 0 ? 0.1 : BOSS_RANDOM_MOVE_CHANCE;
+  const shouldChase = target && dist <= chaseRange && Math.random() > randomChance;
+
+  const scoreMove = (m) => {
+    const nx = boss.x + m.x;
+    const ny = boss.y + m.y;
+    let score = Math.min(nx, ny, GRID.width - nx - boss.size, GRID.height - ny - boss.size) * 2;
+    if (shouldChase) score -= Math.abs(target.x - nx) + Math.abs(target.y - ny);
+    return score;
+  };
+
+  if (shouldChase) {
+    const preferred = bossMovesToward(boss, target);
+    const direct = preferred.find((m) => bossCanMove(boss, m));
+    if (direct) return direct;
+  }
+
+  legal.sort((a, b) => scoreMove(b) - scoreMove(a));
+  return legal[0];
 }
 
 function bossMovesToward(boss, point) {
@@ -1033,8 +1116,25 @@ function getEnrichedLeaderboard() {
       avatar: prof.avatar,
       wins: prof.stats?.wins || 0,
       best: Math.max(e.score, prof.stats?.best || 0),
+      coins: prof.coins || 0,
     };
   });
+}
+
+function getWealthLeaderboard() {
+  return Object.entries(shopData)
+    .map(([name, prof]) => ({
+      name,
+      coins: prof.coins || 0,
+      score: prof.coins || 0,
+      avatar: prof.avatar || "😎",
+      wins: prof.stats?.wins || 0,
+      best: prof.stats?.best || 0,
+    }))
+    .filter((e) => e.coins > 0)
+    .sort((a, b) => b.coins - a.coins || a.name.localeCompare(b.name, "ru"))
+    .slice(0, MAX_LEADERS)
+    .map((e, index) => ({ ...e, rank: index + 1 }));
 }
 
 function buySkin(playerId, skinId) {

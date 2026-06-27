@@ -1,3 +1,35 @@
+.lbPage .pageHeader p {
+  margin-bottom: 12px;
+}
+
+.lbTabs {
+  display: inline-flex;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 4px;
+  border-radius: 12px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid var(--line);
+}
+
+.lbTab {
+  border: none;
+  border-radius: 8px;
+  padding: 8px 14px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 700;
+  font-size: .78rem;
+  letter-spacing: .04em;
+  cursor: pointer;
+}
+
+.lbTab.active {
+  background: var(--green-dim);
+  color: var(--green);
+  box-shadow: inset 0 0 0 1px rgba(61,232,138,.25);
+}
+
 .lbPage .brand {
   font-family: var(--font-display);
   font-weight: 700;
