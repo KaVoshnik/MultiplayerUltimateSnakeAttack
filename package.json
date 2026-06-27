@@ -4,8 +4,7 @@
   "private": true,
   "description": "THE ULTIMATE MULTIPLAYER SNAKE ATTACK — online multiplayer snake game",
   "scripts": {
-    "start": "node server.js",
-    "start:public": "node server.js"
+    "start": "node server.js"
   },
   "engines": {
     "node": ">=18"
