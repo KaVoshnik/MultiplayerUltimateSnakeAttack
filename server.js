@@ -9,16 +9,17 @@ const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || "0.0.0.0";
 const PUBLIC_DIR = path.join(__dirname, "public");
 
-const GRID = { width: 42, height: 28 };
-const FOOD_TARGET = 40;
-const MIN_GOOD_FOOD = 14;
+const GRID = { width: 210, height: 140 };
+const FOOD_TARGET = 200;
+const MIN_GOOD_FOOD = 70;
 const SNAKE_SPAWN_LEN = 4;
-const SPAWN_MARGIN = 5;
-const SPAWN_CLEAR_RADIUS = 3;
-const BAD_FOOD_HEAD_BUFFER = 2;
+const SPAWN_MARGIN = 18;
+const SPAWN_CLEAR_RADIUS = 5;
+const BAD_FOOD_HEAD_BUFFER = 3;
 const BOSS_MOVE_EVERY = 9;
-const BOSS_CHASE_RANGE = 14;
+const BOSS_CHASE_RANGE = 16;
 const BOSS_RANDOM_MOVE_CHANCE = 0.38;
+const BOSS_SPAWN_BUFFER = 14;
 const MAX_LEADERS = 20;
 
 const FOOD_TYPES = {
@@ -131,7 +132,7 @@ const sockets = new Map();
 const players = new Map();
 const food = [];
 const bonuses = []; // активные бонус-клетки на поле
-const boss = createBoss();
+const bosses = createBosses();
 let leaderboard = [];
 let shopData = {};
 const shopClients = new Map(); // socket id -> player name (shop-only sessions)
@@ -339,7 +340,7 @@ function tick() {
   if (players.size === 0) return;
   tickCount += 1;
   fillFood();
-  if (tickCount % (boss.enragedTicks > 0 ? 4 : BOSS_MOVE_EVERY) === 0) moveBoss();
+  if (tickCount % (bosses.some((b) => b.enragedTicks > 0) ? 4 : BOSS_MOVE_EVERY) === 0) moveBosses();
   tickBonusEffects();
 
   const occupied = new Map();
@@ -382,7 +383,7 @@ function tick() {
     if (targetCounts.get(key) > 1) { killPlayer(player, "Столкновение лоб в лоб"); continue; }
 
     // Босс
-    if (bossOccupies(nextHead)) { killPlayer(player, "Босс поймал змейку"); continue; }
+    if (bossAt(nextHead)) { killPlayer(player, "Босс поймал змейку"); continue; }
 
     // Другая змейка (ghost бонус позволяет проходить сквозь)
     if (player.activeBonus !== "ghost" && occupied.has(key)) {
@@ -474,7 +475,6 @@ function spawnBonuses() {
 function killPlayer(player, reason) {
   if (!player.alive) return;
   trackDeathStats(player);
-  const wasBoss = reason.toLowerCase().includes("босс");
   player.alive = false;
   player.deaths += 1;
   player.reason = reason;
@@ -490,12 +490,8 @@ function killPlayer(player, reason) {
   }
   recordScore(player);
   pushFeed("death", `💀 ${player.name}: ${reason}`, player.name);
-  if (wasBoss) {
-    boss.kills = (boss.kills || 0) + 1;
-    boss.enragedTicks = 50;
-    boss.size = 2;
-    boss.phase = "enraged";
-  }
+  const killerBoss = bossAt(player.snake[0]) || bosses.find((b) => reason.includes(b.name));
+  if (killerBoss) enrageBoss(killerBoss);
 }
 
 function recordScore(player) {
@@ -532,32 +528,41 @@ function broadcastState() {
         avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji,
       };
     }),
-    boss, leaderboard: getEnrichedLeaderboard(), gameMode, taggedPlayerId,
+    bosses, leaderboard: getEnrichedLeaderboard(), gameMode, taggedPlayerId,
     shopMeta: { skins: SHOP_SKINS, catalog: SHOP_CATALOG },
   });
 }
 
 // ============================================================
-// BOSS
+// BOSSES
 // ============================================================
 
-function createBoss() {
-  return {
-    x: 2,
-    y: 2,
+function createBosses() {
+  const defs = [
+    { id: "void", name: "VØIDR", color: "#f66151", x: 10, y: 10 },
+    { id: "nyx", name: "NYX-7", color: "#7c3aed", x: GRID.width - 14, y: 10 },
+    { id: "scrap", name: "SCR4P", color: "#ea580c", x: Math.floor(GRID.width / 2) - 2, y: GRID.height - 14 },
+  ];
+  return defs.map((def) => ({
+    ...def,
     size: 1,
-    color: "#f66151",
-    name: "VØIDR",
     pulse: 0,
     angry: false,
     phase: "idle",
     enragedTicks: 0,
     kills: 0,
     moveCooldown: 0,
-  };
+  }));
 }
 
-function updateBossPhase(dist) {
+function enrageBoss(boss) {
+  boss.kills = (boss.kills || 0) + 1;
+  boss.enragedTicks = 50;
+  boss.size = 2;
+  boss.phase = "enraged";
+}
+
+function updateBossPhase(boss, dist) {
   if (boss.enragedTicks > 0) {
     boss.enragedTicks -= 1;
     boss.phase = "enraged";
@@ -572,44 +577,50 @@ function updateBossPhase(dist) {
   boss.phase = dist <= 5 ? "hunt" : dist <= BOSS_CHASE_RANGE ? "stalk" : "idle";
 }
 
-function moveBoss() {
-  if (boss.moveCooldown > 0) {
-    boss.moveCooldown -= 1;
-    boss.pulse = (boss.pulse + 1) % 1000;
-    return;
-  }
-
+function moveBosses() {
   const alive = [...players.values()].filter((p) => p.alive);
-  const target = alive.sort((a, b) => distanceToBoss(a.snake[0]) - distanceToBoss(b.snake[0]))[0];
-  const dist = target ? distanceToBoss(target.snake[0]) : 999;
-  boss.angry = dist <= 5 || boss.phase === "enraged";
-  updateBossPhase(dist);
+  removeFoodUnderBosses();
 
-  let nextMove = null;
-  const chaseRange = boss.phase === "enraged" ? BOSS_CHASE_RANGE + 6 : BOSS_CHASE_RANGE;
-  const randomChance = boss.phase === "enraged" ? 0.15 : BOSS_RANDOM_MOVE_CHANCE;
-  if (target && dist <= chaseRange && Math.random() > randomChance) {
-    const moves = bossMovesToward(target.snake[0]);
-    nextMove = moves.find((m) => bossCanMove(m));
-  } else {
-    const wander = shuffledDirs().find((m) => bossCanMove(m));
-    nextMove = wander;
+  for (const boss of bosses) {
+    if (boss.moveCooldown > 0) {
+      boss.moveCooldown -= 1;
+      boss.pulse = (boss.pulse + 1) % 1000;
+      continue;
+    }
+
+    const target = alive.sort((a, b) => distanceToBoss(a.snake[0], boss) - distanceToBoss(b.snake[0], boss))[0];
+    const dist = target ? distanceToBoss(target.snake[0], boss) : 999;
+    boss.angry = dist <= 5 || boss.phase === "enraged";
+    updateBossPhase(boss, dist);
+
+    let nextMove = null;
+    const chaseRange = boss.phase === "enraged" ? BOSS_CHASE_RANGE + 6 : BOSS_CHASE_RANGE;
+    const randomChance = boss.phase === "enraged" ? 0.15 : BOSS_RANDOM_MOVE_CHANCE;
+    if (target && dist <= chaseRange && Math.random() > randomChance) {
+      const moves = bossMovesToward(boss, target.snake[0]);
+      nextMove = moves.find((m) => bossCanMove(boss, m));
+    } else {
+      nextMove = shuffledDirs().find((m) => bossCanMove(boss, m));
+    }
+
+    if (nextMove) {
+      boss.x += nextMove.x;
+      boss.y += nextMove.y;
+    }
+    boss.pulse = (boss.pulse + 1) % 1000;
   }
-
-  if (nextMove) boss.x += nextMove.x; boss.y += nextMove.y;
-  removeFoodUnderBoss();
-  boss.pulse = (boss.pulse + 1) % 1000;
 
   for (const player of alive) {
     const head = player.snake[0];
-    if (bossOccupies(head)) {
-      killPlayer(player, "Босс схватил за голову");
-      boss.moveCooldown = boss.phase === "enraged" ? 3 : 6;
+    const killer = bossAt(head);
+    if (killer) {
+      killPlayer(player, `${killer.name} схватил за голову`);
+      killer.moveCooldown = killer.phase === "enraged" ? 3 : 6;
     }
   }
 }
 
-function bossMovesToward(point) {
+function bossMovesToward(boss, point) {
   const dx = point.x - boss.x;
   const dy = point.y - boss.y;
   const h = dx === 0 ? [] : [{ x: Math.sign(dx), y: 0 }];
@@ -617,14 +628,46 @@ function bossMovesToward(point) {
   return Math.abs(dx) > Math.abs(dy) ? [...h, ...v, ...shuffledDirs()] : [...v, ...h, ...shuffledDirs()];
 }
 
-function bossCanMove(move) {
+function bossCanMove(boss, move) {
   const next = { x: boss.x + move.x, y: boss.y + move.y };
-  return next.x >= 0 && next.y >= 0 && next.x + boss.size <= GRID.width && next.y + boss.size <= GRID.height;
+  if (next.x < 0 || next.y < 0 || next.x + boss.size > GRID.width || next.y + boss.size > GRID.height) return false;
+  for (const other of bosses) {
+    if (other.id === boss.id) continue;
+    if (rectsOverlap(next.x, next.y, boss.size, boss.size, other.x, other.y, other.size)) return false;
+  }
+  return true;
 }
 
-function distanceToBoss(point) { return Math.abs(point.x - boss.x) + Math.abs(point.y - boss.y); }
-function bossOccupies(point) { return point.x >= boss.x && point.x < boss.x + boss.size && point.y >= boss.y && point.y < boss.y + boss.size; }
-function removeFoodUnderBoss() { for (let i = food.length - 1; i >= 0; i--) { if (bossOccupies(food[i])) food.splice(i, 1); } }
+function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
+  return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+}
+
+function distanceToBoss(point, boss) {
+  return Math.abs(point.x - boss.x) + Math.abs(point.y - boss.y);
+}
+
+function distanceToNearestBoss(point) {
+  if (!bosses.length) return 999;
+  return Math.min(...bosses.map((boss) => distanceToBoss(point, boss)));
+}
+
+function bossOccupies(boss, point) {
+  return point.x >= boss.x && point.x < boss.x + boss.size && point.y >= boss.y && point.y < boss.y + boss.size;
+}
+
+function bossAt(point) {
+  return bosses.find((boss) => bossOccupies(boss, point)) || null;
+}
+
+function anyBossOccupies(point) {
+  return bosses.some((boss) => bossOccupies(boss, point));
+}
+
+function removeFoodUnderBosses() {
+  for (let i = food.length - 1; i >= 0; i--) {
+    if (anyBossOccupies(food[i])) food.splice(i, 1);
+  }
+}
 
 // ============================================================
 // FOOD
@@ -1118,7 +1161,7 @@ function defaultShopEntry() {
 // ============================================================
 
 function randomEmptyPoint(opts = {}) {
-  for (let attempt = 0; attempt < 400; attempt++) {
+  for (let attempt = 0; attempt < 800; attempt++) {
     const point = { x: Math.floor(Math.random() * GRID.width), y: Math.floor(Math.random() * GRID.height) };
     if (isEmpty(point, opts)) return point;
   }
@@ -1142,7 +1185,7 @@ function allSegmentsInsideGrid(segments) {
 
 function segmentsConflict(segments, ignorePlayerId = null) {
   for (const part of segments) {
-    if (bossOccupies(part)) return true;
+    if (anyBossOccupies(part)) return true;
     if (food.some((item) => item.x === part.x && item.y === part.y)) return true;
     if (bonuses.some((bonus) => bonus.x === part.x && bonus.y === part.y)) return true;
   }
@@ -1165,7 +1208,7 @@ function findSpawnLayout(ignorePlayerId = null) {
     const snake = snakeSegmentsFromHead(head, direction);
     if (!allSegmentsInsideGrid(snake)) continue;
     if (segmentsConflict(snake, ignorePlayerId)) continue;
-    if (distanceToBoss(head) < 6) continue;
+    if (distanceToNearestBoss(head) < BOSS_SPAWN_BUFFER) continue;
     return { direction, snake };
   }
 
@@ -1204,7 +1247,7 @@ function removeEntitiesUnderSnake(player) {
 }
 
 function isEmpty(point, opts = {}) {
-  if (bossOccupies(point)) return false;
+  if (anyBossOccupies(point)) return false;
   if (food.some((item) => item.x === point.x && item.y === point.y)) return false;
   if (bonuses.some((bonus) => bonus.x === point.x && bonus.y === point.y)) return false;
   for (const player of players.values()) {

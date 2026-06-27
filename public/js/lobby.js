@@ -121,8 +121,9 @@ function connect() {
       const alive = msg.players.filter((p) => p.alive).length;
       document.querySelector("#onlineCount").textContent =
         `${msg.players.length} в сети · ${alive} в бою`;
-      if (msg.boss?.phase === "enraged" && liveFeed) {
-        setLiveFeed(`⚠ VØIDR в ярости! Убийств: ${msg.boss.kills || 0}`);
+      const enragedBoss = (msg.bosses || (msg.boss ? [msg.boss] : [])).find((b) => b.phase === "enraged");
+      if (enragedBoss && liveFeed) {
+        setLiveFeed(`⚠ ${enragedBoss.name} в ярости! Убийств: ${enragedBoss.kills || 0}`);
       }
     }
     if (msg.type === "feed" && msg.feed?.[0]) {

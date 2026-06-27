@@ -14,6 +14,7 @@ const minimapCtx = minimap?.getContext("2d");
 const bonusActive = document.querySelector("#bonusActive");
 const bonusHud = document.querySelector("#bonusHud");
 const bossHud = document.querySelector("#bossHud");
+const bossName = document.querySelector("#bossName");
 const bossLabel = document.querySelector("#bossLabel");
 const playersEl = document.querySelector("#players");
 const deathPanel = document.querySelector("#deathPanel");
@@ -40,11 +41,11 @@ const particles = [];
 const state = {
   socket: null,
   id: null,
-  grid: { width: 42, height: 28 },
+  grid: { width: 210, height: 140 },
   food: [],
   bonuses: [],
   players: [],
-  boss: null,
+  bosses: [],
   skins: [],
   shopData: { coins: 0, unlockedSkins: ["default"], activeSkin: "default" },
   joined: false,
@@ -196,19 +197,20 @@ function connect() {
       state.food = message.food;
       state.bonuses = message.bonuses || [];
       state.players = message.players;
-      state.boss = message.boss || null;
+      state.bosses = message.bosses || (message.boss ? [message.boss] : []);
       state.gameMode = message.gameMode || "classic";
       state.taggedPlayerId = message.taggedPlayerId;
       const me = message.players.find((p) => p.id === state.id);
       updateHud(me, prevScore, prevCombo);
       renderPlayers();
       SnakeFX.updateTrails(state.players);
-      if (state.boss?.phase === "enraged" && !state.bossRageSound) {
+      const anyEnraged = state.bosses.some((b) => b.phase === "enraged");
+      if (anyEnraged && !state.bossRageSound) {
         state.bossRageSound = true;
         SnakeAudio.play("boss");
         SnakeFX.addShake(8);
       }
-      if (state.boss?.phase !== "enraged") state.bossRageSound = false;
+      if (!anyEnraged) state.bossRageSound = false;
     }
     if (message.type === "feed") {
       state.feed = message.feed || [];
@@ -279,11 +281,14 @@ function updateHud(me, prevScore = 0, prevCombo = 0) {
     bonusHud.classList.remove("accent");
   }
 
-  if (state.boss) {
-    const enraged = state.boss.phase === "enraged";
-    bossHud.classList.toggle("hidden", !state.boss.angry && !enraged);
-    bossLabel.textContent = enraged ? "ЯРОСТЬ!" : state.boss.angry ? "РЯДОМ!" : "ОХОТА";
-    canvasStage.classList.toggle("bossRage", enraged);
+  const nearestBoss = getNearestBoss(me?.snake?.[0]);
+  if (nearestBoss) {
+    const enraged = nearestBoss.phase === "enraged";
+    const close = nearestBoss.angry || enraged;
+    bossHud.classList.toggle("hidden", !close);
+    if (bossName) bossName.textContent = nearestBoss.name;
+    bossLabel.textContent = enraged ? "ЯРОСТЬ!" : nearestBoss.angry ? "РЯДОМ!" : "ОХОТА";
+    canvasStage.classList.toggle("bossRage", state.bosses.some((b) => b.phase === "enraged"));
   } else {
     bossHud.classList.add("hidden");
     canvasStage.classList.remove("bossRage");
@@ -378,9 +383,18 @@ function updateCameraFollow() {
   state.camera.y += (targetY - state.camera.y) * ease;
 }
 
+function getNearestBoss(point) {
+  if (!point || !state.bosses.length) return null;
+  return state.bosses.reduce((best, boss) => {
+    const dist = Math.abs(point.x - boss.x) + Math.abs(point.y - boss.y);
+    if (!best || dist < best.dist) return { boss, dist };
+    return best;
+  }, null)?.boss || null;
+}
+
 function computeCameraView(width, height) {
   const coarse = window.matchMedia("(hover: none) and (pointer: coarse)").matches;
-  const cell = coarse ? 32 : 36;
+  const cell = coarse ? 28 : 40;
   const halfW = width / cell / 2;
   const halfH = height / cell / 2;
 
@@ -462,15 +476,16 @@ function drawMinimap(view) {
   minimapCtx.lineWidth = 1;
   minimapCtx.strokeRect(ox + 0.5, oy + 0.5, gw * cell - 1, gh * cell - 1);
 
-  for (const item of state.food) {
+  for (let i = 0; i < state.food.length; i += 2) {
+    const item = state.food[i];
     minimapCtx.fillStyle = isGoodFood(item) ? "rgba(61,232,138,0.55)" : "rgba(246,97,81,0.65)";
     minimapCtx.fillRect(ox + item.x * cell + 0.5, oy + item.y * cell + 0.5, Math.max(1, cell - 0.5), Math.max(1, cell - 0.5));
   }
 
-  if (state.boss) {
-    const bs = state.boss.size || 1;
-    minimapCtx.fillStyle = state.boss.phase === "enraged" ? "#ff3b2e" : "#f66151";
-    minimapCtx.fillRect(ox + state.boss.x * cell, oy + state.boss.y * cell, bs * cell, bs * cell);
+  for (const boss of state.bosses) {
+    const bs = boss.size || 1;
+    minimapCtx.fillStyle = boss.phase === "enraged" ? "#ff3b2e" : boss.color || "#f66151";
+    minimapCtx.fillRect(ox + boss.x * cell, oy + boss.y * cell, bs * cell, bs * cell);
   }
 
   for (const player of state.players) {
@@ -494,7 +509,7 @@ function drawMinimap(view) {
 }
 
 function drawBackground(width, height, view) {
-  const enraged = state.boss?.phase === "enraged";
+  const enraged = state.bosses.some((b) => b.phase === "enraged");
   const { cell, mapL, mapT, mapW, mapH, left, right, top, bottom } = view;
 
   ctx.fillStyle = "#020304";
@@ -669,46 +684,48 @@ function drawBonuses(view) {
 }
 
 function drawBoss(view) {
-  if (!state.boss) return;
-  const bossSize = state.boss.size || 1;
-  if (!isInCameraView(state.boss.x + bossSize / 2, state.boss.y + bossSize / 2, view, bossSize + 1)) return;
-  const { cell, offsetX, offsetY } = view;
-  const x = offsetX + state.boss.x * cell;
-  const y = offsetY + state.boss.y * cell;
-  const size = bossSize * cell;
-  const angry = state.boss.angry;
-  const enraged = state.boss.phase === "enraged";
-  const t = Date.now() / 1000;
-  ctx.save();
-  if (enraged) {
-    ctx.shadowColor = "rgba(255,30,20,.95)";
-    ctx.shadowBlur = cell * 1.1;
-  } else if (angry) {
-    ctx.shadowColor = "rgba(246,97,81,.8)";
-    ctx.shadowBlur = cell * 0.7;
+  for (const boss of state.bosses) {
+    const bossSize = boss.size || 1;
+    if (!isInCameraView(boss.x + bossSize / 2, boss.y + bossSize / 2, view, bossSize + 1)) continue;
+    const { cell, offsetX, offsetY } = view;
+    const x = offsetX + boss.x * cell;
+    const y = offsetY + boss.y * cell;
+    const size = bossSize * cell;
+    const angry = boss.angry;
+    const enraged = boss.phase === "enraged";
+    const t = Date.now() / 1000;
+    ctx.save();
+    if (enraged) {
+      ctx.shadowColor = "rgba(255,30,20,.95)";
+      ctx.shadowBlur = cell * 1.1;
+    } else if (angry) {
+      ctx.shadowColor = "rgba(246,97,81,.8)";
+      ctx.shadowBlur = cell * 0.7;
+    }
+    const pulse = 1 + Math.sin(t * 8 + boss.x) * (enraged ? 0.06 : 0.02);
+    const pad = cell * 0.08;
+    const w = (size - pad * 2) * pulse;
+    const h = (size - pad * 2) * pulse;
+    const ox = x + (size - w) / 2;
+    const oy = y + (size - h) / 2;
+    ctx.fillStyle = enraged ? "#ff1a0a" : angry ? "#ff3b2e" : boss.color || "#f66151";
+    roundRect(ox, oy, w, h, cell * 0.22);
+    ctx.fill();
+    const cx = x + size / 2;
+    const cy = y + size / 2;
+    ctx.fillStyle = "#1a0a0a";
+    ctx.beginPath();
+    ctx.arc(cx - cell * 0.14, cy - cell * 0.05, cell * 0.09, 0, Math.PI * 2);
+    ctx.arc(cx + cell * 0.14, cy - cell * 0.05, cell * 0.09, 0, Math.PI * 2);
+    ctx.fill();
+    if (enraged || size >= cell * 1.5) {
+      ctx.fillStyle = "#ff6b5a";
+      ctx.font = `800 ${cell * 0.2}px Orbitron, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.fillText(boss.name, cx, cy + cell * 0.35);
+    }
+    ctx.restore();
   }
-  const pulse = 1 + Math.sin(t * 8) * (enraged ? 0.06 : 0.02);
-  const pad = cell * 0.08;
-  const w = (size - pad * 2) * pulse;
-  const h = (size - pad * 2) * pulse;
-  const ox = x + (size - w) / 2;
-  const oy = y + (size - h) / 2;
-  ctx.fillStyle = enraged ? "#ff1a0a" : angry ? "#ff3b2e" : "#f66151";
-  roundRect(ox, oy, w, h, cell * 0.22);
-  ctx.fill();
-  const cx = x + size / 2, cy = y + size / 2;
-  ctx.fillStyle = "#1a0a0a";
-  ctx.beginPath();
-  ctx.arc(cx - cell * 0.14, cy - cell * 0.05, cell * 0.09, 0, Math.PI * 2);
-  ctx.arc(cx + cell * 0.14, cy - cell * 0.05, cell * 0.09, 0, Math.PI * 2);
-  ctx.fill();
-  if (enraged) {
-    ctx.fillStyle = "#ff6b5a";
-    ctx.font = `800 ${cell * 0.22}px Orbitron, sans-serif`;
-    ctx.textAlign = "center";
-    ctx.fillText("VØIDR", cx, cy + cell * 0.35);
-  }
-  ctx.restore();
 }
 
 function drawPlayers(view) {

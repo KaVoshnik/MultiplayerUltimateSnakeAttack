@@ -70,6 +70,13 @@ html, body.gameBody {
   50% { box-shadow: 0 0 12px rgba(242,95,76,.3); }
 }
 
+.gameMain {
+  display: grid;
+  grid-template-columns: 1fr min(260px, 28vw);
+  min-height: 0;
+  overflow: hidden;
+}
+
 .canvasStage.bossRage {
   animation: arenaRage 0.5s ease infinite alternate;
 }
@@ -90,6 +97,17 @@ html, body.gameBody {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+.gameSidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  min-height: 0;
+  overflow: hidden;
+  background: rgba(3, 6, 10, 0.92);
+  border-left: 1px solid var(--line);
 }
 
 .crtOverlay {
@@ -134,22 +152,13 @@ html, body.gameBody {
   box-shadow: 0 0 10px rgba(249,240,107,.5);
 }
 
-.sidePanel {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: min(260px, 42vw);
-  display: grid;
-  gap: 8px;
-  z-index: 6;
-}
-
-.minimapWrap {
+.minimapWrap,
+.killFeed {
   padding: 10px 12px;
   border-radius: 10px;
-  background: rgba(3,6,10,.82);
+  background: rgba(255,255,255,.03);
   border: 1px solid rgba(61,232,138,.2);
-  backdrop-filter: blur(10px);
+  min-height: 0;
 }
 
 .minimapWrap h3,
@@ -170,19 +179,10 @@ html, body.gameBody {
 }
 
 .killFeed {
-  position: static;
-  width: 100%;
-  max-height: none;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: rgba(3,6,10,.82);
-  border: 1px solid rgba(61,232,138,.2);
-  backdrop-filter: blur(10px);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
-}
-
-.killFeed h3 {
-  margin: 0 0 8px;
 }
 
 .killFeed ul {
@@ -192,7 +192,7 @@ html, body.gameBody {
   display: grid;
   gap: 5px;
   max-height: 170px;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .killFeed li {
@@ -426,8 +426,32 @@ html, body.gameBody {
 
 @media (max-width: 900px), (hover: none) and (pointer: coarse) {
   .touchControls { display: flex; }
-  .sidePanel { width: min(200px, 38vw); }
-  .killFeed ul { max-height: 100px; }
+
+  .gameMain {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr auto;
+  }
+
+  .gameSidebar {
+    flex-direction: row;
+    gap: 8px;
+    padding: 8px 10px;
+    border-left: none;
+    border-top: 1px solid var(--line);
+    max-height: 132px;
+  }
+
+  .minimapWrap,
+  .killFeed {
+    flex: 1;
+    min-width: 0;
+    padding: 8px 10px;
+  }
+
+  .killFeed ul {
+    max-height: 72px;
+  }
+
   .playersFloat { display: none; }
 }
 
