@@ -75,7 +75,9 @@ function connect() {
   state.socket = socket;
 
   socket.addEventListener("open", () => {
-    socket.send(JSON.stringify({ type: "shop_connect", name: state.oldName || SnakeStore.getName() }));
+    if (state.loggedIn && state.oldName) {
+      socket.send(JSON.stringify({ type: "shop_connect", name: state.oldName }));
+    }
   });
 
   socket.addEventListener("close", () => setTimeout(connect, 1200));
@@ -110,7 +112,10 @@ function connect() {
       }
       showToast("Профиль сохранён!");
     }
-    if (msg.type === "notice") showToast(msg.text);
+    if (msg.type === "notice") {
+      if (!state.loggedIn) return;
+      showToast(msg.text);
+    }
   });
 }
 
@@ -277,9 +282,11 @@ initProfileAuth({
     state.me = me;
     state.shopData = me.shopData;
     renderAccount(me);
+    if (state.socket?.readyState === WebSocket.OPEN) {
+      state.socket.send(JSON.stringify({ type: "shop_connect", name: me.name }));
+    }
   } else {
     renderAccount({ loggedIn: false });
   }
+  connect();
 });
-
-connect();

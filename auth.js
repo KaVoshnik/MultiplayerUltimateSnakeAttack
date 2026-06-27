@@ -146,14 +146,16 @@ async function exchangeCode(code, redirectUri) {
     throw new Error(tokens.error_description || tokens.error || "token_exchange_failed");
   }
 
-  const userRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+  const userRes = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
     headers: { Authorization: `Bearer ${tokens.access_token}` },
   });
   const user = await userRes.json();
-  if (!userRes.ok || !user.sub) {
+  const googleId = user.sub || user.id;
+  if (!userRes.ok || !googleId) {
+    console.error("Google OAuth userinfo:", userRes.status, JSON.stringify(user));
     throw new Error("userinfo_failed");
   }
-  return user;
+  return { ...user, sub: googleId };
 }
 
 async function handleRequest(req, res, url, ctx) {

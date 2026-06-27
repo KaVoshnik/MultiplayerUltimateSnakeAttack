@@ -23,6 +23,7 @@ syncSessionUser({
   },
 }).then((me) => {
   if (me?.loggedIn) sessionUser = me;
+  connect();
 });
 
 // Matrix rain + particles hybrid
@@ -116,8 +117,9 @@ let socket = null;
 function connect() {
   socket = new WebSocket(getWebSocketUrl());
   socket.addEventListener("open", () => {
-    const name = sessionUser?.name || SnakeStore.getName();
-    if (name) socket.send(JSON.stringify({ type: "shop_connect", name }));
+    if (sessionUser?.loggedIn && sessionUser.name) {
+      socket.send(JSON.stringify({ type: "shop_connect", name: sessionUser.name }));
+    }
   });
   socket.addEventListener("message", (event) => {
     const msg = JSON.parse(event.data);
@@ -144,4 +146,3 @@ function connect() {
   });
   socket.addEventListener("close", () => setTimeout(connect, 1500));
 }
-connect();
