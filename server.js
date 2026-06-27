@@ -4,17 +4,24 @@ const path = require("path");
 const crypto = require("crypto");
 const os = require("os");
 const db = require("./db");
+const auth = require("./auth");
 
 const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || "0.0.0.0";
 const PUBLIC_DIR = path.join(__dirname, "public");
 
-const GRID = { width: 34, height: 22 };
-const FOOD_TARGET = 32;
-const MIN_GOOD_FOOD = 12;
-const BOSS_MOVE_EVERY = 9;
-const BOSS_CHASE_RANGE = 14;
-const BOSS_RANDOM_MOVE_CHANCE = 0.38;
+const GRID = { width: 210, height: 140 };
+const FOOD_TARGET = 200;
+const MIN_GOOD_FOOD = 70;
+const SNAKE_SPAWN_LEN = 4;
+const SPAWN_MARGIN = 18;
+const SPAWN_CLEAR_RADIUS = 5;
+const BAD_FOOD_HEAD_BUFFER = 3;
+const BOSS_MOVE_EVERY = 6;
+const BOSS_CHASE_RANGE = 22;
+const BOSS_RANDOM_MOVE_CHANCE = 0.24;
+const BOSS_HUNT_RANGE = 7;
+const BOSS_SPAWN_BUFFER = 14;
 const MAX_LEADERS = 20;
 
 const FOOD_TYPES = {
@@ -57,35 +64,35 @@ const BONUS_TYPES = {
 // --- СКИНЫ (цвет тела) + ШЛЯПЫ в едином каталоге ---
 const SHOP_CATALOG = [
   { id: "default", name: "Классик", emoji: "🟢", price: 0, rarity: "common", category: "skin", color: "#33d17a", headColor: "#ffffff" },
-  { id: "fire", name: "Огненная", emoji: "🔥", price: 50, rarity: "common", category: "skin", color: "#f66151", headColor: "#ffbe6f" },
-  { id: "ocean", name: "Океан", emoji: "🌊", price: 50, rarity: "common", category: "skin", color: "#62a0ea", headColor: "#8ff0a4" },
-  { id: "toxic", name: "Токсичная", emoji: "☢️", price: 40, rarity: "common", category: "skin", color: "#84cc16", headColor: "#ecfccb" },
-  { id: "coral", name: "Коралл", emoji: "🪸", price: 45, rarity: "common", category: "skin", color: "#ff7f7f", headColor: "#ffe4e6" },
-  { id: "ice", name: "Ледяная", emoji: "❄️", price: 75, rarity: "rare", category: "skin", color: "#67e8f9", headColor: "#ecfeff" },
-  { id: "midnight", name: "Полночь", emoji: "🌑", price: 80, rarity: "rare", category: "skin", color: "#475569", headColor: "#cbd5e1" },
-  { id: "neon", name: "Неон", emoji: "💛", price: 100, rarity: "rare", category: "skin", color: "#f9f06b", headColor: "#dc8add" },
-  { id: "gold", name: "Золото", emoji: "✨", price: 90, rarity: "rare", category: "skin", color: "#ffd166", headColor: "#fff8e7" },
-  { id: "candy", name: "Кэнди", emoji: "🍬", price: 120, rarity: "epic", category: "skin", color: "#f9a8d4", headColor: "#fce7f3" },
-  { id: "void", name: "Пустота", emoji: "🕳️", price: 150, rarity: "epic", category: "skin", color: "#323a46", headColor: "#aab4c2" },
-  { id: "plasma", name: "Плазма", emoji: "⚡", price: 180, rarity: "epic", category: "skin", color: "#e879f9", headColor: "#fae8ff" },
-  { id: "shadow", name: "Тень", emoji: "🌚", price: 160, rarity: "epic", category: "skin", color: "#1e293b", headColor: "#94a3b8" },
-  { id: "rainbow", name: "Радуга", emoji: "🌈", price: 300, rarity: "legendary", category: "skin", color: "rainbow", headColor: "#ffffff" },
-  { id: "royal", name: "Королевская", emoji: "💜", price: 400, rarity: "legendary", category: "skin", color: "#7c3aed", headColor: "#ffd166" },
-  { id: "lime", name: "Лайм", emoji: "🍋", price: 35, rarity: "common", category: "skin", color: "#a3e635", headColor: "#f7fee7" },
-  { id: "crimson", name: "Багровая", emoji: "🩸", price: 55, rarity: "common", category: "skin", color: "#dc2626", headColor: "#fecaca" },
-  { id: "azure", name: "Лазурь", emoji: "💎", price: 70, rarity: "rare", category: "skin", color: "#0ea5e9", headColor: "#e0f2fe" },
-  { id: "ember", name: "Угли", emoji: "🌋", price: 110, rarity: "rare", category: "skin", color: "#ea580c", headColor: "#fdba74" },
-  { id: "mint", name: "Мята", emoji: "🌿", price: 65, rarity: "common", category: "skin", color: "#2dd4bf", headColor: "#ccfbf1" },
-  { id: "hat_top", name: "Цилиндр змеи", emoji: "🎩", price: 120, rarity: "epic", category: "snake_hat" },
-  { id: "hat_cap", name: "Кепка змеи", emoji: "🧢", price: 20, rarity: "common", category: "snake_hat" },
-  { id: "hat_beanie", name: "Вязаная шапка", emoji: "🧶", price: 30, rarity: "common", category: "snake_hat" },
-  { id: "hat_straw", name: "Соломенная шляпа", emoji: "👒", price: 75, rarity: "rare", category: "snake_hat" },
-  { id: "hat_grad", name: "Выпускная шапка", emoji: "🎓", price: 85, rarity: "rare", category: "snake_hat" },
-  { id: "hat_hard", name: "Строительная каска", emoji: "⛑️", price: 45, rarity: "common", category: "snake_hat" },
-  { id: "hat_party", name: "Праздничный колпак", emoji: "🎉", price: 130, rarity: "epic", category: "snake_hat" },
-  { id: "hat_mushroom", name: "Грибная шляпка", emoji: "🍄", price: 95, rarity: "rare", category: "snake_hat" },
-  { id: "hat_flame", name: "Огненная корона", emoji: "🔥", price: 160, rarity: "epic", category: "snake_hat" },
-  { id: "hat_royal", name: "Королевская корона", emoji: "👸", price: 450, rarity: "legendary", category: "snake_hat" },
+  { id: "fire", name: "Огненная", emoji: "🔥", price: 150, rarity: "common", category: "skin", color: "#f66151", headColor: "#ffbe6f" },
+  { id: "ocean", name: "Океан", emoji: "🌊", price: 150, rarity: "common", category: "skin", color: "#62a0ea", headColor: "#8ff0a4" },
+  { id: "toxic", name: "Токсичная", emoji: "☢️", price: 120, rarity: "common", category: "skin", color: "#84cc16", headColor: "#ecfccb" },
+  { id: "coral", name: "Коралл", emoji: "🪸", price: 140, rarity: "common", category: "skin", color: "#ff7f7f", headColor: "#ffe4e6" },
+  { id: "ice", name: "Ледяная", emoji: "❄️", price: 240, rarity: "rare", category: "skin", color: "#67e8f9", headColor: "#ecfeff" },
+  { id: "midnight", name: "Полночь", emoji: "🌑", price: 260, rarity: "rare", category: "skin", color: "#475569", headColor: "#cbd5e1" },
+  { id: "neon", name: "Неон", emoji: "💛", price: 320, rarity: "rare", category: "skin", color: "#f9f06b", headColor: "#dc8add" },
+  { id: "gold", name: "Золото", emoji: "✨", price: 290, rarity: "rare", category: "skin", color: "#ffd166", headColor: "#fff8e7" },
+  { id: "candy", name: "Кэнди", emoji: "🍬", price: 390, rarity: "epic", category: "skin", color: "#f9a8d4", headColor: "#fce7f3" },
+  { id: "void", name: "Пустота", emoji: "🕳️", price: 480, rarity: "epic", category: "skin", color: "#323a46", headColor: "#aab4c2" },
+  { id: "plasma", name: "Плазма", emoji: "⚡", price: 560, rarity: "epic", category: "skin", color: "#e879f9", headColor: "#fae8ff" },
+  { id: "shadow", name: "Тень", emoji: "🌚", price: 500, rarity: "epic", category: "skin", color: "#1e293b", headColor: "#94a3b8" },
+  { id: "rainbow", name: "Радуга", emoji: "🌈", price: 1000, rarity: "legendary", category: "skin", color: "rainbow", headColor: "#ffffff" },
+  { id: "royal", name: "Королевская", emoji: "💜", price: 1300, rarity: "legendary", category: "skin", color: "#7c3aed", headColor: "#ffd166" },
+  { id: "lime", name: "Лайм", emoji: "🍋", price: 110, rarity: "common", category: "skin", color: "#a3e635", headColor: "#f7fee7" },
+  { id: "crimson", name: "Багровая", emoji: "🩸", price: 170, rarity: "common", category: "skin", color: "#dc2626", headColor: "#fecaca" },
+  { id: "azure", name: "Лазурь", emoji: "💎", price: 220, rarity: "rare", category: "skin", color: "#0ea5e9", headColor: "#e0f2fe" },
+  { id: "ember", name: "Угли", emoji: "🌋", price: 350, rarity: "rare", category: "skin", color: "#ea580c", headColor: "#fdba74" },
+  { id: "mint", name: "Мята", emoji: "🌿", price: 200, rarity: "common", category: "skin", color: "#2dd4bf", headColor: "#ccfbf1" },
+  { id: "hat_top", name: "Цилиндр змеи", emoji: "🎩", price: 390, rarity: "epic", category: "snake_hat" },
+  { id: "hat_cap", name: "Кепка змеи", emoji: "🧢", price: 80, rarity: "common", category: "snake_hat" },
+  { id: "hat_beanie", name: "Вязаная шапка", emoji: "🧶", price: 100, rarity: "common", category: "snake_hat" },
+  { id: "hat_straw", name: "Соломенная шляпа", emoji: "👒", price: 240, rarity: "rare", category: "snake_hat" },
+  { id: "hat_grad", name: "Выпускная шапка", emoji: "🎓", price: 270, rarity: "rare", category: "snake_hat" },
+  { id: "hat_hard", name: "Строительная каска", emoji: "⛑️", price: 140, rarity: "common", category: "snake_hat" },
+  { id: "hat_party", name: "Праздничный колпак", emoji: "🎉", price: 420, rarity: "epic", category: "snake_hat" },
+  { id: "hat_mushroom", name: "Грибная шляпка", emoji: "🍄", price: 300, rarity: "rare", category: "snake_hat" },
+  { id: "hat_flame", name: "Огненная корона", emoji: "🔥", price: 520, rarity: "epic", category: "snake_hat" },
+  { id: "hat_royal", name: "Королевская корона", emoji: "👸", price: 1400, rarity: "legendary", category: "snake_hat" },
 ];
 
 const AVATAR_PRESETS = [
@@ -127,7 +134,7 @@ const sockets = new Map();
 const players = new Map();
 const food = [];
 const bonuses = []; // активные бонус-клетки на поле
-const boss = createBoss();
+const bosses = createBosses();
 let leaderboard = [];
 let shopData = {};
 const shopClients = new Map(); // socket id -> player name (shop-only sessions)
@@ -135,6 +142,10 @@ let tickCount = 0;
 let gameMode = "classic";
 let taggedPlayerId = null; // для Tag Time
 const feedLog = [];
+const feedDedupe = new Map();
+let feedBroadcastTimer = null;
+const FEED_DEDUPE_MS = 4000;
+const FEED_BROADCAST_MS = 1200;
 
 // Тик-интервалы по сложности (отдельный тик для каждого игрока не делаем — берём минимальный)
 let currentTickMs = DIFFICULTIES.normal.tickMs;
@@ -161,6 +172,29 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  const authCtx = {
+    db,
+    shopData,
+    getProfile,
+    persistProfile,
+    cleanName,
+    defaultShopEntry,
+    getRequestOrigin,
+    sendJson,
+  };
+
+  auth.handleRequest(req, res, url, authCtx).then((handled) => {
+    if (handled) return;
+    handleHttpRequest(req, res, url);
+  }).catch((error) => {
+    console.error("HTTP:", error.message);
+    res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Server error");
+  });
+});
+
+function handleHttpRequest(req, res, url) {
+
   if (url.pathname === "/health") {
     sendJson(res, { ok: true, uptime: process.uptime(), players: players.size, sockets: sockets.size });
     return;
@@ -177,7 +211,11 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (url.pathname === "/leaderboard") { sendJson(res, getEnrichedLeaderboard()); return; }
+  if (url.pathname === "/leaderboard") {
+    const sort = url.searchParams.get("sort");
+    sendJson(res, sort === "coins" ? getWealthLeaderboard() : getEnrichedLeaderboard());
+    return;
+  }
   if (url.pathname === "/shop") { sendJson(res, { skins: SHOP_SKINS, catalog: SHOP_CATALOG, playerData: shopData }); return; }
   if (url.pathname === "/catalog") { sendJson(res, { catalog: SHOP_CATALOG, skins: SHOP_SKINS, avatars: AVATAR_PRESETS }); return; }
   if (url.pathname === "/profile") {
@@ -202,7 +240,7 @@ const server = http.createServer((req, res) => {
     });
     res.end(content);
   });
-});
+}
 
 server.on("upgrade", (req, socket) => {
   if (req.headers.upgrade?.toLowerCase() !== "websocket") { socket.destroy(); return; }
@@ -228,6 +266,7 @@ server.on("upgrade", (req, socket) => {
     skins: SHOP_SKINS, catalog: SHOP_CATALOG, avatars: AVATAR_PRESETS,
     modes: MODES, difficulties: DIFFICULTIES,
     shopData: defaultShopEntry(),
+    feed: feedLog.slice(0, 8),
   });
 });
 
@@ -250,6 +289,13 @@ async function bootstrap() {
     setInterval(broadcastState, 250);
     setInterval(spawnBonuses, 8000);
     setInterval(pingClients, 25000);
+    setInterval(() => db.cleanupAuthSessions().catch(() => {}), 60 * 60 * 1000);
+    if (auth.isGoogleAuthEnabled()) {
+      const sampleRedirect = process.env.GOOGLE_REDIRECT_URI
+        || (process.env.PUBLIC_URL ? `${process.env.PUBLIC_URL.replace(/\/$/, "")}/auth/google/callback` : "(из запроса)");
+      console.log("Google OAuth: включён");
+      console.log(`Google OAuth redirect: ${sampleRedirect}`);
+    } else console.log("Google OAuth: выключен (заполни GOOGLE_CLIENT_ID/SECRET в .env)");
     console.log(`Snake Attack → http://localhost:${PORT}`);
     for (const address of getLanAddresses()) console.log(`LAN → http://${address}:${PORT}`);
   });
@@ -300,9 +346,23 @@ function getRequestOrigin(req) {
 // ============================================================
 
 function pushFeed(kind, text, playerName = "") {
-  feedLog.unshift({ id: `${Date.now()}-${Math.random()}`, kind, text, playerName, at: Date.now() });
-  if (feedLog.length > 16) feedLog.length = 16;
-  broadcast({ type: "feed", feed: feedLog.slice(0, 10) });
+  const dedupeKey = `${kind}:${text}`;
+  const now = Date.now();
+  const lastAt = feedDedupe.get(dedupeKey);
+  if (lastAt && now - lastAt < FEED_DEDUPE_MS) return;
+  feedDedupe.set(dedupeKey, now);
+
+  feedLog.unshift({ id: `${now}-${feedLog.length}`, kind, text, playerName, at: now });
+  if (feedLog.length > 12) feedLog.length = 12;
+  scheduleFeedBroadcast();
+}
+
+function scheduleFeedBroadcast() {
+  if (feedBroadcastTimer) return;
+  feedBroadcastTimer = setTimeout(() => {
+    feedBroadcastTimer = null;
+    if (feedLog.length) broadcast({ type: "feed", feed: feedLog.slice(0, 8) });
+  }, FEED_BROADCAST_MS);
 }
 
 function comboMultiplier(combo) {
@@ -316,7 +376,7 @@ function tick() {
   if (players.size === 0) return;
   tickCount += 1;
   fillFood();
-  if (tickCount % (boss.enragedTicks > 0 ? 4 : BOSS_MOVE_EVERY) === 0) moveBoss();
+  if (tickCount % (bosses.some((b) => b.enragedTicks > 0) ? 3 : BOSS_MOVE_EVERY) === 0) moveBosses();
   tickBonusEffects();
 
   const occupied = new Map();
@@ -359,7 +419,11 @@ function tick() {
     if (targetCounts.get(key) > 1) { killPlayer(player, "Столкновение лоб в лоб"); continue; }
 
     // Босс
-    if (bossOccupies(nextHead)) { killPlayer(player, "Босс поймал змейку"); continue; }
+    const killer = bossAt(nextHead);
+    if (killer) {
+      killPlayer(player, `${killer.name} поймал змейку`, { at: nextHead, boss: killer });
+      continue;
+    }
 
     // Другая змейка (ghost бонус позволяет проходить сквозь)
     if (player.activeBonus !== "ghost" && occupied.has(key)) {
@@ -395,10 +459,8 @@ function tick() {
         if (player.activeBonus === "speed_up") mult *= 1.3;
         const pts = Math.round(eaten.points * mult);
         player.score += pts;
-        player.coins = (player.coins || 0) + pts;
         player.best = Math.max(player.best, player.score);
-        savePlayerCoins(player);
-        if (player.combo === 3 || player.combo === 6 || player.combo === 10) {
+        if (player.combo === 5 || player.combo === 10) {
           pushFeed("combo", `🔥 ${player.name}: COMBO ×${player.combo}!`, player.name);
         }
       } else if (player.activeBonus === "shield") {
@@ -437,8 +499,8 @@ function tickBonusEffects() {
 
 function spawnBonuses() {
   if (players.size === 0) return;
-  if (bonuses.length >= 3) return; // максимум 3 бонуса одновременно
-  const point = randomEmptyPoint();
+  if (bonuses.length >= 3) return;
+  const point = randomEmptyPoint({ avoidNearHeads: true });
   if (!point) return;
   const types = Object.keys(BONUS_TYPES);
   const bonusType = types[Math.floor(Math.random() * types.length)];
@@ -450,25 +512,27 @@ function spawnBonuses() {
   }, 15000);
 }
 
-function killPlayer(player, reason) {
-  savePlayerCoins(player);
+function killPlayer(player, reason, opts = {}) {
+  if (!player.alive) return;
   trackDeathStats(player);
-  const wasBoss = reason.toLowerCase().includes("босс");
   player.alive = false;
   player.deaths += 1;
   player.reason = reason;
   player.activeBonus = null;
   player.bonusExpires = null;
   player.combo = 0;
+  const reward = awardSessionCoins(player);
+  player.coinsEarned = reward;
+  if (reward > 0) {
+    player.coins = (player.coins || 0) + reward;
+    savePlayerCoins(player);
+    pushFeed("bonus", `💰 ${player.name}: +${reward} монет`, player.name);
+  }
   recordScore(player);
   pushFeed("death", `💀 ${player.name}: ${reason}`, player.name);
-  if (wasBoss) {
-    boss.kills = (boss.kills || 0) + 1;
-    boss.enragedTicks = 50;
-    boss.size = 2;
-    boss.phase = "enraged";
-    pushFeed("boss", `👹 БОСС уничтожил ${player.name}!`, player.name);
-  }
+  const hitCell = opts.at || player.snake[0];
+  const killerBoss = opts.boss || bossAt(hitCell) || bosses.find((b) => reason.includes(b.name));
+  if (killerBoss) enrageBoss(killerBoss);
 }
 
 function recordScore(player) {
@@ -499,90 +563,179 @@ function broadcastState() {
         activeBonus: p.activeBonus, bonusExpires: p.bonusExpires,
         difficulty: p.difficulty, skin: p.skin, rainbow: p.rainbow,
         combo: p.combo || 0, maxCombo: p.maxCombo || 0,
+        coinsEarned: p.coinsEarned || 0,
         heat: Math.min(100, Math.round((p.score || 0) * 0.4 + (p.combo || 0) * 9)),
         isTagged: gameMode === "tag_time" && p.id === taggedPlayerId,
         avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji,
       };
     }),
-    boss, leaderboard: getEnrichedLeaderboard(), gameMode, taggedPlayerId,
-    feed: feedLog.slice(0, 10),
+    bosses, leaderboard: getEnrichedLeaderboard(), gameMode, taggedPlayerId,
     shopMeta: { skins: SHOP_SKINS, catalog: SHOP_CATALOG },
   });
 }
 
 // ============================================================
-// BOSS
+// BOSSES
 // ============================================================
 
-function createBoss() {
-  return {
-    x: 2,
-    y: 2,
+function createBosses() {
+  const defs = [
+    { id: "void", name: "VØIDR", color: "#f66151", trait: "dash", x: 20, y: 20 },
+    { id: "nyx", name: "NYX-7", color: "#7c3aed", trait: "blink", x: GRID.width - 24, y: 20 },
+    { id: "scrap", name: "SCR4P", color: "#ea580c", trait: "poison", x: Math.floor(GRID.width / 2) - 2, y: GRID.height - 24 },
+  ];
+  return defs.map((def) => ({
+    ...def,
     size: 1,
-    color: "#f66151",
-    name: "VØIDR",
     pulse: 0,
     angry: false,
     phase: "idle",
     enragedTicks: 0,
+    agitatedTicks: 0,
     kills: 0,
     moveCooldown: 0,
-  };
+  }));
 }
 
-function updateBossPhase(dist) {
+function clampBossInGrid(boss) {
+  boss.x = Math.max(0, Math.min(boss.x, GRID.width - boss.size));
+  boss.y = Math.max(0, Math.min(boss.y, GRID.height - boss.size));
+}
+
+function enrageBoss(boss) {
+  boss.kills = (boss.kills || 0) + 1;
+  const wasEnraged = boss.enragedTicks > 0;
+  boss.enragedTicks = Math.max(boss.enragedTicks || 0, 90);
+  boss.size = 2;
+  boss.phase = "enraged";
+  boss.angry = true;
+  clampBossInGrid(boss);
+  if (!wasEnraged) {
+    pushFeed("boss", `👹 ${boss.name} в ЯРОСТИ!`, "");
+    broadcast({ type: "notice", text: `⚠ ${boss.name} вошёл в ярость!` });
+    for (const other of bosses) {
+      if (other.id !== boss.id) other.agitatedTicks = Math.max(other.agitatedTicks || 0, 50);
+    }
+  }
+}
+
+function updateBossPhase(boss, dist) {
   if (boss.enragedTicks > 0) {
     boss.enragedTicks -= 1;
     boss.phase = "enraged";
     boss.size = 2;
     if (boss.enragedTicks <= 0) {
       boss.size = 1;
-      boss.phase = dist <= 5 ? "hunt" : "idle";
+      boss.phase = dist <= BOSS_HUNT_RANGE ? "hunt" : "idle";
     }
     return;
   }
   boss.size = 1;
-  boss.phase = dist <= 5 ? "hunt" : dist <= BOSS_CHASE_RANGE ? "stalk" : "idle";
+  boss.phase = dist <= BOSS_HUNT_RANGE ? "hunt" : dist <= BOSS_CHASE_RANGE ? "stalk" : "idle";
 }
 
-function moveBoss() {
-  if (boss.moveCooldown > 0) {
-    boss.moveCooldown -= 1;
-    boss.pulse = (boss.pulse + 1) % 1000;
-    return;
-  }
-
+function moveBosses() {
   const alive = [...players.values()].filter((p) => p.alive);
-  const target = alive.sort((a, b) => distanceToBoss(a.snake[0]) - distanceToBoss(b.snake[0]))[0];
-  const dist = target ? distanceToBoss(target.snake[0]) : 999;
-  boss.angry = dist <= 5 || boss.phase === "enraged";
-  updateBossPhase(dist);
+  removeFoodUnderBosses();
 
-  let nextMove = null;
-  const chaseRange = boss.phase === "enraged" ? BOSS_CHASE_RANGE + 6 : BOSS_CHASE_RANGE;
-  const randomChance = boss.phase === "enraged" ? 0.15 : BOSS_RANDOM_MOVE_CHANCE;
-  if (target && dist <= chaseRange && Math.random() > randomChance) {
-    const moves = bossMovesToward(target.snake[0]);
-    nextMove = moves.find((m) => bossCanMove(m));
-  } else {
-    const wander = shuffledDirs().find((m) => bossCanMove(m));
-    nextMove = wander;
+  for (const boss of bosses) {
+    if (boss.agitatedTicks > 0) boss.agitatedTicks -= 1;
+
+    if (boss.moveCooldown > 0) {
+      boss.moveCooldown -= 1;
+      boss.pulse = (boss.pulse + 1) % 1000;
+      continue;
+    }
+
+    const target = alive.length
+      ? alive.reduce((best, p) => {
+        const d = distanceToBoss(p.snake[0], boss);
+        return !best || d < best.dist ? { player: p, dist: d } : best;
+      }, null)?.player
+      : null;
+    const dist = target ? distanceToBoss(target.snake[0], boss) : 999;
+    boss.angry = dist <= BOSS_HUNT_RANGE || boss.phase === "enraged";
+    updateBossPhase(boss, dist);
+
+    const head = target?.snake?.[0];
+    let move = pickBossMove(boss, head, dist);
+    if (move) applyBossStep(boss, move);
+
+    if (boss.trait === "dash" && boss.phase === "enraged" && head && Math.random() < 0.38) {
+      move = pickBossMove(boss, head, distanceToBoss(head, boss));
+      if (move) applyBossStep(boss, move);
+    }
+    if (boss.trait === "blink" && (boss.phase === "stalk" || boss.agitatedTicks > 0) && head && dist <= BOSS_CHASE_RANGE && Math.random() < 0.22) {
+      move = pickBossMove(boss, head, distanceToBoss(head, boss));
+      if (move) applyBossStep(boss, move);
+    }
+
+    boss.pulse = (boss.pulse + 1) % 1000;
   }
-
-  if (nextMove) boss.x += nextMove.x; boss.y += nextMove.y;
-  removeFoodUnderBoss();
-  boss.pulse = (boss.pulse + 1) % 1000;
 
   for (const player of alive) {
     const head = player.snake[0];
-    if (bossOccupies(head)) {
-      killPlayer(player, "Босс схватил за голову");
-      boss.moveCooldown = boss.phase === "enraged" ? 3 : 6;
+    const killer = bossAt(head);
+    if (killer) {
+      killPlayer(player, `${killer.name} схватил за голову`, { at: head, boss: killer });
+      killer.moveCooldown = killer.phase === "enraged" ? 2 : 4;
     }
   }
 }
 
-function bossMovesToward(point) {
+function applyBossStep(boss, move) {
+  const prevX = boss.x;
+  const prevY = boss.y;
+  boss.x += move.x;
+  boss.y += move.y;
+  clampBossInGrid(boss);
+
+  if (boss.trait === "poison" && boss.phase === "enraged") {
+    leavePoisonCell(boss, prevX, prevY);
+  }
+}
+
+function leavePoisonCell(boss, x, y) {
+  if (Math.random() > 0.45) return;
+  if (!insideGrid({ x, y }) || anyBossOccupies({ x, y })) return;
+  if (food.some((item) => item.x === x && item.y === y)) return;
+  if (food.length >= FOOD_TARGET + 24) return;
+  food.push(createBadFood({ x, y }));
+}
+
+function pickBossMove(boss, target, dist) {
+  const legal = shuffledDirs().filter((m) => bossCanMove(boss, m));
+  if (!legal.length) return null;
+
+  const chaseRange = boss.phase === "enraged"
+    ? BOSS_CHASE_RANGE + 12
+    : boss.agitatedTicks > 0
+      ? BOSS_CHASE_RANGE + 8
+      : boss.trait === "blink"
+        ? BOSS_CHASE_RANGE + 6
+        : BOSS_CHASE_RANGE;
+  const randomChance = boss.phase === "enraged" ? 0.03 : boss.agitatedTicks > 0 ? 0.1 : BOSS_RANDOM_MOVE_CHANCE;
+  const shouldChase = target && dist <= chaseRange && Math.random() > randomChance;
+
+  const scoreMove = (m) => {
+    const nx = boss.x + m.x;
+    const ny = boss.y + m.y;
+    let score = Math.min(nx, ny, GRID.width - nx - boss.size, GRID.height - ny - boss.size) * 2;
+    if (shouldChase) score -= Math.abs(target.x - nx) + Math.abs(target.y - ny);
+    return score;
+  };
+
+  if (shouldChase) {
+    const preferred = bossMovesToward(boss, target);
+    const direct = preferred.find((m) => bossCanMove(boss, m));
+    if (direct) return direct;
+  }
+
+  legal.sort((a, b) => scoreMove(b) - scoreMove(a));
+  return legal[0];
+}
+
+function bossMovesToward(boss, point) {
   const dx = point.x - boss.x;
   const dy = point.y - boss.y;
   const h = dx === 0 ? [] : [{ x: Math.sign(dx), y: 0 }];
@@ -590,14 +743,46 @@ function bossMovesToward(point) {
   return Math.abs(dx) > Math.abs(dy) ? [...h, ...v, ...shuffledDirs()] : [...v, ...h, ...shuffledDirs()];
 }
 
-function bossCanMove(move) {
+function bossCanMove(boss, move) {
   const next = { x: boss.x + move.x, y: boss.y + move.y };
-  return next.x >= 0 && next.y >= 0 && next.x + boss.size <= GRID.width && next.y + boss.size <= GRID.height;
+  if (next.x < 0 || next.y < 0 || next.x + boss.size > GRID.width || next.y + boss.size > GRID.height) return false;
+  for (const other of bosses) {
+    if (other.id === boss.id) continue;
+    if (rectsOverlap(next.x, next.y, boss.size, boss.size, other.x, other.y, other.size)) return false;
+  }
+  return true;
 }
 
-function distanceToBoss(point) { return Math.abs(point.x - boss.x) + Math.abs(point.y - boss.y); }
-function bossOccupies(point) { return point.x >= boss.x && point.x < boss.x + boss.size && point.y >= boss.y && point.y < boss.y + boss.size; }
-function removeFoodUnderBoss() { for (let i = food.length - 1; i >= 0; i--) { if (bossOccupies(food[i])) food.splice(i, 1); } }
+function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
+  return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+}
+
+function distanceToBoss(point, boss) {
+  return Math.abs(point.x - boss.x) + Math.abs(point.y - boss.y);
+}
+
+function distanceToNearestBoss(point) {
+  if (!bosses.length) return 999;
+  return Math.min(...bosses.map((boss) => distanceToBoss(point, boss)));
+}
+
+function bossOccupies(boss, point) {
+  return point.x >= boss.x && point.x < boss.x + boss.size && point.y >= boss.y && point.y < boss.y + boss.size;
+}
+
+function bossAt(point) {
+  return bosses.find((boss) => bossOccupies(boss, point)) || null;
+}
+
+function anyBossOccupies(point) {
+  return bosses.some((boss) => bossOccupies(boss, point));
+}
+
+function removeFoodUnderBosses() {
+  for (let i = food.length - 1; i >= 0; i--) {
+    if (anyBossOccupies(food[i])) food.splice(i, 1);
+  }
+}
 
 // ============================================================
 // FOOD
@@ -624,9 +809,10 @@ function fillFood() {
     food.push(createGoodFood(point));
   }
   while (food.length < FOOD_TARGET) {
-    const point = randomEmptyPoint();
+    const wantBad = Math.random() < diff;
+    const point = randomEmptyPoint({ avoidNearHeads: wantBad });
     if (!point) return;
-    food.push(Math.random() < diff ? createBadFood(point) : createGoodFood(point));
+    food.push(wantBad ? createBadFood(point) : createGoodFood(point));
   }
 }
 
@@ -912,15 +1098,34 @@ function applyCosmeticsToPlayer(player, name) {
 function trackDeathStats(player) {
   const entry = getProfile(player.name);
   entry.stats.losses = (entry.stats.losses || 0) + 1;
-  entry.stats.best = Math.max(entry.stats.best || 0, player.score);
+  const prevBest = entry.stats.best || 0;
+  entry.stats.best = Math.max(prevBest, player.score);
+  player.beatPersonalBest = player.score > prevBest;
   if (entry.stats.sessionStart) {
     entry.stats.playTimeMs = (entry.stats.playTimeMs || 0) + (Date.now() - entry.stats.sessionStart);
     entry.stats.sessionStart = Date.now();
   }
-  const topScore = Math.max(...[...players.values()].filter((p) => p.alive).map((p) => p.score), player.score);
-  if (player.score > 0 && player.score >= topScore) entry.stats.wins = (entry.stats.wins || 0) + 1;
+  const rivalScores = [...players.values()].filter((p) => p.id !== player.id).map((p) => p.score);
+  const sessionTop = Math.max(player.score, ...rivalScores, 0);
+  player.sessionMvp = player.score > 0 && player.score >= sessionTop;
+  if (player.sessionMvp) entry.stats.wins = (entry.stats.wins || 0) + 1;
   shopData[player.name] = entry;
   persistProfile(player.name, entry);
+}
+
+function awardSessionCoins(player) {
+  const score = player.score || 0;
+  if (score <= 0) return 0;
+
+  let coins = Math.floor(Math.sqrt(score) * 4);
+  coins += Math.floor((player.maxCombo || 0) * 2);
+  if (player.beatPersonalBest) coins += 30;
+  if (player.sessionMvp) coins += 25;
+  if (score >= 200) coins += 15;
+  if (score >= 500) coins += 35;
+  if (score >= 1000) coins += 60;
+
+  return Math.max(3, Math.min(coins, 220));
 }
 
 function trackDisconnectStats(player) {
@@ -942,8 +1147,25 @@ function getEnrichedLeaderboard() {
       avatar: prof.avatar,
       wins: prof.stats?.wins || 0,
       best: Math.max(e.score, prof.stats?.best || 0),
+      coins: prof.coins || 0,
     };
   });
+}
+
+function getWealthLeaderboard() {
+  return Object.entries(shopData)
+    .map(([name, prof]) => ({
+      name,
+      coins: prof.coins || 0,
+      score: prof.coins || 0,
+      avatar: prof.avatar || "😎",
+      wins: prof.stats?.wins || 0,
+      best: prof.stats?.best || 0,
+    }))
+    .filter((e) => e.coins > 0)
+    .sort((a, b) => b.coins - a.coins || a.name.localeCompare(b.name, "ru"))
+    .slice(0, MAX_LEADERS)
+    .map((e, index) => ({ ...e, rank: index + 1 }));
 }
 
 function buySkin(playerId, skinId) {
@@ -969,11 +1191,10 @@ function savePlayerCoins(player) {
 }
 
 function createPlayer(id, name, difficulty, skin) {
-  const direction = { x: 1, y: 0 };
-  const head = findSpawnPoint();
-  const snake = [head];
-  const tailDir = { x: -direction.x, y: -direction.y };
-  for (let i = 1; i < 4; i++) snake.push(wrapPoint({ x: head.x + tailDir.x * i, y: head.y + tailDir.y * i }));
+  const layout = findSpawnLayout();
+  const direction = layout?.direction || { x: 1, y: 0 };
+  const snake = layout?.snake || [{ x: Math.floor(GRID.width / 2), y: Math.floor(GRID.height / 2) }];
+  clearBoardAroundSpawn(snake[0]);
   const shopEntry = getProfile(name);
   const cos = getPlayerCosmetics(name);
   const player = {
@@ -985,10 +1206,12 @@ function createPlayer(id, name, difficulty, skin) {
     snake, direction, nextDirection: direction,
     alive: true, score: 0, coins: shopEntry.coins || 0,
     best: bestForName(name), deaths: 0, reason: "",
+    coinsEarned: 0, beatPersonalBest: false, sessionMvp: false,
     activeBonus: null, bonusExpires: null,
     combo: 0, maxCombo: 0,
     avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji,
   };
+  removeEntitiesUnderSnake(player);
   return player;
 }
 
@@ -1069,27 +1292,103 @@ function defaultShopEntry() {
 // UTILS
 // ============================================================
 
-function randomEmptyPoint() {
-  for (let attempt = 0; attempt < 300; attempt++) {
+function randomEmptyPoint(opts = {}) {
+  for (let attempt = 0; attempt < 800; attempt++) {
     const point = { x: Math.floor(Math.random() * GRID.width), y: Math.floor(Math.random() * GRID.height) };
-    if (isEmpty(point)) return point;
+    if (isEmpty(point, opts)) return point;
   }
   return null;
 }
 
-function findSpawnPoint() {
-  for (let attempt = 0; attempt < 300; attempt++) {
-    const point = { x: 7 + Math.floor(Math.random() * (GRID.width - 16)), y: 7 + Math.floor(Math.random() * (GRID.height - 14)) };
-    if (isEmpty(point)) return point;
+const SPAWN_DIRECTIONS = [{ x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 }];
+
+function snakeSegmentsFromHead(head, direction, length = SNAKE_SPAWN_LEN) {
+  const tailDir = { x: -direction.x, y: -direction.y };
+  const segments = [head];
+  for (let i = 1; i < length; i++) {
+    segments.push({ x: head.x + tailDir.x * i, y: head.y + tailDir.y * i });
   }
-  return { x: Math.floor(GRID.width / 2), y: Math.floor(GRID.height / 2) };
+  return segments;
 }
 
-function isEmpty(point) {
-  if (bossOccupies(point)) return false;
-  if (food.some((i) => i.x === point.x && i.y === point.y)) return false;
-  if (bonuses.some((b) => b.x === point.x && b.y === point.y)) return false;
-  for (const player of players.values()) if (player.snake.some((p) => p.x === point.x && p.y === point.y)) return false;
+function allSegmentsInsideGrid(segments) {
+  return segments.every(insideGrid);
+}
+
+function segmentsConflict(segments, ignorePlayerId = null) {
+  for (const part of segments) {
+    if (anyBossOccupies(part)) return true;
+    if (food.some((item) => item.x === part.x && item.y === part.y)) return true;
+    if (bonuses.some((bonus) => bonus.x === part.x && bonus.y === part.y)) return true;
+  }
+  for (const player of players.values()) {
+    if (ignorePlayerId && player.id === ignorePlayerId) continue;
+    for (const part of player.snake) {
+      if (segments.some((seg) => seg.x === part.x && seg.y === part.y)) return true;
+    }
+  }
+  return false;
+}
+
+function findSpawnLayout(ignorePlayerId = null) {
+  for (let attempt = 0; attempt < 500; attempt++) {
+    const head = {
+      x: SPAWN_MARGIN + Math.floor(Math.random() * (GRID.width - SPAWN_MARGIN * 2)),
+      y: SPAWN_MARGIN + Math.floor(Math.random() * (GRID.height - SPAWN_MARGIN * 2)),
+    };
+    const direction = SPAWN_DIRECTIONS[Math.floor(Math.random() * SPAWN_DIRECTIONS.length)];
+    const snake = snakeSegmentsFromHead(head, direction);
+    if (!allSegmentsInsideGrid(snake)) continue;
+    if (segmentsConflict(snake, ignorePlayerId)) continue;
+    if (distanceToNearestBoss(head) < BOSS_SPAWN_BUFFER) continue;
+    return { direction, snake };
+  }
+
+  for (const direction of SPAWN_DIRECTIONS) {
+    for (let y = SPAWN_MARGIN; y < GRID.height - SPAWN_MARGIN; y++) {
+      for (let x = SPAWN_MARGIN; x < GRID.width - SPAWN_MARGIN; x++) {
+        const snake = snakeSegmentsFromHead({ x, y }, direction);
+        if (!allSegmentsInsideGrid(snake)) continue;
+        if (segmentsConflict(snake, ignorePlayerId)) continue;
+        return { direction, snake };
+      }
+    }
+  }
+  return null;
+}
+
+function clearBoardAroundSpawn(head, radius = SPAWN_CLEAR_RADIUS) {
+  for (let i = food.length - 1; i >= 0; i--) {
+    const item = food[i];
+    if (Math.abs(item.x - head.x) + Math.abs(item.y - head.y) <= radius) food.splice(i, 1);
+  }
+  for (let i = bonuses.length - 1; i >= 0; i--) {
+    const bonus = bonuses[i];
+    if (Math.abs(bonus.x - head.x) + Math.abs(bonus.y - head.y) <= radius) bonuses.splice(i, 1);
+  }
+}
+
+function removeEntitiesUnderSnake(player) {
+  const occupied = new Set(player.snake.map(pointKey));
+  for (let i = food.length - 1; i >= 0; i--) {
+    if (occupied.has(pointKey(food[i]))) food.splice(i, 1);
+  }
+  for (let i = bonuses.length - 1; i >= 0; i--) {
+    if (occupied.has(pointKey(bonuses[i]))) bonuses.splice(i, 1);
+  }
+}
+
+function isEmpty(point, opts = {}) {
+  if (anyBossOccupies(point)) return false;
+  if (food.some((item) => item.x === point.x && item.y === point.y)) return false;
+  if (bonuses.some((bonus) => bonus.x === point.x && bonus.y === point.y)) return false;
+  for (const player of players.values()) {
+    if (player.snake.some((part) => part.x === point.x && part.y === point.y)) return false;
+    if (opts.avoidNearHeads && player.alive) {
+      const head = player.snake[0];
+      if (Math.abs(point.x - head.x) + Math.abs(point.y - head.y) <= BAD_FOOD_HEAD_BUFFER) return false;
+    }
+  }
   return true;
 }
 

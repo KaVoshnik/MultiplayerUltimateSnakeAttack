@@ -9,9 +9,12 @@ const comboHud = document.querySelector("#comboHud");
 const comboVal = document.querySelector("#comboVal");
 const heatFill = document.querySelector("#heatFill");
 const feedList = document.querySelector("#feedList");
+const minimap = document.querySelector("#minimap");
+const minimapCtx = minimap?.getContext("2d");
 const bonusActive = document.querySelector("#bonusActive");
 const bonusHud = document.querySelector("#bonusHud");
 const bossHud = document.querySelector("#bossHud");
+const bossName = document.querySelector("#bossName");
 const bossLabel = document.querySelector("#bossLabel");
 const playersEl = document.querySelector("#players");
 const deathPanel = document.querySelector("#deathPanel");
@@ -38,11 +41,11 @@ const particles = [];
 const state = {
   socket: null,
   id: null,
-  grid: { width: 34, height: 22 },
+  grid: { width: 210, height: 140 },
   food: [],
   bonuses: [],
   players: [],
-  boss: null,
+  bosses: [],
   skins: [],
   shopData: { coins: 0, unlockedSkins: ["default"], activeSkin: "default" },
   joined: false,
@@ -55,6 +58,7 @@ const state = {
   wasAlive: true,
   personalBest: 0,
   bossRageSound: false,
+  camera: { x: 0, y: 0, ready: false },
 };
 
 SnakeFX.initCrt(canvasStage);
@@ -92,12 +96,40 @@ document.addEventListener("keydown", (event) => {
   send({ type: "turn", direction });
 });
 
-document.querySelectorAll("[data-dir]").forEach((button) => {
-  button.addEventListener("click", () => {
+setupTouchControls();
+
+function setupTouchControls() {
+  let touchStart = null;
+  const SWIPE_MIN = 18;
+
+  const sendTurn = (direction) => {
     if (state.menuOpen || !state.joined) return;
-    send({ type: "turn", direction: button.dataset.dir });
-  });
-});
+    send({ type: "turn", direction });
+  };
+
+  canvasStage.addEventListener("touchstart", (event) => {
+    if (event.touches.length !== 1) return;
+    touchStart = { x: event.touches[0].clientX, y: event.touches[0].clientY };
+  }, { passive: true });
+
+  canvasStage.addEventListener("touchmove", (event) => {
+    if (touchStart) event.preventDefault();
+  }, { passive: false });
+
+  canvasStage.addEventListener("touchend", (event) => {
+    if (!touchStart || event.changedTouches.length !== 1) return;
+    const touch = event.changedTouches[0];
+    const dx = touch.clientX - touchStart.x;
+    const dy = touch.clientY - touchStart.y;
+    touchStart = null;
+    if (Math.abs(dx) < SWIPE_MIN && Math.abs(dy) < SWIPE_MIN) return;
+    event.preventDefault();
+    if (Math.abs(dx) > Math.abs(dy)) sendTurn(dx > 0 ? "right" : "left");
+    else sendTurn(dy > 0 ? "down" : "up");
+  }, { passive: false });
+
+  canvasStage.addEventListener("touchcancel", () => { touchStart = null; });
+}
 
 function resizeCanvas() {
   const w = canvasStage.clientWidth;
@@ -143,10 +175,15 @@ function connect() {
     if (message.type === "hello") {
       state.id = message.id;
       state.grid = message.grid;
+      state.camera.ready = false;
       state.skins = message.skins || [];
       if (message.shopData) {
         state.shopData = message.shopData;
         state.personalBest = message.shopData.stats?.best || state.personalBest;
+      }
+      if (message.feed?.length) {
+        state.feed = message.feed;
+        renderFeed();
       }
       sendJoin();
     }
@@ -157,26 +194,24 @@ function connect() {
       state.food = message.food;
       state.bonuses = message.bonuses || [];
       state.players = message.players;
-      state.boss = message.boss || null;
+      state.bosses = message.bosses || (message.boss ? [message.boss] : []);
       state.gameMode = message.gameMode || "classic";
       state.taggedPlayerId = message.taggedPlayerId;
-      if (message.feed) state.feed = message.feed;
       const me = message.players.find((p) => p.id === state.id);
       updateHud(me, prevScore, prevCombo);
       renderPlayers();
-      renderFeed();
       SnakeFX.updateTrails(state.players);
-      if (state.boss?.phase === "enraged" && !state.bossRageSound) {
+      const anyEnraged = state.bosses.some((b) => b.phase === "enraged");
+      if (anyEnraged && !state.bossRageSound) {
         state.bossRageSound = true;
         SnakeAudio.play("boss");
         SnakeFX.addShake(8);
       }
-      if (state.boss?.phase !== "enraged") state.bossRageSound = false;
+      if (!anyEnraged) state.bossRageSound = false;
     }
     if (message.type === "feed") {
       state.feed = message.feed || [];
       renderFeed();
-      SnakeAudio.play("feed");
     }
     if (message.type === "notice") { showToast(message.text); SnakeAudio.play("feed"); }
     if (message.type === "tagged") showToast(message.tagger ? "Тэг передан!" : "Тебе передали тэг!");
@@ -243,11 +278,14 @@ function updateHud(me, prevScore = 0, prevCombo = 0) {
     bonusHud.classList.remove("accent");
   }
 
-  if (state.boss) {
-    const enraged = state.boss.phase === "enraged";
-    bossHud.classList.toggle("hidden", !state.boss.angry && !enraged);
-    bossLabel.textContent = enraged ? "ЯРОСТЬ!" : state.boss.angry ? "РЯДОМ!" : "ОХОТА";
-    canvasStage.classList.toggle("bossRage", enraged);
+  const nearestBoss = getNearestBoss(me?.snake?.[0]);
+  if (nearestBoss) {
+    const enraged = nearestBoss.phase === "enraged";
+    const close = nearestBoss.angry || enraged;
+    bossHud.classList.toggle("hidden", !close);
+    if (bossName) bossName.textContent = nearestBoss.name;
+    bossLabel.textContent = enraged ? "ЯРОСТЬ!" : nearestBoss.angry ? "РЯДОМ!" : "ОХОТА";
+    canvasStage.classList.toggle("bossRage", state.bosses.some((b) => b.phase === "enraged"));
   } else {
     bossHud.classList.add("hidden");
     canvasStage.classList.remove("bossRage");
@@ -255,6 +293,7 @@ function updateHud(me, prevScore = 0, prevCombo = 0) {
 
   if (state.joined && me) {
     if (me.alive) {
+      if (!state.wasAlive) state.camera.ready = false;
       state.wasAlive = true;
       deathPanel.classList.add("hidden");
     } else if (state.wasAlive) {
@@ -263,7 +302,7 @@ function updateHud(me, prevScore = 0, prevCombo = 0) {
       deathStats.innerHTML = `
         <span>Очки <b>${me.score}</b></span>
         <span>Макс. комбо <b>×${me.maxCombo || 0}</b></span>
-        <span>Монеты <b>${me.coins || 0}</b></span>
+        <span>Монеты <b>+${me.coinsEarned || 0}</b></span>
       `;
       deathPanel.classList.remove("hidden");
       SnakeFX.addShake(14);
@@ -276,12 +315,26 @@ function updateHud(me, prevScore = 0, prevCombo = 0) {
 
 function renderFeed() {
   if (!feedList) return;
-  feedList.innerHTML = "";
-  for (const ev of (state.feed || []).slice(0, 8)) {
+  const items = (state.feed || []).slice(0, 8);
+  const key = items.map((ev) => ev.id).join("|");
+  if (key === renderFeed.lastKey) return;
+  renderFeed.lastKey = key;
+
+  const keepIds = new Set(items.map((ev) => ev.id));
+  for (const li of [...feedList.children]) {
+    if (!keepIds.has(li.dataset.id)) li.remove();
+  }
+
+  const have = new Set([...feedList.children].map((li) => li.dataset.id));
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    const ev = items[i];
+    if (have.has(ev.id)) continue;
     const li = document.createElement("li");
     li.className = ev.kind || "";
+    if (i === 0) li.classList.add("feed-new");
+    li.dataset.id = ev.id;
     li.textContent = ev.text;
-    feedList.append(li);
+    feedList.prepend(li);
   }
 }
 
@@ -305,68 +358,214 @@ function setMenu(open) {
   pausePanel.classList.toggle("hidden", !open);
 }
 
+function clamp(v, lo, hi) {
+  return Math.max(lo, Math.min(hi, v));
+}
+
+function updateCameraFollow() {
+  const me = state.players.find((p) => p.id === state.id);
+  const head = me?.snake?.[0];
+  const targetX = head ? head.x + 0.5 : state.grid.width / 2;
+  const targetY = head ? head.y + 0.5 : state.grid.height / 2;
+
+  if (!state.camera.ready) {
+    state.camera.x = targetX;
+    state.camera.y = targetY;
+    state.camera.ready = true;
+    return;
+  }
+
+  const ease = head && me.alive ? 0.22 : 0.1;
+  state.camera.x += (targetX - state.camera.x) * ease;
+  state.camera.y += (targetY - state.camera.y) * ease;
+}
+
+function getNearestBoss(point) {
+  if (!point || !state.bosses.length) return null;
+  return state.bosses.reduce((best, boss) => {
+    const dist = Math.abs(point.x - boss.x) + Math.abs(point.y - boss.y);
+    if (!best || dist < best.dist) return { boss, dist };
+    return best;
+  }, null)?.boss || null;
+}
+
+function computeCameraView(width, height) {
+  const coarse = window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+  const cell = coarse ? 22 : 40;
+  const halfW = width / cell / 2;
+  const halfH = height / cell / 2;
+
+  let camX = state.camera.x;
+  let camY = state.camera.y;
+
+  if (state.grid.width <= halfW * 2) camX = state.grid.width / 2;
+  else camX = clamp(camX, halfW, state.grid.width - halfW);
+
+  if (state.grid.height <= halfH * 2) camY = state.grid.height / 2;
+  else camY = clamp(camY, halfH, state.grid.height - halfH);
+
+  const offsetX = width / 2 - camX * cell;
+  const offsetY = height / 2 - camY * cell;
+
+  return {
+    cell,
+    offsetX,
+    offsetY,
+    camX,
+    camY,
+    mapL: offsetX,
+    mapT: offsetY,
+    mapW: state.grid.width * cell,
+    mapH: state.grid.height * cell,
+    left: camX - halfW,
+    right: camX + halfW,
+    top: camY - halfH,
+    bottom: camY + halfH,
+  };
+}
+
+function isInCameraView(gx, gy, view, margin = 1) {
+  return gx >= view.left - margin && gx <= view.right + margin
+    && gy >= view.top - margin && gy <= view.bottom + margin;
+}
+
 function draw() {
   const ratio = window.devicePixelRatio || 1;
   const width = board.width / ratio;
   const height = board.height / ratio;
-  const cell = Math.min(width / state.grid.width, height / state.grid.height);
-  const offsetX = (width - cell * state.grid.width) / 2;
-  const offsetY = (height - cell * state.grid.height) / 2;
+  updateCameraFollow();
+  const view = computeCameraView(width, height);
   const shake = SnakeFX.getShakeOffset();
 
   ctx.save();
   ctx.translate(shake.x, shake.y);
   ctx.clearRect(-shake.x, -shake.y, width, height);
-  drawBackground(width, height, cell, offsetX, offsetY);
-  SnakeFX.drawTrails(ctx, cell, offsetX, offsetY);
-  drawFood(cell, offsetX, offsetY);
-  drawBonuses(cell, offsetX, offsetY);
-  drawBoss(cell, offsetX, offsetY);
-  drawPlayers(cell, offsetX, offsetY);
-  drawParticles(cell, offsetX, offsetY);
-  SnakeFX.drawFloaters(ctx, cell, offsetX, offsetY);
+  drawBackground(width, height, view);
+  SnakeFX.drawTrails(ctx, view.cell, view.offsetX, view.offsetY);
+  drawFood(view);
+  drawBonuses(view);
+  drawBoss(view);
+  drawPlayers(view);
+  drawParticles(view);
+  SnakeFX.drawFloaters(ctx, view.cell, view.offsetX, view.offsetY);
   ctx.restore();
 
   SnakeFX.drawConfetti(ctx, width, height);
   SnakeFX.drawCrt(width, height);
+  drawMinimap(view);
   requestAnimationFrame(draw);
 }
 
-function drawBackground(width, height, cell, offsetX, offsetY) {
-  const enraged = state.boss?.phase === "enraged";
-  const grad = ctx.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, width * 0.65);
-  grad.addColorStop(0, enraged ? "#180808" : "#0c1218");
-  grad.addColorStop(1, enraged ? "#080202" : "#040608");
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, width, height);
+function drawMinimap(view) {
+  if (!minimapCtx || !minimap) return;
+  const gw = state.grid.width;
+  const gh = state.grid.height;
+  const w = minimap.width;
+  const h = minimap.height;
+  const cell = Math.min(w / gw, h / gh);
+  const ox = (w - gw * cell) / 2;
+  const oy = (h - gh * cell) / 2;
 
-  const t = Date.now() / 1000;
-  ctx.strokeStyle = enraged ? "rgba(255,59,46,0.07)" : "rgba(61, 232, 138, 0.04)";
-  ctx.lineWidth = Math.max(1, cell * 0.03);
-  for (let x = 0; x <= state.grid.width; x++) {
-    const px = Math.round(offsetX + x * cell);
-    ctx.beginPath();
-    ctx.moveTo(px, offsetY);
-    ctx.lineTo(px, offsetY + state.grid.height * cell);
-    ctx.stroke();
-  }
-  for (let y = 0; y <= state.grid.height; y++) {
-    const py = Math.round(offsetY + y * cell);
-    ctx.beginPath();
-    ctx.moveTo(offsetX, py);
-    ctx.lineTo(offsetX + state.grid.width * cell, py);
-    ctx.stroke();
+  minimapCtx.clearRect(0, 0, w, h);
+  minimapCtx.fillStyle = "#060a0e";
+  minimapCtx.fillRect(ox, oy, gw * cell, gh * cell);
+  minimapCtx.strokeStyle = "rgba(61,232,138,0.45)";
+  minimapCtx.lineWidth = 1;
+  minimapCtx.strokeRect(ox + 0.5, oy + 0.5, gw * cell - 1, gh * cell - 1);
+
+  for (let i = 0; i < state.food.length; i += 2) {
+    const item = state.food[i];
+    minimapCtx.fillStyle = isGoodFood(item) ? "rgba(61,232,138,0.55)" : "rgba(246,97,81,0.65)";
+    minimapCtx.fillRect(ox + item.x * cell + 0.5, oy + item.y * cell + 0.5, Math.max(1, cell - 0.5), Math.max(1, cell - 0.5));
   }
 
-  if (enraged) {
-    ctx.fillStyle = `rgba(255,59,46,${0.03 + Math.sin(t * 6) * 0.02})`;
-    ctx.fillRect(offsetX, offsetY, state.grid.width * cell, state.grid.height * cell);
+  for (const boss of state.bosses) {
+    const bs = boss.size || 1;
+    minimapCtx.fillStyle = boss.phase === "enraged" ? "#ff3b2e" : boss.color || "#f66151";
+    minimapCtx.fillRect(ox + boss.x * cell, oy + boss.y * cell, bs * cell, bs * cell);
+  }
+
+  for (const player of state.players) {
+    const head = player.snake?.[0];
+    if (!head) continue;
+    minimapCtx.fillStyle = player.id === state.id ? "#ffffff" : player.color;
+    minimapCtx.beginPath();
+    minimapCtx.arc(ox + head.x * cell + cell / 2, oy + head.y * cell + cell / 2, Math.max(1.5, cell * 0.35), 0, Math.PI * 2);
+    minimapCtx.fill();
+  }
+
+  if (view) {
+    const vx = ox + view.left * cell;
+    const vy = oy + view.top * cell;
+    const vw = (view.right - view.left) * cell;
+    const vh = (view.bottom - view.top) * cell;
+    minimapCtx.strokeStyle = "rgba(249,240,107,0.9)";
+    minimapCtx.lineWidth = 1.5;
+    minimapCtx.strokeRect(vx + 0.5, vy + 0.5, vw - 1, vh - 1);
   }
 }
 
-function drawFood(cell, offsetX, offsetY) {
+function drawBackground(width, height, view) {
+  const enraged = state.bosses.some((b) => b.phase === "enraged");
+  const { cell, mapL, mapT, mapW, mapH, left, right, top, bottom } = view;
+
+  ctx.fillStyle = "#020304";
+  ctx.fillRect(0, 0, width, height);
+
+  const mapGrad = ctx.createRadialGradient(
+    mapL + mapW / 2, mapT + mapH / 2, 0,
+    mapL + mapW / 2, mapT + mapH / 2, Math.max(mapW, mapH) * 0.65,
+  );
+  mapGrad.addColorStop(0, enraged ? "#180808" : "#0c1218");
+  mapGrad.addColorStop(1, enraged ? "#080202" : "#040608");
+  ctx.fillStyle = mapGrad;
+  ctx.fillRect(mapL, mapT, mapW, mapH);
+
+  const t = Date.now() / 1000;
+  ctx.strokeStyle = enraged ? "rgba(255,59,46,0.12)" : "rgba(61, 232, 138, 0.07)";
+  ctx.lineWidth = Math.max(1, cell * 0.04);
+
+  const gridLeft = Math.max(0, Math.floor(left - 1));
+  const gridRight = Math.min(state.grid.width, Math.ceil(right + 1));
+  const gridTop = Math.max(0, Math.floor(top - 1));
+  const gridBottom = Math.min(state.grid.height, Math.ceil(bottom + 1));
+
+  for (let x = gridLeft; x <= gridRight; x++) {
+    const px = Math.round(mapL + x * cell);
+    ctx.beginPath();
+    ctx.moveTo(px, mapT);
+    ctx.lineTo(px, mapT + mapH);
+    ctx.stroke();
+  }
+  for (let y = gridTop; y <= gridBottom; y++) {
+    const py = Math.round(mapT + y * cell);
+    ctx.beginPath();
+    ctx.moveTo(mapL, py);
+    ctx.lineTo(mapL + mapW, py);
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = enraged ? "rgba(255,59,46,0.55)" : "rgba(61, 232, 138, 0.35)";
+  ctx.lineWidth = Math.max(2, cell * 0.08);
+  ctx.strokeRect(mapL, mapT, mapW, mapH);
+
+  if (enraged) {
+    ctx.fillStyle = `rgba(255,59,46,${0.03 + Math.sin(t * 6) * 0.02})`;
+    ctx.fillRect(mapL, mapT, mapW, mapH);
+  }
+
+  const edge = ctx.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.25, width / 2, height / 2, Math.max(width, height) * 0.58);
+  edge.addColorStop(0, "rgba(0,0,0,0)");
+  edge.addColorStop(1, "rgba(0,0,0,0.45)");
+  ctx.fillStyle = edge;
+  ctx.fillRect(0, 0, width, height);
+}
+
+function drawFood(view) {
+  const { cell, offsetX, offsetY } = view;
   const t = Date.now() / 1000;
   for (const item of state.food) {
+    if (!isInCameraView(item.x, item.y, view)) continue;
     const kind = resolveFoodKind(item);
     const good = isGoodFood(item);
     const cx = offsetX + item.x * cell + cell / 2;
@@ -453,9 +652,11 @@ function drawFoodShape(kind, cx, cy, r, cell) {
   }
 }
 
-function drawBonuses(cell, offsetX, offsetY) {
+function drawBonuses(view) {
+  const { cell, offsetX, offsetY } = view;
   const t = Date.now() / 1000;
   for (const bonus of state.bonuses) {
+    if (!isInCameraView(bonus.x, bonus.y, view)) continue;
     const x = offsetX + bonus.x * cell;
     const y = offsetY + bonus.y * cell;
     const color = bonus.def?.color || "#c77dff";
@@ -479,56 +680,63 @@ function drawBonuses(cell, offsetX, offsetY) {
   }
 }
 
-function drawBoss(cell, offsetX, offsetY) {
-  if (!state.boss) return;
-  const bossSize = state.boss.size || 1;
-  const x = offsetX + state.boss.x * cell;
-  const y = offsetY + state.boss.y * cell;
-  const size = bossSize * cell;
-  const angry = state.boss.angry;
-  const enraged = state.boss.phase === "enraged";
-  const t = Date.now() / 1000;
-  ctx.save();
-  if (enraged) {
-    ctx.shadowColor = "rgba(255,30,20,.95)";
-    ctx.shadowBlur = cell * 1.1;
-  } else if (angry) {
-    ctx.shadowColor = "rgba(246,97,81,.8)";
-    ctx.shadowBlur = cell * 0.7;
+function drawBoss(view) {
+  for (const boss of state.bosses) {
+    const bossSize = boss.size || 1;
+    if (!isInCameraView(boss.x + bossSize / 2, boss.y + bossSize / 2, view, bossSize + 1)) continue;
+    const { cell, offsetX, offsetY } = view;
+    const x = offsetX + boss.x * cell;
+    const y = offsetY + boss.y * cell;
+    const size = bossSize * cell;
+    const angry = boss.angry;
+    const enraged = boss.phase === "enraged";
+    const t = Date.now() / 1000;
+    ctx.save();
+    if (enraged) {
+      ctx.shadowColor = "rgba(255,30,20,.95)";
+      ctx.shadowBlur = cell * 1.1;
+    } else if (angry) {
+      ctx.shadowColor = "rgba(246,97,81,.8)";
+      ctx.shadowBlur = cell * 0.7;
+    }
+    const pulse = 1 + Math.sin(t * 8 + boss.x) * (enraged ? 0.06 : 0.02);
+    const pad = cell * 0.08;
+    const w = (size - pad * 2) * pulse;
+    const h = (size - pad * 2) * pulse;
+    const ox = x + (size - w) / 2;
+    const oy = y + (size - h) / 2;
+    ctx.fillStyle = enraged ? "#ff1a0a" : angry ? "#ff3b2e" : boss.color || "#f66151";
+    roundRect(ox, oy, w, h, cell * 0.22);
+    ctx.fill();
+    const cx = x + size / 2;
+    const cy = y + size / 2;
+    ctx.fillStyle = "#1a0a0a";
+    ctx.beginPath();
+    ctx.arc(cx - cell * 0.14, cy - cell * 0.05, cell * 0.09, 0, Math.PI * 2);
+    ctx.arc(cx + cell * 0.14, cy - cell * 0.05, cell * 0.09, 0, Math.PI * 2);
+    ctx.fill();
+    if (enraged || size >= cell * 1.5) {
+      ctx.fillStyle = "#ff6b5a";
+      ctx.font = `800 ${cell * 0.2}px Orbitron, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.fillText(boss.name, cx, cy + cell * 0.35);
+    }
+    ctx.restore();
   }
-  const pulse = 1 + Math.sin(t * 8) * (enraged ? 0.06 : 0.02);
-  const pad = cell * 0.08;
-  const w = (size - pad * 2) * pulse;
-  const h = (size - pad * 2) * pulse;
-  const ox = x + (size - w) / 2;
-  const oy = y + (size - h) / 2;
-  ctx.fillStyle = enraged ? "#ff1a0a" : angry ? "#ff3b2e" : "#f66151";
-  roundRect(ox, oy, w, h, cell * 0.22);
-  ctx.fill();
-  const cx = x + size / 2, cy = y + size / 2;
-  ctx.fillStyle = "#1a0a0a";
-  ctx.beginPath();
-  ctx.arc(cx - cell * 0.14, cy - cell * 0.05, cell * 0.09, 0, Math.PI * 2);
-  ctx.arc(cx + cell * 0.14, cy - cell * 0.05, cell * 0.09, 0, Math.PI * 2);
-  ctx.fill();
-  if (enraged) {
-    ctx.fillStyle = "#ff6b5a";
-    ctx.font = `800 ${cell * 0.22}px Orbitron, sans-serif`;
-    ctx.textAlign = "center";
-    ctx.fillText("VØIDR", cx, cy + cell * 0.35);
-  }
-  ctx.restore();
 }
 
-function drawPlayers(cell, offsetX, offsetY) {
+function drawPlayers(view) {
+  const { cell, offsetX, offsetY } = view;
   for (const player of state.players) {
     ctx.globalAlpha = player.alive ? 1 : 0.35;
     const isTagged = state.gameMode === "tag_time" && player.id === state.taggedPlayerId;
     const head = player.snake[0];
     const neck = player.snake[1] || head;
-    const dirX = head.x - neck.x, dirY = head.y - neck.y;
+    const dirX = head.x - neck.x;
+    const dirY = head.y - neck.y;
 
     player.snake.forEach((part, index) => {
+      if (!isInCameraView(part.x, part.y, view, 0.5)) return;
       const px = offsetX + part.x * cell;
       const py = offsetY + part.y * cell;
       const bodyColor = player.rainbow ? `hsl(${(index * 40 + Date.now() / 20) % 360}, 80%, 60%)` : player.color;
@@ -591,9 +799,11 @@ function spawnEatParticles(player) {
   }
 }
 
-function drawParticles(cell, offsetX, offsetY) {
+function drawParticles(view) {
+  const { cell, offsetX, offsetY } = view;
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
+    if (!isInCameraView(p.x, p.y, view, 0.5)) continue;
     p.x += p.vx; p.y += p.vy; p.life -= 0.04;
     if (p.life <= 0) { particles.splice(i, 1); continue; }
     ctx.globalAlpha = p.life;

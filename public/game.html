@@ -17,7 +17,7 @@
         <div class="hudStat"><span>Монеты</span><strong id="coins">0</strong></div>
         <div class="hudStat hidden" id="comboHud"><span>Комбо</span><strong id="comboVal">×0</strong></div>
         <div class="hudStat bonus" id="bonusHud"><span>Бонус</span><strong id="bonusActive">—</strong></div>
-        <div class="hudStat warn hidden" id="bossHud"><span>VØIDR</span><strong id="bossLabel">РЯДОМ!</strong></div>
+        <div class="hudStat warn hidden" id="bossHud"><span id="bossName">БОСС</span><strong id="bossLabel">РЯДОМ!</strong></div>
       </div>
       <div class="gameHudRight">
         <div class="heatMeter" id="heatMeter" title="Уровень розыска">
@@ -30,45 +30,46 @@
       </div>
     </header>
 
-    <div class="canvasStage" id="canvasStage">
-      <canvas id="board" aria-label="Игровое поле"></canvas>
+    <div class="gameMain">
+      <div class="canvasStage" id="canvasStage">
+        <canvas id="board" aria-label="Игровое поле"></canvas>
 
-      <aside class="killFeed" id="killFeed">
-        <h3>// СОБЫТИЯ</h3>
-        <ul id="feedList"></ul>
+        <div class="playersFloat">
+          <h3>Игроки</h3>
+          <ol id="players"></ol>
+        </div>
+
+        <div class="overlayPanel glass hidden" id="pausePanel">
+          <h2>ПАУЗА</h2>
+          <div class="overlayActions">
+            <button type="button" class="btn primary" id="resumeBtn">Продолжить</button>
+            <button type="button" class="btn" id="restartBtn">Заново</button>
+            <a href="/" class="btn ghost">В лобби</a>
+          </div>
+        </div>
+
+        <div class="overlayPanel glass hidden epicDeath" id="deathPanel">
+          <p class="deathKicker">NEON DISTRICT</p>
+          <h2 class="glitchTitle" data-text="FLATLINED">FLATLINED</h2>
+          <strong id="deathReason" class="deathReasonText"></strong>
+          <div class="deathStats" id="deathStats"></div>
+          <div class="overlayActions">
+            <button type="button" class="btn primary" id="retryBtn">РЕСПАВН</button>
+            <a href="/" class="btn ghost">В лобби</a>
+          </div>
+        </div>
+      </div>
+
+      <aside class="gameSidebar">
+        <div class="minimapWrap">
+          <h3>// КАРТА</h3>
+          <canvas id="minimap" width="168" height="112" aria-label="Мини-карта"></canvas>
+        </div>
+        <div class="killFeed" id="killFeed">
+          <h3>// СОБЫТИЯ</h3>
+          <ul id="feedList"></ul>
+        </div>
       </aside>
-
-      <div class="playersFloat">
-        <h3>Игроки</h3>
-        <ol id="players"></ol>
-      </div>
-
-      <div class="overlayPanel glass hidden" id="pausePanel">
-        <h2>ПАУЗА</h2>
-        <div class="overlayActions">
-          <button type="button" class="btn primary" id="resumeBtn">Продолжить</button>
-          <button type="button" class="btn" id="restartBtn">Заново</button>
-          <a href="/" class="btn ghost">В лобби</a>
-        </div>
-      </div>
-
-      <div class="overlayPanel glass hidden epicDeath" id="deathPanel">
-        <p class="deathKicker">NEON DISTRICT</p>
-        <h2 class="glitchTitle" data-text="FLATLINED">FLATLINED</h2>
-        <strong id="deathReason" class="deathReasonText"></strong>
-        <div class="deathStats" id="deathStats"></div>
-        <div class="overlayActions">
-          <button type="button" class="btn primary" id="retryBtn">РЕСПАВН</button>
-          <a href="/" class="btn ghost">В лобби</a>
-        </div>
-      </div>
-    </div>
-
-    <div class="gameControls">
-      <button type="button" class="pad" data-dir="up">↑</button>
-      <button type="button" class="pad" data-dir="left">←</button>
-      <button type="button" class="pad" data-dir="down">↓</button>
-      <button type="button" class="pad" data-dir="right">→</button>
     </div>
   </div>
 

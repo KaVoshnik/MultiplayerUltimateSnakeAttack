@@ -39,7 +39,89 @@ async function init() {
     );
 
     CREATE INDEX IF NOT EXISTS idx_leaderboard_score ON leaderboard (score DESC);
+
+    CREATE TABLE IF NOT EXISTS google_users (
+      google_id VARCHAR(128) PRIMARY KEY,
+      player_name VARCHAR(32) NOT NULL UNIQUE,
+      email VARCHAR(255),
+      display_name VARCHAR(64),
+      picture_url TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS auth_sessions (
+      token VARCHAR(64) PRIMARY KEY,
+      google_id VARCHAR(128) NOT NULL,
+      player_name VARCHAR(32) NOT NULL,
+      email VARCHAR(255),
+      picture_url TEXT,
+      expires_at TIMESTAMPTZ NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires ON auth_sessions (expires_at);
   `);
+}
+
+async function findGoogleUser(googleId) {
+  const { rows } = await pool.query(
+    "SELECT google_id, player_name, email, display_name, picture_url FROM google_users WHERE google_id = $1",
+    [googleId],
+  );
+  return rows[0] || null;
+}
+
+async function findGoogleUserByPlayerName(playerName) {
+  const { rows } = await pool.query(
+    "SELECT google_id, player_name FROM google_users WHERE player_name = $1",
+    [playerName],
+  );
+  return rows[0] || null;
+}
+
+async function linkGoogleUser({ googleId, playerName, email, displayName, pictureUrl }) {
+  await pool.query(
+    `INSERT INTO google_users (google_id, player_name, email, display_name, picture_url)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (google_id) DO UPDATE SET
+       player_name = EXCLUDED.player_name,
+       email = EXCLUDED.email,
+       display_name = EXCLUDED.display_name,
+       picture_url = EXCLUDED.picture_url`,
+    [googleId, playerName, email || null, displayName || playerName, pictureUrl || null],
+  );
+}
+
+async function createAuthSession(token, { googleId, playerName, email, pictureUrl }) {
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  await pool.query(
+    `INSERT INTO auth_sessions (token, google_id, player_name, email, picture_url, expires_at)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [token, googleId, playerName, email || null, pictureUrl || null, expiresAt],
+  );
+  return { token, player_name: playerName, email, picture_url: pictureUrl, expires_at: expiresAt };
+}
+
+async function getAuthSession(token) {
+  const { rows } = await pool.query(
+    `SELECT token, google_id, player_name, email, picture_url, expires_at
+     FROM auth_sessions WHERE token = $1`,
+    [token],
+  );
+  const row = rows[0];
+  if (!row) return null;
+  if (new Date(row.expires_at).getTime() < Date.now()) {
+    await pool.query("DELETE FROM auth_sessions WHERE token = $1", [token]);
+    return null;
+  }
+  return row;
+}
+
+async function deleteAuthSession(token) {
+  await pool.query("DELETE FROM auth_sessions WHERE token = $1", [token]);
+}
+
+async function cleanupAuthSessions() {
+  await pool.query("DELETE FROM auth_sessions WHERE expires_at < NOW()");
 }
 
 function rowToRawProfile(row) {
@@ -151,7 +233,7 @@ async function upsertLeaderboard(name, score, difficulty) {
 }
 
 async function resetAll() {
-  await pool.query("TRUNCATE players, leaderboard RESTART IDENTITY");
+  await pool.query("TRUNCATE players, leaderboard, google_users, auth_sessions RESTART IDENTITY");
 }
 
 async function close() {
@@ -168,4 +250,11 @@ module.exports = {
   upsertLeaderboard,
   resetAll,
   close,
+  findGoogleUser,
+  findGoogleUserByPlayerName,
+  linkGoogleUser,
+  createAuthSession,
+  getAuthSession,
+  deleteAuthSession,
+  cleanupAuthSessions,
 };

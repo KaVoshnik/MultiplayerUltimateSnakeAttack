@@ -12,6 +12,16 @@ if (audioToggle) {
 }
 updateUserBar(shopData, settings.name);
 
+initAuth({
+  onLogin(me) {
+    shopData = me.shopData || shopData;
+    settings.name = me.name;
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: "shop_connect", name: me.name }));
+    }
+  },
+});
+
 // Matrix rain + particles hybrid
 const pCanvas = document.querySelector("#particles");
 const pCtx = pCanvas.getContext("2d");
@@ -121,8 +131,9 @@ function connect() {
       const alive = msg.players.filter((p) => p.alive).length;
       document.querySelector("#onlineCount").textContent =
         `${msg.players.length} в сети · ${alive} в бою`;
-      if (msg.boss?.phase === "enraged" && liveFeed) {
-        setLiveFeed(`⚠ VØIDR в ярости! Убийств: ${msg.boss.kills || 0}`);
+      const enragedBoss = (msg.bosses || (msg.boss ? [msg.boss] : [])).find((b) => b.phase === "enraged");
+      if (enragedBoss && liveFeed) {
+        setLiveFeed(`⚠ ${enragedBoss.name} в ярости! Убийств: ${enragedBoss.kills || 0}`);
       }
     }
     if (msg.type === "feed" && msg.feed?.[0]) {
