@@ -33,10 +33,16 @@
     <div class="canvasStage" id="canvasStage">
       <canvas id="board" aria-label="Игровое поле"></canvas>
 
-      <aside class="killFeed" id="killFeed">
-        <h3>// СОБЫТИЯ</h3>
-        <ul id="feedList"></ul>
-      </aside>
+      <div class="sidePanel">
+        <div class="minimapWrap">
+          <h3>// КАРТА</h3>
+          <canvas id="minimap" width="168" height="112" aria-label="Мини-карта"></canvas>
+        </div>
+        <aside class="killFeed" id="killFeed">
+          <h3>// СОБЫТИЯ</h3>
+          <ul id="feedList"></ul>
+        </aside>
+      </div>
 
       <div class="playersFloat">
         <h3>Игроки</h3>

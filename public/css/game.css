@@ -134,27 +134,55 @@ html, body.gameBody {
   box-shadow: 0 0 10px rgba(249,240,107,.5);
 }
 
-.killFeed {
+.sidePanel {
   position: absolute;
   top: 12px;
   right: 12px;
   width: min(260px, 42vw);
-  max-height: 220px;
+  display: grid;
+  gap: 8px;
+  z-index: 6;
+}
+
+.minimapWrap {
   padding: 10px 12px;
   border-radius: 10px;
   background: rgba(3,6,10,.82);
   border: 1px solid rgba(61,232,138,.2);
   backdrop-filter: blur(10px);
-  z-index: 6;
-  overflow: hidden;
 }
 
+.minimapWrap h3,
 .killFeed h3 {
   margin: 0 0 8px;
   font-family: var(--font-display);
   font-size: .58rem;
   letter-spacing: .14em;
   color: var(--green);
+}
+
+#minimap {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 6px;
+  background: #040608;
+}
+
+.killFeed {
+  position: static;
+  width: 100%;
+  max-height: none;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(3,6,10,.82);
+  border: 1px solid rgba(61,232,138,.2);
+  backdrop-filter: blur(10px);
+  overflow: hidden;
+}
+
+.killFeed h3 {
+  margin: 0 0 8px;
 }
 
 .killFeed ul {
@@ -398,7 +426,8 @@ html, body.gameBody {
 
 @media (max-width: 900px), (hover: none) and (pointer: coarse) {
   .touchControls { display: flex; }
-  .killFeed { max-height: 120px; }
+  .sidePanel { width: min(200px, 38vw); }
+  .killFeed ul { max-height: 100px; }
   .playersFloat { display: none; }
 }
 

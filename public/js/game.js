@@ -9,6 +9,8 @@ const comboHud = document.querySelector("#comboHud");
 const comboVal = document.querySelector("#comboVal");
 const heatFill = document.querySelector("#heatFill");
 const feedList = document.querySelector("#feedList");
+const minimap = document.querySelector("#minimap");
+const minimapCtx = minimap?.getContext("2d");
 const bonusActive = document.querySelector("#bonusActive");
 const bonusHud = document.querySelector("#bonusHud");
 const bossHud = document.querySelector("#bossHud");
@@ -298,7 +300,7 @@ function updateHud(me, prevScore = 0, prevCombo = 0) {
       deathStats.innerHTML = `
         <span>Очки <b>${me.score}</b></span>
         <span>Макс. комбо <b>×${me.maxCombo || 0}</b></span>
-        <span>Монеты <b>${me.coins || 0}</b></span>
+        <span>Монеты <b>+${me.coinsEarned || 0}</b></span>
       `;
       deathPanel.classList.remove("hidden");
       SnakeFX.addShake(14);
@@ -371,61 +373,39 @@ function updateCameraFollow() {
     return;
   }
 
-  const ease = head && me.alive ? 0.16 : 0.08;
+  const ease = head && me.alive ? 0.22 : 0.1;
   state.camera.x += (targetX - state.camera.x) * ease;
   state.camera.y += (targetY - state.camera.y) * ease;
 }
 
 function computeCameraView(width, height) {
   const coarse = window.matchMedia("(hover: none) and (pointer: coarse)").matches;
-  const minCell = coarse ? 26 : 22;
-  const maxViewW = coarse ? 14 : 18;
-  const maxViewH = coarse ? 10 : 13;
-
-  let viewW = Math.min(state.grid.width, maxViewW, Math.max(11, Math.floor(width / minCell)));
-  let viewH = Math.min(state.grid.height, maxViewH, Math.max(9, Math.floor(height / minCell)));
-  const aspect = width / height;
-
-  if (viewW / viewH > aspect) {
-    viewH = Math.min(state.grid.height, maxViewH, Math.max(9, Math.ceil(viewW / aspect)));
-  } else {
-    viewW = Math.min(state.grid.width, maxViewW, Math.max(11, Math.ceil(viewH * aspect)));
-  }
-
-  const cell = Math.min(width / viewW, height / viewH);
-  const viewPxW = viewW * cell;
-  const viewPxH = viewH * cell;
-  const halfW = viewW / 2;
-  const halfH = viewH / 2;
+  const cell = coarse ? 32 : 36;
+  const halfW = width / cell / 2;
+  const halfH = height / cell / 2;
 
   let camX = state.camera.x;
   let camY = state.camera.y;
 
-  if (state.grid.width <= viewW) camX = (state.grid.width - 1) / 2;
-  else camX = clamp(camX, halfW - 0.5, state.grid.width - halfW - 0.5);
+  if (state.grid.width <= halfW * 2) camX = state.grid.width / 2;
+  else camX = clamp(camX, halfW, state.grid.width - halfW);
 
-  if (state.grid.height <= viewH) camY = (state.grid.height - 1) / 2;
-  else camY = clamp(camY, halfH - 0.5, state.grid.height - halfH - 0.5);
+  if (state.grid.height <= halfH * 2) camY = state.grid.height / 2;
+  else camY = clamp(camY, halfH, state.grid.height - halfH);
 
-  const offsetX = (width - viewPxW) / 2 - camX * cell;
-  const offsetY = (height - viewPxH) / 2 - camY * cell;
-  const mapL = offsetX;
-  const mapT = offsetY;
-  const mapW = state.grid.width * cell;
-  const mapH = state.grid.height * cell;
+  const offsetX = width / 2 - camX * cell;
+  const offsetY = height / 2 - camY * cell;
 
   return {
     cell,
     offsetX,
     offsetY,
-    viewW,
-    viewH,
     camX,
     camY,
-    mapL,
-    mapT,
-    mapW,
-    mapH,
+    mapL: offsetX,
+    mapT: offsetY,
+    mapW: state.grid.width * cell,
+    mapH: state.grid.height * cell,
     left: camX - halfW,
     right: camX + halfW,
     top: camY - halfH,
@@ -461,7 +441,56 @@ function draw() {
 
   SnakeFX.drawConfetti(ctx, width, height);
   SnakeFX.drawCrt(width, height);
+  drawMinimap(view);
   requestAnimationFrame(draw);
+}
+
+function drawMinimap(view) {
+  if (!minimapCtx || !minimap) return;
+  const gw = state.grid.width;
+  const gh = state.grid.height;
+  const w = minimap.width;
+  const h = minimap.height;
+  const cell = Math.min(w / gw, h / gh);
+  const ox = (w - gw * cell) / 2;
+  const oy = (h - gh * cell) / 2;
+
+  minimapCtx.clearRect(0, 0, w, h);
+  minimapCtx.fillStyle = "#060a0e";
+  minimapCtx.fillRect(ox, oy, gw * cell, gh * cell);
+  minimapCtx.strokeStyle = "rgba(61,232,138,0.45)";
+  minimapCtx.lineWidth = 1;
+  minimapCtx.strokeRect(ox + 0.5, oy + 0.5, gw * cell - 1, gh * cell - 1);
+
+  for (const item of state.food) {
+    minimapCtx.fillStyle = isGoodFood(item) ? "rgba(61,232,138,0.55)" : "rgba(246,97,81,0.65)";
+    minimapCtx.fillRect(ox + item.x * cell + 0.5, oy + item.y * cell + 0.5, Math.max(1, cell - 0.5), Math.max(1, cell - 0.5));
+  }
+
+  if (state.boss) {
+    const bs = state.boss.size || 1;
+    minimapCtx.fillStyle = state.boss.phase === "enraged" ? "#ff3b2e" : "#f66151";
+    minimapCtx.fillRect(ox + state.boss.x * cell, oy + state.boss.y * cell, bs * cell, bs * cell);
+  }
+
+  for (const player of state.players) {
+    const head = player.snake?.[0];
+    if (!head) continue;
+    minimapCtx.fillStyle = player.id === state.id ? "#ffffff" : player.color;
+    minimapCtx.beginPath();
+    minimapCtx.arc(ox + head.x * cell + cell / 2, oy + head.y * cell + cell / 2, Math.max(1.5, cell * 0.35), 0, Math.PI * 2);
+    minimapCtx.fill();
+  }
+
+  if (view) {
+    const vx = ox + view.left * cell;
+    const vy = oy + view.top * cell;
+    const vw = (view.right - view.left) * cell;
+    const vh = (view.bottom - view.top) * cell;
+    minimapCtx.strokeStyle = "rgba(249,240,107,0.9)";
+    minimapCtx.lineWidth = 1.5;
+    minimapCtx.strokeRect(vx + 0.5, vy + 0.5, vw - 1, vh - 1);
+  }
 }
 
 function drawBackground(width, height, view) {
