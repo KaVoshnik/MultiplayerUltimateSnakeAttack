@@ -1,8 +1,12 @@
 {
-  "slots": [
+  "bodySlots": [
     { "id": "custom_1", "name": "Свой скин 1", "file": "slot1.png" },
     { "id": "custom_2", "name": "Свой скин 2", "file": "slot2.png" },
     { "id": "custom_3", "name": "Свой скин 3", "file": "slot3.png" }
   ],
-  "hint": "Положи PNG в эту папку: slot1.png, slot2.png, slot3.png. Назначь скин в магазине."
+  "hatSlots": [
+    { "id": "custom_hat_1", "name": "Своя шляпа 1", "file": "hat1.png" },
+    { "id": "custom_hat_2", "name": "Своя шляпа 2", "file": "hat2.png" },
+    { "id": "custom_hat_3", "name": "Своя шляпа 3", "file": "hat3.png" }
+  ]
 }

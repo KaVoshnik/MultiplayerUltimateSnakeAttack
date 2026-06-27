@@ -22,6 +22,13 @@ document.querySelectorAll(".shopTab").forEach((tab) => {
 sortSelect.addEventListener("change", renderItems);
 
 function skinPreviewHtml(item) {
+  if (item.customTexture && typeof CustomSkins !== "undefined" && CustomSkins.isBody(item.id)) {
+    const img = CustomSkins.get(item.id);
+    if (img) {
+      return `<div class="itemEmoji customSkinPreview"><img src="${img.src}" alt="" /></div>`;
+    }
+    return `<div class="itemEmoji customSkinPreview placeholder">🖼️</div>`;
+  }
   const rainbow = item.color === "rainbow";
   const body = rainbow ? "" : item.color;
   const head = item.headColor || "#ffffff";
@@ -83,6 +90,17 @@ function send(payload) {
   }
 }
 
+function hatPreviewHtml(item) {
+  if (item.customTexture && typeof CustomSkins !== "undefined" && CustomSkins.isHat(item.id)) {
+    const img = CustomSkins.get(item.id);
+    if (img) {
+      return `<div class="itemEmoji customHatPreview"><img src="${img.src}" alt="" /></div>`;
+    }
+    return `<div class="itemEmoji customHatPreview placeholder">🖼️</div>`;
+  }
+  return `<div class="itemEmoji">${item.emoji}</div>`;
+}
+
 function renderItems() {
   const coins = state.shopData.coins ?? 0;
   shopCoins.textContent = coins;
@@ -119,7 +137,7 @@ function renderItems() {
 
     const preview = item.category === "skin"
       ? skinPreviewHtml(item)
-      : `<div class="itemEmoji">${item.emoji}</div>`;
+      : hatPreviewHtml(item);
 
     card.innerHTML = `
       ${preview}

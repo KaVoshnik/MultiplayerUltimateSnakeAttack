@@ -265,11 +265,19 @@ function drawPreview() {
     { x: 130, y: 90 }, { x: 160, y: 80 }, { x: 190, y: 70 },
   ];
 
-  const skinItem = state.catalog.find((i) => i.id === (state.shopData?.activeSkin || "default") && i.category === "skin");
+  const skinId = state.shopData?.activeSkin || "default";
+  const skinItem = state.catalog.find((i) => i.id === skinId && i.category === "skin");
+  const customBody = typeof CustomSkins !== "undefined" && CustomSkins.isBody(skinId)
+    ? CustomSkins.get(skinId)
+    : null;
   const bodyColor = skinItem?.color === "rainbow" ? "#3de88a" : (skinItem?.color || "#3de88a");
   const headColor = skinItem?.headColor || "#ffffff";
 
   segments.forEach((seg, i) => {
+    if (customBody) {
+      previewCtx.drawImage(customBody, seg.x, seg.y, 26, 26);
+      return;
+    }
     previewCtx.fillStyle = i === segments.length - 1 ? headColor : bodyColor;
     roundRect(previewCtx, seg.x, seg.y, 26, 26, 8);
     previewCtx.fill();
@@ -286,9 +294,17 @@ function drawPreview() {
     : null;
 
   if (hatItem) {
-    previewCtx.font = "22px sans-serif";
-    previewCtx.textAlign = "center";
-    previewCtx.fillText(hatItem.emoji, head.x + 13, head.y - 4);
+    const hatId = hatItem.id;
+    const customHat = typeof CustomSkins !== "undefined" && CustomSkins.isHat(hatId)
+      ? CustomSkins.get(hatId)
+      : null;
+    if (customHat) {
+      previewCtx.drawImage(customHat, head.x - 2, head.y - 28, 30, 30);
+    } else {
+      previewCtx.font = "22px sans-serif";
+      previewCtx.textAlign = "center";
+      previewCtx.fillText(hatItem.emoji, head.x + 13, head.y - 4);
+    }
   }
 
   previewCtx.font = "28px sans-serif";

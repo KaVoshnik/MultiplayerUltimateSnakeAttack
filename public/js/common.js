@@ -104,6 +104,7 @@ function isItemEquipped(shopData, item) {
 
 function ownsShopItem(shopData, item) {
   if (!item) return false;
+  if (item.customTexture && item.price === 0) return true;
   if (item.category === "skin" && item.price === 0) return true;
   return (shopData?.inventory || []).includes(item.id);
 }

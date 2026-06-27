@@ -98,6 +98,9 @@ const SHOP_CATALOG = [
   { id: "hat_mushroom", name: "Грибная шляпка", emoji: "🍄", price: 300, rarity: "rare", category: "snake_hat" },
   { id: "hat_flame", name: "Огненная корона", emoji: "🔥", price: 520, rarity: "epic", category: "snake_hat" },
   { id: "hat_royal", name: "Королевская корона", emoji: "👸", price: 1400, rarity: "legendary", category: "snake_hat" },
+  { id: "custom_hat_1", name: "Своя шляпа 1", emoji: "🖼️", price: 0, rarity: "common", category: "snake_hat", customTexture: "hat1.png" },
+  { id: "custom_hat_2", name: "Своя шляпа 2", emoji: "🖼️", price: 0, rarity: "common", category: "snake_hat", customTexture: "hat2.png" },
+  { id: "custom_hat_3", name: "Своя шляпа 3", emoji: "🖼️", price: 0, rarity: "common", category: "snake_hat", customTexture: "hat3.png" },
 ];
 
 const AVATAR_PRESETS = [
@@ -116,6 +119,7 @@ function getSkinDef(id) {
 function ownsItem(entry, itemId) {
   const item = SHOP_CATALOG.find((i) => i.id === itemId);
   if (!item) return false;
+  if (item.customTexture && item.price === 0) return true;
   if (item.category === "skin" && item.price === 0) return true;
   return entry.inventory.includes(itemId);
 }
@@ -625,7 +629,7 @@ function broadcastState() {
         spawnFrozenLeft: Math.max(0, (p.frozenUntil || 0) - Date.now()),
         heat: Math.min(100, Math.round((p.score || 0) * 0.4 + (p.combo || 0) * 9)),
         isTagged: gameMode === "tag_time" && p.id === taggedPlayerId,
-        avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji,
+        avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji, snakeHatId: cos.snakeHatId,
       };
     }),
     bosses, leaderboard: getEnrichedLeaderboard(), gameMode, taggedPlayerId,
@@ -1199,10 +1203,14 @@ function normalizeProfile(raw) {
 
 function getPlayerCosmetics(name) {
   const entry = getProfile(name);
-  const snakeHatEmoji = entry.equipped.snakeHat
-    ? SHOP_CATALOG.find((i) => i.id === entry.equipped.snakeHat)?.emoji || null
-    : null;
-  return { avatar: entry.avatar, snakeHatEmoji };
+  const hatId = entry.equipped.snakeHat || null;
+  const hatItem = hatId ? SHOP_CATALOG.find((i) => i.id === hatId) : null;
+  const isCustomHat = hatId && hatId.startsWith("custom_hat_");
+  return {
+    avatar: entry.avatar,
+    snakeHatId: hatId,
+    snakeHatEmoji: hatItem && !isCustomHat ? hatItem.emoji : null,
+  };
 }
 
 function applyCosmeticsToPlayer(player, name) {
@@ -1210,6 +1218,7 @@ function applyCosmeticsToPlayer(player, name) {
   const cos = getPlayerCosmetics(name);
   player.avatar = cos.avatar;
   player.snakeHatEmoji = cos.snakeHatEmoji;
+  player.snakeHatId = cos.snakeHatId;
 }
 
 function trackDeathStats(player) {
@@ -1329,7 +1338,7 @@ function createPlayer(id, name, difficulty, skin) {
     coinsEarned: 0, beatPersonalBest: false, sessionMvp: false,
     activeBonus: null, bonusExpires: null,
     combo: 0, maxCombo: 0,
-    avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji,
+    avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji, snakeHatId: cos.snakeHatId,
     frozenUntil: Date.now() + SPAWN_FREEZE_MS,
   };
   removeEntitiesUnderSnake(player);

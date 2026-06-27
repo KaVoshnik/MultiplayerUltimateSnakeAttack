@@ -845,7 +845,7 @@ function drawPlayers(view) {
     const neck = player.snake[1] || head;
     const dirX = head.x - neck.x;
     const dirY = head.y - neck.y;
-    const customTex = typeof CustomSkins !== "undefined" && CustomSkins.isCustom(player.skin)
+    const customTex = typeof CustomSkins !== "undefined" && CustomSkins.isBody(player.skin)
       ? CustomSkins.get(player.skin)
       : null;
 
@@ -936,6 +936,18 @@ function drawSnakeCosmetics(x, y, cell, player) {
   const cy = y + cell / 2;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
+
+  const hatId = player.snakeHatId || null;
+  const customHat = typeof CustomSkins !== "undefined" && hatId && CustomSkins.isHat(hatId)
+    ? CustomSkins.get(hatId)
+    : null;
+
+  if (customHat) {
+    const size = cell * 0.9;
+    ctx.drawImage(customHat, cx - size / 2, cy - cell * 0.78, size, size);
+    return;
+  }
+
   if (player.snakeHatEmoji) {
     ctx.font = `${cell * 0.55}px sans-serif`;
     ctx.fillText(player.snakeHatEmoji, cx, cy - cell * 0.55);
