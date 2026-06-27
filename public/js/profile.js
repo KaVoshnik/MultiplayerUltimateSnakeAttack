@@ -1,8 +1,13 @@
-const profileName = document.querySelector("#profileName");
+const profileNameInput = document.querySelector("#profileName");
 const avatarGrid = document.querySelector("#avatarGrid");
 const equippedList = document.querySelector("#equippedList");
 const previewCanvas = document.querySelector("#snakePreview");
 const previewCtx = previewCanvas.getContext("2d");
+const saveBtn = document.querySelector("#saveProfile");
+const accountGuest = document.querySelector("#accountGuest");
+const accountUser = document.querySelector("#accountUser");
+const profileLoginHint = document.querySelector("#profileLoginHint");
+const profileContent = document.querySelector("#profileContent");
 
 const state = {
   socket: null,
@@ -10,17 +15,72 @@ const state = {
   catalog: [],
   avatars: [],
   selectedAvatar: "😎",
-  oldName: SnakeStore.getName(),
+  oldName: "",
+  loggedIn: false,
+  me: null,
+  viewMode: false,
 };
 
-profileName.value = state.oldName;
+const viewPlayerName = new URLSearchParams(location.search).get("player")?.trim() || "";
+
+function setProfileEditable(enabled) {
+  profileNameInput.disabled = !enabled;
+  saveBtn.disabled = !enabled;
+  profileLoginHint?.classList.toggle("hidden", enabled);
+  profileContent?.classList.toggle("profileLocked", !enabled);
+  avatarGrid.querySelectorAll(".avatarBtn").forEach((btn) => {
+    btn.disabled = !enabled;
+  });
+}
+
+function renderAccount(me) {
+  const loginBtn = document.querySelector("#btnGoogleLogin");
+  if (me.loggedIn) {
+    accountGuest?.classList.add("hidden");
+    accountUser?.classList.remove("hidden");
+    loginBtn?.classList.add("hidden");
+
+    const displayName = document.querySelector("#accountDisplayName");
+    const emailEl = document.querySelector("#accountEmail");
+    const googleImg = document.querySelector("#accountGoogleAvatar");
+    const emojiEl = document.querySelector("#accountAvatarEmoji");
+
+    if (displayName) displayName.textContent = me.name;
+    if (emailEl) emailEl.textContent = me.email || "";
+
+    const picture = me.picture || me.shopData?.stats?.googlePicture;
+    if (picture && googleImg) {
+      googleImg.src = picture;
+      googleImg.classList.remove("hidden");
+      emojiEl?.classList.add("hidden");
+    } else {
+      googleImg?.classList.add("hidden");
+      if (emojiEl) {
+        emojiEl.textContent = me.shopData?.avatar || "😎";
+        emojiEl.classList.remove("hidden");
+      }
+    }
+
+    state.oldName = me.name;
+    profileNameInput.value = me.name;
+    setProfileEditable(true);
+  } else {
+    accountGuest?.classList.remove("hidden");
+    accountUser?.classList.add("hidden");
+    loginBtn?.classList.remove("hidden");
+    setProfileEditable(false);
+    profileNameInput.value = "";
+  }
+}
 
 function connect() {
   const socket = new WebSocket(getWebSocketUrl());
   state.socket = socket;
 
   socket.addEventListener("open", () => {
-    if (state.oldName) send({ type: "shop_connect", name: state.oldName });
+    if (state.loggedIn && state.oldName) {
+      socket.send(JSON.stringify({ type: "shop_connect", name: state.oldName }));
+    }
   });
 
   socket.addEventListener("close", () => setTimeout(connect, 1200));
@@ -31,7 +91,9 @@ function connect() {
       state.avatars = msg.avatars || [];
       state.catalog = msg.catalog || [];
       renderAvatars();
-      if (state.oldName) send({ type: "shop_connect", name: state.oldName });
+      if (state.loggedIn && state.oldName) {
+        socket.send(JSON.stringify({ type: "shop_connect", name: state.oldName }));
+      }
     }
     if (msg.type === "shop_update") {
       state.shopData = msg.shopData;
@@ -46,12 +108,17 @@ function connect() {
     if (msg.type === "profile_saved") {
       if (msg.name) {
         state.oldName = msg.name;
-        SnakeStore.save({ name: msg.name });
-        profileName.value = msg.name;
+        SnakeStore.save({ name: msg.name, google: true });
+        profileNameInput.value = msg.name;
+        const displayName = document.querySelector("#accountDisplayName");
+        if (displayName) displayName.textContent = msg.name;
       }
       showToast("Профиль сохранён!");
     }
-    if (msg.type === "notice") showToast(msg.text);
+    if (msg.type === "notice") {
+      if (!state.loggedIn) return;
+      showToast(msg.text);
+    }
   });
 }
 
@@ -68,7 +135,9 @@ function renderAvatars() {
     btn.type = "button";
     btn.className = `avatarBtn${emoji === state.selectedAvatar ? " active" : ""}`;
     btn.textContent = emoji;
+    btn.disabled = !state.loggedIn;
     btn.addEventListener("click", () => {
+      if (!state.loggedIn) return;
       state.selectedAvatar = emoji;
       renderAvatars();
       drawPreview();
@@ -80,11 +149,74 @@ function renderAvatars() {
 function renderStats() {
   const s = state.shopData?.stats || {};
   document.querySelector("#statGames").textContent = s.games || 0;
-  document.querySelector("#statWins").textContent = s.wins || 0;
-  document.querySelector("#statLosses").textContent = s.losses || 0;
+  document.querySelector("#statDeaths").textContent = s.deaths ?? s.losses ?? 0;
   document.querySelector("#statBest").textContent = s.best || 0;
   document.querySelector("#statTime").textContent = formatPlayTime(s.playTimeMs);
   document.querySelector("#statCoins").textContent = state.shopData?.coins || 0;
+}
+
+async function loadPublicProfile(name) {
+  const res = await fetch(`/profile?name=${encodeURIComponent(name)}`);
+  const data = await res.json();
+  if (data.error) {
+    showToast("Игрок не найден");
+    return false;
+  }
+
+  try {
+    const catRes = await fetch("/catalog");
+    const catData = await catRes.json();
+    state.catalog = catData.catalog || [];
+    state.avatars = catData.avatars || [];
+  } catch { /* ignore */ }
+
+  state.viewMode = true;
+  state.shopData = {
+    coins: data.coins,
+    activeSkin: data.activeSkin,
+    avatar: data.avatar,
+    equipped: data.equipped || {},
+    inventory: data.inventory || [],
+    stats: data.stats,
+  };
+  state.selectedAvatar = data.avatar || "😎";
+  state.oldName = data.name;
+  profileNameInput.value = data.name;
+  setProfileEditable(false);
+  profileLoginHint?.classList.add("hidden");
+
+  accountGuest?.classList.add("hidden");
+  accountUser?.classList.remove("hidden");
+  document.querySelector("#btnGoogleLogin")?.classList.add("hidden");
+  document.querySelector("#btnGoogleLogout")?.classList.add("hidden");
+  document.querySelector(".accountBadge").textContent = "Публичный профиль";
+
+  const displayName = document.querySelector("#accountDisplayName");
+  const emailEl = document.querySelector("#accountEmail");
+  const googleImg = document.querySelector("#accountGoogleAvatar");
+  const emojiEl = document.querySelector("#accountAvatarEmoji");
+
+  if (displayName) displayName.textContent = data.name;
+  if (emailEl) emailEl.textContent = `Игр: ${data.stats?.games || 0} · Смертей: ${data.stats?.deaths || 0}`;
+
+  if (data.googlePicture && googleImg) {
+    googleImg.src = data.googlePicture;
+    googleImg.classList.remove("hidden");
+    emojiEl?.classList.add("hidden");
+  } else {
+    googleImg?.classList.add("hidden");
+    if (emojiEl) {
+      emojiEl.textContent = data.avatar || "😎";
+      emojiEl.classList.remove("hidden");
+    }
+  }
+
+  document.title = `${data.name} — Профиль`;
+  renderStats();
+  renderEquipped();
+  drawPreview();
+  renderAvatars();
+  return true;
 }
 
 function renderEquipped() {
@@ -174,8 +306,12 @@ function roundRect(c, x, y, w, h, r) {
   c.closePath();
 }
 
-document.querySelector("#saveProfile").addEventListener("click", () => {
-  const name = profileName.value.trim();
+saveBtn.addEventListener("click", () => {
+  if (!state.loggedIn) {
+    showToast("Сначала войди через Google!");
+    return;
+  }
+  const name = profileNameInput.value.trim();
   if (!name) {
     showToast("Никнейм не может быть пустым!");
     return;
@@ -188,4 +324,42 @@ document.querySelector("#saveProfile").addEventListener("click", () => {
   });
 });
 
-connect();
+async function boot() {
+  if (viewPlayerName) {
+    await loadPublicProfile(viewPlayerName);
+    connect();
+    return;
+  }
+
+  const me = await initProfileAuth({
+    onLogin(loginMe) {
+      state.loggedIn = true;
+      state.me = loginMe;
+      state.shopData = loginMe.shopData || state.shopData;
+      SnakeStore.save({ name: loginMe.name, google: true });
+      renderAccount(loginMe);
+      if (state.socket?.readyState === WebSocket.OPEN) {
+        state.socket.send(JSON.stringify({ type: "shop_connect", name: loginMe.name }));
+      }
+    },
+    onLogout() {
+      state.loggedIn = false;
+      state.me = null;
+      state.shopData = null;
+      state.oldName = "";
+      renderAccount({ loggedIn: false });
+    },
+  });
+
+  if (me?.loggedIn) {
+    state.loggedIn = true;
+    state.me = me;
+    state.shopData = me.shopData;
+    renderAccount(me);
+  } else {
+    renderAccount({ loggedIn: false });
+  }
+  connect();
+}
+
+boot();

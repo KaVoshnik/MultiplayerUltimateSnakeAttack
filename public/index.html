@@ -15,7 +15,7 @@
     <div class="menuBrand">
       <span class="brandGlow">ULTIMATE SNAKE ATTACK</span>
     </div>
-    <div class="userBar" id="userBar">
+    <div class="userBar" id="userBar" role="button" tabindex="0" title="Открыть профиль">
       <span class="coinPill">🪙 <strong id="headerCoins">0</strong></span>
       <div class="userChip">
         <span class="userAvatar" id="userAvatar">😎</span>
@@ -67,19 +67,13 @@
   <div class="modalOverlay hidden" id="settingsModal">
     <div class="modalBox glass">
       <h2>НАСТРОЙКИ</h2>
-      <label for="nameInput">Никнейм</label>
-      <input id="nameInput" maxlength="16" placeholder="До 16 символов" />
-
-      <div class="authBlock" id="authBlock">
-        <a class="btn googleBtn" id="btnGoogleLogin" href="/auth/google">Войти через Google</a>
-        <button type="button" class="btn ghost hidden" id="btnGoogleLogout">Выйти</button>
-        <p class="authHint" id="authHint">Войди через Google — прогресс сохранится в аккаунте</p>
-      </div>
 
       <label class="toggleRow">
         <input type="checkbox" id="audioToggle" checked />
         <span>Синтвейв-звук и эмбиент</span>
       </label>
+
+      <p class="settingsHint">Никнейм и вход — в разделе <a href="/profile.html">Профиль</a>.</p>
 
       <div class="modalActions">
         <button type="button" class="btn primary" id="saveSettings">Сохранить</button>

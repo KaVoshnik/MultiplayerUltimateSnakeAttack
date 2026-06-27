@@ -124,12 +124,28 @@ function updateUserBar(shopData, name) {
   if (coinsEl) coinsEl.textContent = shopData?.coins ?? 0;
 }
 
-async function initAuth(options = {}) {
+async function syncSessionUser(options = {}) {
+  let me = { loggedIn: false };
+  try {
+    const res = await fetch("/api/me", { credentials: "same-origin" });
+    me = await res.json();
+  } catch { /* offline */ }
+
+  if (me.loggedIn) {
+    SnakeStore.save({ name: me.name, google: true });
+    updateUserBar(me.shopData || {}, me.name);
+    options.onLogin?.(me);
+  } else {
+    updateUserBar(options.shopData || {}, SnakeStore.getName());
+  }
+  return me;
+}
+
+async function initProfileAuth(options = {}) {
   const loginBtn = document.querySelector("#btnGoogleLogin");
   const logoutBtn = document.querySelector("#btnGoogleLogout");
-  const authBlock = document.querySelector("#authBlock");
-  const authHint = document.querySelector("#authHint");
-  const nameInput = document.querySelector("#nameInput");
+  const accountGuest = document.querySelector("#accountGuest");
+  const accountUser = document.querySelector("#accountUser");
 
   let config = { enabled: false };
   try {
@@ -138,11 +154,10 @@ async function initAuth(options = {}) {
   } catch { /* offline */ }
 
   if (!config.enabled) {
-    authBlock?.classList.add("hidden");
-    return null;
+    accountGuest?.classList.add("hidden");
+    showToast("Google OAuth не настроен на сервере");
+    return { loggedIn: false };
   }
-
-  authBlock?.classList.remove("hidden");
 
   let me = { loggedIn: false };
   try {
@@ -152,33 +167,40 @@ async function initAuth(options = {}) {
 
   if (me.loggedIn) {
     SnakeStore.save({ name: me.name, google: true });
-    if (nameInput) nameInput.value = me.name;
     loginBtn?.classList.add("hidden");
-    logoutBtn?.classList.remove("hidden");
-    authHint && (authHint.textContent = me.email ? `Google: ${me.email}` : "Вход через Google выполнен");
-    updateUserBar(me.shopData || {}, me.name);
+    accountGuest?.classList.add("hidden");
+    accountUser?.classList.remove("hidden");
     options.onLogin?.(me);
   } else {
     loginBtn?.classList.remove("hidden");
-    logoutBtn?.classList.add("hidden");
+    accountGuest?.classList.remove("hidden");
+    accountUser?.classList.add("hidden");
+    options.onLogout?.();
   }
 
   logoutBtn?.addEventListener("click", () => {
     location.href = "/auth/logout";
   });
 
+  handleAuthQueryParams();
+  return me;
+}
+
+function handleAuthQueryParams() {
   const params = new URLSearchParams(location.search);
   if (params.get("auth") === "ok") {
     showToast("Вход через Google выполнен!");
     history.replaceState({}, "", location.pathname);
   }
-  const authError = params.get("auth_error");
-  if (authError) {
+  if (params.get("auth_error")) {
     showToast("Не удалось войти через Google");
     history.replaceState({}, "", location.pathname);
   }
+}
 
-  return me;
+/** @deprecated use initProfileAuth on profile page or syncSessionUser elsewhere */
+async function initAuth(options = {}) {
+  return syncSessionUser(options);
 }
 
 function connectProfileSocket(onMessage) {

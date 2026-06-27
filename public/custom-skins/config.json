@@ -1,0 +1,8 @@
+{
+  "slots": [
+    { "id": "custom_1", "name": "Свой скин 1", "file": "slot1.png" },
+    { "id": "custom_2", "name": "Свой скин 2", "file": "slot2.png" },
+    { "id": "custom_3", "name": "Свой скин 3", "file": "slot3.png" }
+  ],
+  "hint": "Положи PNG в эту папку: slot1.png, slot2.png, slot3.png. Назначь скин в магазине."
+}

@@ -61,6 +61,8 @@ const BONUS_TYPES = {
   ghost: { label: "GH", duration: 4000, color: "#8ff0a4", desc: "призрак" },
 };
 
+const SPAWN_FREEZE_MS = 3000;
+
 // --- СКИНЫ (цвет тела) + ШЛЯПЫ в едином каталоге ---
 const SHOP_CATALOG = [
   { id: "default", name: "Классик", emoji: "🟢", price: 0, rarity: "common", category: "skin", color: "#33d17a", headColor: "#ffffff" },
@@ -83,6 +85,9 @@ const SHOP_CATALOG = [
   { id: "azure", name: "Лазурь", emoji: "💎", price: 220, rarity: "rare", category: "skin", color: "#0ea5e9", headColor: "#e0f2fe" },
   { id: "ember", name: "Угли", emoji: "🌋", price: 350, rarity: "rare", category: "skin", color: "#ea580c", headColor: "#fdba74" },
   { id: "mint", name: "Мята", emoji: "🌿", price: 200, rarity: "common", category: "skin", color: "#2dd4bf", headColor: "#ccfbf1" },
+  { id: "custom_1", name: "Свой скин 1", emoji: "🖼️", price: 0, rarity: "common", category: "skin", color: "#33d17a", headColor: "#ffffff", customTexture: "slot1.png" },
+  { id: "custom_2", name: "Свой скин 2", emoji: "🖼️", price: 0, rarity: "common", category: "skin", color: "#62a0ea", headColor: "#ffffff", customTexture: "slot2.png" },
+  { id: "custom_3", name: "Свой скин 3", emoji: "🖼️", price: 0, rarity: "common", category: "skin", color: "#f66151", headColor: "#ffffff", customTexture: "slot3.png" },
   { id: "hat_top", name: "Цилиндр змеи", emoji: "🎩", price: 390, rarity: "epic", category: "snake_hat" },
   { id: "hat_cap", name: "Кепка змеи", emoji: "🧢", price: 80, rarity: "common", category: "snake_hat" },
   { id: "hat_beanie", name: "Вязаная шапка", emoji: "🧶", price: 100, rarity: "common", category: "snake_hat" },
@@ -127,6 +132,7 @@ const MIME = {
   ".js": "application/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".ico": "image/x-icon",
+  ".png": "image/png",
 };
 
 let nextClientId = 1;
@@ -138,6 +144,7 @@ const bosses = createBosses();
 let leaderboard = [];
 let shopData = {};
 const shopClients = new Map(); // socket id -> player name (shop-only sessions)
+const socketSessions = new Map(); // socket id -> auth session row
 let tickCount = 0;
 let gameMode = "classic";
 let taggedPlayerId = null; // для Tag Time
@@ -219,8 +226,46 @@ function handleHttpRequest(req, res, url) {
   if (url.pathname === "/shop") { sendJson(res, { skins: SHOP_SKINS, catalog: SHOP_CATALOG, playerData: shopData }); return; }
   if (url.pathname === "/catalog") { sendJson(res, { catalog: SHOP_CATALOG, skins: SHOP_SKINS, avatars: AVATAR_PRESETS }); return; }
   if (url.pathname === "/profile") {
-    const name = cleanName(url.searchParams.get("name") || "");
-    sendJson(res, name ? getProfile(name) : { error: "no name" });
+    const name = profileName(url.searchParams.get("name") || "");
+    if (!name) { sendJson(res, { error: "no name" }); return; }
+    const key = Object.keys(shopData).find((k) => k.toLowerCase() === name.toLowerCase());
+    if (!key) { sendJson(res, { error: "not_found" }); return; }
+    const prof = getProfile(key);
+    sendJson(res, {
+      name: key,
+      coins: prof.coins,
+      activeSkin: prof.activeSkin,
+      avatar: prof.avatar,
+      googlePicture: prof.stats?.googlePicture || null,
+      stats: {
+        games: prof.stats?.games || 0,
+        deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0,
+        best: prof.stats?.best || 0,
+        playTimeMs: prof.stats?.playTimeMs || 0,
+      },
+    });
+    return;
+  }
+  if (url.pathname === "/api/players") {
+    const q = (url.searchParams.get("q") || "").trim().toLowerCase();
+    const list = Object.entries(shopData)
+      .filter(([name]) => !q || name.toLowerCase().includes(q))
+      .map(([name, prof]) => {
+        const p = normalizeProfile(prof);
+        return {
+          name,
+          avatar: p.avatar,
+          googlePicture: p.stats?.googlePicture || null,
+          games: p.stats.games || 0,
+          deaths: p.stats.deaths || 0,
+          best: p.stats.best || 0,
+          coins: p.coins || 0,
+          playTimeMs: p.stats.playTimeMs || 0,
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, "ru"))
+      .slice(0, 50);
+    sendJson(res, list);
     return;
   }
   if (url.pathname === "/modes") { sendJson(res, { modes: MODES, difficulties: DIFFICULTIES }); return; }
@@ -258,6 +303,9 @@ server.on("upgrade", (req, socket) => {
 
   const id = String(nextClientId++);
   sockets.set(id, socket);
+  auth.getSession(req, db).then((session) => {
+    if (session) socketSessions.set(id, session);
+  }).catch(() => { });
   socket.on("data", (chunk) => readFrames(id, chunk));
   socket.on("close", () => removeClient(id));
   socket.on("error", () => removeClient(id));
@@ -286,10 +334,10 @@ async function bootstrap() {
     food.length = 0;
     fillFood();
     tickInterval = setInterval(tick, DIFFICULTIES.normal.tickMs);
-    setInterval(broadcastState, 250);
+    setInterval(broadcastState, 100);
     setInterval(spawnBonuses, 8000);
     setInterval(pingClients, 25000);
-    setInterval(() => db.cleanupAuthSessions().catch(() => {}), 60 * 60 * 1000);
+    setInterval(() => db.cleanupAuthSessions().catch(() => { }), 60 * 60 * 1000);
     if (auth.isGoogleAuthEnabled()) {
       const sampleRedirect = process.env.GOOGLE_REDIRECT_URI
         || (process.env.PUBLIC_URL ? `${process.env.PUBLIC_URL.replace(/\/$/, "")}/auth/google/callback` : "(из запроса)");
@@ -389,6 +437,7 @@ function tick() {
   const targetCounts = new Map();
   for (const player of players.values()) {
     if (!player.alive) continue;
+    if (player.frozenUntil && Date.now() < player.frozenUntil) continue;
     // Speed up / slow down bonus
     if (player.activeBonus === "slow_down" && tickCount % 2 === 0) continue;
     player.direction = player.nextDirection;
@@ -433,7 +482,12 @@ function tick() {
         send(player.id, { type: "tagged", tagger: true });
         if (sockets.has(hitId)) send(hitId, { type: "tagged", tagger: false });
       } else {
-        killPlayer(player, "Столкнулся со змейкой");
+        const killerId = occupied.get(key);
+        const killer = killerId && killerId !== player.id ? players.get(killerId) : null;
+        killPlayer(player, killer ? `${killer.name} убил ${player.name}` : "Столкнулся со змейкой", {
+          at: nextHead,
+          killerPlayer: killer,
+        });
         continue;
       }
     }
@@ -517,7 +571,7 @@ function killPlayer(player, reason, opts = {}) {
   trackDeathStats(player);
   player.alive = false;
   player.deaths += 1;
-  player.reason = reason;
+  player.reason = opts.killerPlayer ? `${opts.killerPlayer.name} убил тебя` : reason;
   player.activeBonus = null;
   player.bonusExpires = null;
   player.combo = 0;
@@ -529,7 +583,11 @@ function killPlayer(player, reason, opts = {}) {
     pushFeed("bonus", `💰 ${player.name}: +${reward} монет`, player.name);
   }
   recordScore(player);
-  pushFeed("death", `💀 ${player.name}: ${reason}`, player.name);
+  if (opts.killerPlayer) {
+    pushFeed("kill", `⚔ ${opts.killerPlayer.name} убил ${player.name}`, opts.killerPlayer.name);
+  } else {
+    pushFeed("death", `💀 ${player.name}: ${reason}`, player.name);
+  }
   const hitCell = opts.at || player.snake[0];
   const killerBoss = opts.boss || bossAt(hitCell) || bosses.find((b) => reason.includes(b.name));
   if (killerBoss) enrageBoss(killerBoss);
@@ -564,6 +622,7 @@ function broadcastState() {
         difficulty: p.difficulty, skin: p.skin, rainbow: p.rainbow,
         combo: p.combo || 0, maxCombo: p.maxCombo || 0,
         coinsEarned: p.coinsEarned || 0,
+        spawnFrozenLeft: Math.max(0, (p.frozenUntil || 0) - Date.now()),
         heat: Math.min(100, Math.round((p.score || 0) * 0.4 + (p.combo || 0) * 9)),
         isTagged: gameMode === "tag_time" && p.id === taggedPlayerId,
         avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji,
@@ -841,14 +900,12 @@ function handleMessage(id, message) {
   if (message.type === "ping") return;
 
   if (message.type === "shop_connect") {
-    const name = cleanName(message.name);
-    shopClients.set(id, name);
-    sendShopPayload(id, name);
+    handleShopConnect(id, message).catch((err) => console.error("shop_connect:", err.message));
     return;
   }
 
   if (message.type === "save_profile") {
-    saveProfile(id, message);
+    saveProfile(id, message).catch((err) => console.error("save_profile:", err.message));
     return;
   }
 
@@ -868,20 +925,7 @@ function handleMessage(id, message) {
   }
 
   if (message.type === "join") {
-    const name = cleanName(message.name);
-    const difficulty = DIFFICULTIES[message.difficulty] ? message.difficulty : "normal";
-    const mode = MODES[message.mode] ? message.mode : "classic";
-    gameMode = mode;
-    const prof = getProfile(name);
-    const skin = getSkinDef(prof.activeSkin);
-    prof.stats.games = (prof.stats.games || 0) + 1;
-    prof.stats.sessionStart = Date.now();
-    shopData[name] = prof;
-    persistProfile(name, prof);
-    players.set(id, createPlayer(id, name, difficulty, skin));
-    if (mode === "tag_time" && !taggedPlayerId) taggedPlayerId = id; // первый — тэгер
-    restartTickInterval();
-    broadcastState();
+    handleJoin(id, message).catch((err) => console.error("join:", err.message));
     return;
   }
 
@@ -899,13 +943,15 @@ function handleMessage(id, message) {
   if (!player) return;
 
   if (message.type === "turn") {
+    if (player.frozenUntil && Date.now() < player.frozenUntil) return;
     const next = directionFromKey(message.direction);
     if (next && !isOpposite(player.direction, next)) player.nextDirection = next;
   }
 
   if (message.type === "restart") {
     recordScore(player);
-    const skin = SHOP_SKINS.find((s) => s.id === player.skin) || SHOP_SKINS[0];
+    startNewLife(player.name);
+    const skin = getSkinDef(getProfile(player.name).activeSkin);
     players.set(id, createPlayer(id, player.name, player.difficulty, skin));
     broadcastState();
   }
@@ -1005,20 +1051,78 @@ function unequipItem(clientId, itemId, nameHint) {
   broadcastState();
 }
 
-function saveProfile(clientId, message) {
-  const oldName = resolveName(clientId, message.oldName || message.name);
+async function isNameTaken(name, exceptName = null) {
+  const n = profileName(name);
+  if (!n) return true;
+  const lower = n.toLowerCase();
+  if (exceptName && exceptName.toLowerCase() === lower) return false;
+  const inShop = Object.keys(shopData).some((k) => k.toLowerCase() === lower);
+  if (inShop) return true;
+  return db.isPlayerNameTaken(n, exceptName);
+}
+
+async function resolvePlayName(id, requestedName) {
+  const session = socketSessions.get(id);
+  if (session) return { ok: true, name: session.player_name };
+
+  const name = profileName(requestedName);
+  if (!name) return { ok: false, text: "Укажи никнейм в профиле!" };
+  if (await isNameTaken(name)) {
+    return { ok: false, text: "Это имя уже занято! Войди через Google в профиле." };
+  }
+  return { ok: true, name };
+}
+
+async function handleShopConnect(id, message) {
+  const resolved = await resolvePlayName(id, message.name);
+  if (!resolved.ok) {
+    send(id, { type: "notice", text: resolved.text });
+    return;
+  }
+  shopClients.set(id, resolved.name);
+  sendShopPayload(id, resolved.name);
+}
+
+async function handleJoin(id, message) {
+  const resolved = await resolvePlayName(id, message.name);
+  if (!resolved.ok) {
+    send(id, { type: "notice", text: resolved.text });
+    return;
+  }
+  const name = resolved.name;
+  const difficulty = DIFFICULTIES[message.difficulty] ? message.difficulty : "normal";
+  const mode = MODES[message.mode] ? message.mode : "classic";
+  gameMode = mode;
+  const prof = getProfile(name);
+  const skin = getSkinDef(prof.activeSkin);
+  startNewLife(name);
+  shopClients.set(id, name);
+  players.set(id, createPlayer(id, name, difficulty, skin));
+  if (mode === "tag_time" && !taggedPlayerId) taggedPlayerId = id;
+  restartTickInterval();
+  broadcastState();
+}
+
+async function saveProfile(clientId, message) {
+  const session = socketSessions.get(clientId);
   const newName = profileName(message.name);
   if (!newName) {
     send(clientId, { type: "notice", text: "Никнейм не может быть пустым!" });
     return;
   }
+
+  if (!session) {
+    send(clientId, { type: "notice", text: "Войди через Google, чтобы редактировать профиль." });
+    return;
+  }
+
+  const oldName = session.player_name;
   const avatar = AVATAR_PRESETS.includes(message.avatar) ? message.avatar : "😎";
-  let entry = getProfile(oldName || newName);
+  let entry = getProfile(oldName);
   entry.avatar = avatar;
 
-  if (oldName && oldName !== newName) {
-    const taken = Object.keys(shopData).some((k) => k.toLowerCase() === newName.toLowerCase() && k !== oldName);
-    if (taken) {
+  if (oldName.toLowerCase() !== newName.toLowerCase()) {
+    if (await isNameTaken(newName, oldName)) {
       send(clientId, { type: "notice", text: "Это имя уже занято!" });
       return;
     }
@@ -1028,7 +1132,10 @@ function saveProfile(clientId, message) {
     const player = players.get(clientId);
     if (player) player.name = newName;
     shopData[newName] = entry;
-    db.renamePlayer(oldName, newName, entry).catch((err) => console.error("DB rename:", err.message));
+    session.player_name = newName;
+    socketSessions.set(clientId, session);
+    await db.updateGoogleUserPlayerName(session.google_id, newName);
+    await db.renamePlayer(oldName, newName, entry);
   } else {
     shopData[newName] = entry;
     persistProfile(newName, entry);
@@ -1053,6 +1160,14 @@ function getProfile(name) {
   return normalizeProfile(shopData[key] || defaultShopEntry());
 }
 
+function startNewLife(name) {
+  const entry = getProfile(name);
+  entry.stats.games = (entry.stats.games || 0) + 1;
+  entry.stats.sessionStart = Date.now();
+  shopData[name] = entry;
+  persistProfile(name, entry);
+}
+
 function normalizeProfile(raw) {
   const entry = {
     coins: raw.coins || 0,
@@ -1063,20 +1178,22 @@ function normalizeProfile(raw) {
     equipped: { snakeHat: raw.equipped?.snakeHat || null },
     stats: {
       games: raw.stats?.games || 0,
-      wins: raw.stats?.wins || 0,
-      losses: raw.stats?.losses || 0,
+      deaths: raw.stats?.deaths ?? raw.stats?.losses ?? 0,
       best: raw.stats?.best || 0,
       playTimeMs: raw.stats?.playTimeMs || 0,
       sessionStart: raw.stats?.sessionStart || null,
+      googlePicture: raw.stats?.googlePicture || null,
     },
   };
   for (const id of entry.unlockedSkins) {
     if (!entry.inventory.includes(id)) entry.inventory.push(id);
   }
   if (!entry.inventory.includes("default")) entry.inventory.unshift("default");
-  if (!SHOP_CATALOG.find((i) => i.id === entry.activeSkin && i.category === "skin")) {
-    entry.activeSkin = "default";
+  for (const custom of SHOP_CATALOG.filter((i) => i.customTexture)) {
+    if (!entry.inventory.includes(custom.id)) entry.inventory.push(custom.id);
   }
+  const skinValid = SHOP_CATALOG.find((i) => i.id === entry.activeSkin && i.category === "skin");
+  if (!skinValid) entry.activeSkin = "default";
   return entry;
 }
 
@@ -1097,18 +1214,17 @@ function applyCosmeticsToPlayer(player, name) {
 
 function trackDeathStats(player) {
   const entry = getProfile(player.name);
-  entry.stats.losses = (entry.stats.losses || 0) + 1;
+  entry.stats.deaths = (entry.stats.deaths ?? entry.stats.losses ?? 0) + 1;
   const prevBest = entry.stats.best || 0;
   entry.stats.best = Math.max(prevBest, player.score);
   player.beatPersonalBest = player.score > prevBest;
   if (entry.stats.sessionStart) {
     entry.stats.playTimeMs = (entry.stats.playTimeMs || 0) + (Date.now() - entry.stats.sessionStart);
-    entry.stats.sessionStart = Date.now();
+    entry.stats.sessionStart = null;
   }
   const rivalScores = [...players.values()].filter((p) => p.id !== player.id).map((p) => p.score);
   const sessionTop = Math.max(player.score, ...rivalScores, 0);
   player.sessionMvp = player.score > 0 && player.score >= sessionTop;
-  if (player.sessionMvp) entry.stats.wins = (entry.stats.wins || 0) + 1;
   shopData[player.name] = entry;
   persistProfile(player.name, entry);
 }
@@ -1145,7 +1261,9 @@ function getEnrichedLeaderboard() {
       ...e,
       rank: index + 1,
       avatar: prof.avatar,
-      wins: prof.stats?.wins || 0,
+      googlePicture: prof.stats?.googlePicture || null,
+      deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0,
+      games: prof.stats?.games || 0,
       best: Math.max(e.score, prof.stats?.best || 0),
       coins: prof.coins || 0,
     };
@@ -1159,7 +1277,9 @@ function getWealthLeaderboard() {
       coins: prof.coins || 0,
       score: prof.coins || 0,
       avatar: prof.avatar || "😎",
-      wins: prof.stats?.wins || 0,
+      googlePicture: prof.stats?.googlePicture || null,
+      deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0,
+      games: prof.stats?.games || 0,
       best: prof.stats?.best || 0,
     }))
     .filter((e) => e.coins > 0)
@@ -1210,6 +1330,7 @@ function createPlayer(id, name, difficulty, skin) {
     activeBonus: null, bonusExpires: null,
     combo: 0, maxCombo: 0,
     avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji,
+    frozenUntil: Date.now() + SPAWN_FREEZE_MS,
   };
   removeEntitiesUnderSnake(player);
   return player;
@@ -1262,6 +1383,7 @@ function broadcast(payload) { for (const id of sockets.keys()) send(id, payload)
 function removeClient(id) {
   sockets.delete(id);
   shopClients.delete(id);
+  socketSessions.delete(id);
   const player = players.get(id);
   if (player) {
     trackDisconnectStats(player);

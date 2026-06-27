@@ -208,6 +208,7 @@ html, body.gameBody {
 }
 
 .killFeed li.death { border-color: var(--red); color: #ffb4a9; }
+.killFeed li.kill { border-color: #ff6b5a; color: #ffc4bc; font-weight: 700; }
 .killFeed li.combo { border-color: var(--yellow); color: #ffe8a3; }
 .killFeed li.bonus { border-color: var(--purple); color: #e9c4ff; }
 .killFeed li.boss { border-color: #ff3b2e; color: #ff9b93; font-weight: 700; }

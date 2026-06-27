@@ -59,12 +59,12 @@ const SnakeFX = (() => {
   function updateTrails(players) {
     for (const p of players) {
       if (!p.alive) continue;
-      const head = p.snake?.[0];
-      if (!head) continue;
+      const tail = p.snake?.[p.snake.length - 1];
+      if (!tail) continue;
       let list = trails.get(p.id);
       if (!list) { list = []; trails.set(p.id, list); }
-      list.unshift({ x: head.x, y: head.y, life: 1, color: p.rainbow ? `hsl(${(Date.now() / 8) % 360},85%,60%)` : p.color });
-      if (list.length > 14) list.length = 14;
+      list.unshift({ x: tail.x, y: tail.y, life: 1, color: p.rainbow ? `hsl(${(Date.now() / 8) % 360},85%,60%)` : (p.trailColor || p.color) });
+      if (list.length > 18) list.length = 18;
       for (let i = list.length - 1; i >= 0; i--) {
         list[i].life -= 0.07;
         if (list[i].life <= 0) list.splice(i, 1);
@@ -79,8 +79,8 @@ const SnakeFX = (() => {
     for (const list of trails.values()) {
       for (let i = 0; i < list.length; i++) {
         const t = list[i];
-        const alpha = t.life * 0.35 * (1 - i / list.length);
-        const size = cell * (0.5 + t.life * 0.25);
+        const alpha = t.life * 0.45 * (1 - i / list.length);
+        const size = cell * (0.55 + t.life * 0.35);
         ctx.globalAlpha = alpha;
         ctx.fillStyle = t.color;
         ctx.shadowColor = t.color;

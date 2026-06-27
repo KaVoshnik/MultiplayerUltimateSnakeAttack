@@ -72,10 +72,39 @@ async function findGoogleUser(googleId) {
 
 async function findGoogleUserByPlayerName(playerName) {
   const { rows } = await pool.query(
-    "SELECT google_id, player_name FROM google_users WHERE player_name = $1",
+    "SELECT google_id, player_name FROM google_users WHERE LOWER(player_name) = LOWER($1) LIMIT 1",
     [playerName],
   );
   return rows[0] || null;
+}
+
+async function isPlayerNameTaken(playerName, exceptName = null) {
+  const lower = String(playerName || "").toLowerCase();
+  if (!lower) return true;
+  if (exceptName && exceptName.toLowerCase() === lower) return false;
+
+  const { rows } = await pool.query(
+    "SELECT name FROM players WHERE name_lower = $1 LIMIT 1",
+    [lower],
+  );
+  if (rows.length) return true;
+
+  const { rows: googleRows } = await pool.query(
+    "SELECT player_name FROM google_users WHERE LOWER(player_name) = $1 LIMIT 1",
+    [lower],
+  );
+  return googleRows.length > 0;
+}
+
+async function updateGoogleUserPlayerName(googleId, newName) {
+  await pool.query(
+    "UPDATE google_users SET player_name = $1 WHERE google_id = $2",
+    [newName, googleId],
+  );
+  await pool.query(
+    "UPDATE auth_sessions SET player_name = $1 WHERE google_id = $2",
+    [newName, googleId],
+  );
 }
 
 async function linkGoogleUser({ googleId, playerName, email, displayName, pictureUrl }) {
@@ -210,6 +239,14 @@ async function renamePlayer(oldName, newName, entry) {
       `UPDATE leaderboard SET name = $1, name_lower = $2 WHERE name_lower = $3`,
       [newName, newName.toLowerCase(), oldName.toLowerCase()],
     );
+    await client.query(
+      "UPDATE google_users SET player_name = $1 WHERE LOWER(player_name) = LOWER($2)",
+      [newName, oldName],
+    );
+    await client.query(
+      "UPDATE auth_sessions SET player_name = $1 WHERE LOWER(player_name) = LOWER($2)",
+      [newName, oldName],
+    );
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
@@ -252,6 +289,8 @@ module.exports = {
   close,
   findGoogleUser,
   findGoogleUserByPlayerName,
+  isPlayerNameTaken,
+  updateGoogleUserPlayerName,
   linkGoogleUser,
   createAuthSession,
   getAuthSession,

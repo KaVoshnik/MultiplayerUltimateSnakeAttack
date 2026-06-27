@@ -23,8 +23,8 @@ const deathStats = document.querySelector("#deathStats");
 const pausePanel = document.querySelector("#pausePanel");
 
 const settings = SnakeStore.load();
-if (!settings.name) {
-  location.href = "/";
+if (!settings.name || !settings.google) {
+  location.href = "/profile.html";
 }
 
 const BONUS_LABELS = {
@@ -59,6 +59,9 @@ const state = {
   personalBest: 0,
   bossRageSound: false,
   camera: { x: 0, y: 0, ready: false },
+  freezeEndsAt: 0,
+  renderSnap: null,
+  lastTrailUpdate: 0,
 };
 
 SnakeFX.initCrt(canvasStage);
@@ -91,7 +94,7 @@ document.addEventListener("keydown", (event) => {
     return;
   }
   const direction = keys[event.code];
-  if (!direction || state.menuOpen || !state.joined) return;
+  if (!direction || state.menuOpen || !state.joined || isSpawnFrozen()) return;
   event.preventDefault();
   send({ type: "turn", direction });
 });
@@ -103,7 +106,7 @@ function setupTouchControls() {
   const SWIPE_MIN = 18;
 
   const sendTurn = (direction) => {
-    if (state.menuOpen || !state.joined) return;
+    if (state.menuOpen || !state.joined || isSpawnFrozen()) return;
     send({ type: "turn", direction });
   };
 
@@ -129,6 +132,23 @@ function setupTouchControls() {
   }, { passive: false });
 
   canvasStage.addEventListener("touchcancel", () => { touchStart = null; });
+}
+
+function getMe() {
+  return state.players.find((p) => p.id === state.id);
+}
+
+function isSpawnFrozen() {
+  return state.freezeEndsAt > Date.now();
+}
+
+function syncSpawnFreeze(me) {
+  if (!me) return;
+  if ((me.spawnFrozenLeft || 0) > 0) {
+    state.freezeEndsAt = Date.now() + me.spawnFrozenLeft;
+  } else {
+    state.freezeEndsAt = 0;
+  }
 }
 
 function resizeCanvas() {
@@ -198,9 +218,10 @@ function connect() {
       state.gameMode = message.gameMode || "classic";
       state.taggedPlayerId = message.taggedPlayerId;
       const me = message.players.find((p) => p.id === state.id);
+      syncSpawnFreeze(me);
       updateHud(me, prevScore, prevCombo);
+      applyRenderSnap(message.players);
       renderPlayers();
-      SnakeFX.updateTrails(state.players);
       const anyEnraged = state.bosses.some((b) => b.phase === "enraged");
       if (anyEnraged && !state.bossRageSound) {
         state.bossRageSound = true;
@@ -362,8 +383,62 @@ function clamp(v, lo, hi) {
   return Math.max(lo, Math.min(hi, v));
 }
 
+function smoothstep(t) {
+  return t * t * (3 - 2 * t);
+}
+
+function snapshotPlayers(players) {
+  return players.map((p) => ({
+    ...p,
+    snake: (p.snake || []).map((s) => ({ x: s.x, y: s.y })),
+  }));
+}
+
+function applyRenderSnap(nextPlayers) {
+  const now = performance.now();
+  const prevDuration = state.renderSnap ? now - state.renderSnap.at : 115;
+  const duration = clamp(prevDuration, 70, 160);
+  const from = state.players.length ? snapshotPlayers(state.players) : snapshotPlayers(nextPlayers);
+  state.renderSnap = {
+    from,
+    to: snapshotPlayers(nextPlayers),
+    at: now,
+    duration,
+  };
+  state.players = nextPlayers;
+}
+
+function getRenderPlayers() {
+  if (!state.renderSnap) return state.players;
+  const { from, to, at, duration } = state.renderSnap;
+  const raw = duration > 0 ? clamp((performance.now() - at) / duration, 0, 1) : 1;
+  const t = smoothstep(raw);
+
+  return to.map((player) => {
+    const prev = from.find((p) => p.id === player.id);
+    if (!prev) return player;
+
+    const fromSnake = prev.snake || [];
+    const toSnake = player.snake || [];
+    const count = Math.max(fromSnake.length, toSnake.length);
+    const snake = [];
+
+    for (let i = 0; i < count; i += 1) {
+      const a = fromSnake[i] || toSnake[i];
+      const b = toSnake[i] || fromSnake[i];
+      if (!a || !b) continue;
+      snake.push({
+        x: a.x + (b.x - a.x) * t,
+        y: a.y + (b.y - a.y) * t,
+      });
+    }
+
+    return snake.length ? { ...player, snake } : player;
+  });
+}
+
 function updateCameraFollow() {
-  const me = state.players.find((p) => p.id === state.id);
+  const me = getRenderPlayers().find((p) => p.id === state.id);
   const head = me?.snake?.[0];
   const targetX = head ? head.x + 0.5 : state.grid.width / 2;
   const targetY = head ? head.y + 0.5 : state.grid.height / 2;
@@ -375,7 +450,7 @@ function updateCameraFollow() {
     return;
   }
 
-  const ease = head && me.alive ? 0.22 : 0.1;
+  const ease = head && me?.alive ? 0.38 : 0.14;
   state.camera.x += (targetX - state.camera.x) * ease;
   state.camera.y += (targetY - state.camera.y) * ease;
 }
@@ -435,6 +510,12 @@ function draw() {
   const height = board.height / ratio;
   updateCameraFollow();
   const view = computeCameraView(width, height);
+  const renderPlayers = getRenderPlayers();
+  const now = performance.now();
+  if (now - state.lastTrailUpdate > 40) {
+    SnakeFX.updateTrails(renderPlayers);
+    state.lastTrailUpdate = now;
+  }
   const shake = SnakeFX.getShakeOffset();
 
   ctx.save();
@@ -445,15 +526,37 @@ function draw() {
   drawFood(view);
   drawBonuses(view);
   drawBoss(view);
-  drawPlayers(view);
+  drawPlayers(view, renderPlayers);
   drawParticles(view);
   SnakeFX.drawFloaters(ctx, view.cell, view.offsetX, view.offsetY);
+  drawSpawnOverlay(width, height);
   ctx.restore();
 
   SnakeFX.drawConfetti(ctx, width, height);
   SnakeFX.drawCrt(width, height);
   drawMinimap(view);
   requestAnimationFrame(draw);
+}
+
+function drawSpawnOverlay(width, height) {
+  if (!isSpawnFrozen()) return;
+  const left = Math.max(0, state.freezeEndsAt - Date.now());
+  const sec = (left / 1000).toFixed(1);
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.fillRect(0, 0, width, height);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = `800 ${Math.max(18, width * 0.04)}px Orbitron, sans-serif`;
+  ctx.fillStyle = "#3de88a";
+  ctx.shadowColor = "#3de88a";
+  ctx.shadowBlur = 12;
+  ctx.fillText(`СТАРТ ${sec}`, width / 2, height / 2);
+  ctx.shadowBlur = 0;
+  ctx.font = `600 ${Math.max(11, width * 0.018)}px sans-serif`;
+  ctx.fillStyle = "rgba(255,255,255,0.75)";
+  ctx.fillText("Приготовься…", width / 2, height / 2 + width * 0.05);
+  ctx.restore();
 }
 
 function drawMinimap(view) {
@@ -725,15 +828,18 @@ function drawBoss(view) {
   }
 }
 
-function drawPlayers(view) {
+function drawPlayers(view, players = getRenderPlayers()) {
   const { cell, offsetX, offsetY } = view;
-  for (const player of state.players) {
+  for (const player of players) {
     ctx.globalAlpha = player.alive ? 1 : 0.35;
     const isTagged = state.gameMode === "tag_time" && player.id === state.taggedPlayerId;
     const head = player.snake[0];
     const neck = player.snake[1] || head;
     const dirX = head.x - neck.x;
     const dirY = head.y - neck.y;
+    const customTex = typeof CustomSkins !== "undefined" && CustomSkins.isCustom(player.skin)
+      ? CustomSkins.get(player.skin)
+      : null;
 
     player.snake.forEach((part, index) => {
       if (!isInCameraView(part.x, part.y, view, 0.5)) return;
@@ -741,29 +847,62 @@ function drawPlayers(view) {
       const py = offsetY + part.y * cell;
       const bodyColor = player.rainbow ? `hsl(${(index * 40 + Date.now() / 20) % 360}, 80%, 60%)` : player.color;
       const heatGlow = (player.heat || 0) > 50;
+      const segX = px + cell * 0.08;
+      const segY = py + cell * 0.08;
+      const segS = cell * 0.84;
+
       if (index === 0) {
-        ctx.fillStyle = player.headColor || "#fff";
         if (isTagged) { ctx.strokeStyle = "#ffd166"; ctx.lineWidth = cell * 0.1; roundRect(px + cell * 0.04, py + cell * 0.04, cell * 0.92, cell * 0.92, cell * 0.2); ctx.stroke(); }
         if (player.activeBonus === "ghost") ctx.globalAlpha = 0.6;
         if (heatGlow) { ctx.shadowColor = player.color; ctx.shadowBlur = cell * 0.45; }
       } else {
-        ctx.fillStyle = bodyColor;
         ctx.globalAlpha = player.alive ? (player.activeBonus === "ghost" ? 0.5 : 0.9) : 0.35;
       }
-      roundRect(px + cell * 0.08, py + cell * 0.08, cell * 0.84, cell * 0.84, cell * 0.18);
-      ctx.fill();
-      if (index === 0) {
+
+      if (customTex) {
+        ctx.drawImage(customTex, segX, segY, segS, segS);
+      } else if (index === 0) {
+        ctx.fillStyle = player.headColor || "#fff";
+        roundRect(segX, segY, segS, segS, cell * 0.18);
+        ctx.fill();
         ctx.globalAlpha = player.alive ? 1 : 0.35;
         ctx.fillStyle = bodyColor;
         roundRect(px + cell * 0.24, py + cell * 0.24, cell * 0.52, cell * 0.52, cell * 0.14);
         ctx.fill();
+      } else {
+        ctx.fillStyle = bodyColor;
+        roundRect(segX, segY, segS, segS, cell * 0.18);
+        ctx.fill();
+      }
+
+      if (index === 0) {
+        ctx.globalAlpha = player.alive ? 1 : 0.35;
         drawSnakeEyes(px, py, cell, dirX, dirY);
         drawSnakeCosmetics(px, py, cell, player);
+        drawPlayerNameLabel(px, py, cell, player);
         ctx.shadowBlur = 0;
       }
     });
     ctx.globalAlpha = 1;
   }
+}
+
+function drawPlayerNameLabel(x, y, cell, player) {
+  if (!player.alive || !player.name) return;
+  const cx = x + cell / 2;
+  const cy = y + cell + cell * 0.06;
+  const fontSize = Math.max(9, Math.min(13, cell * 0.24));
+  const label = player.name.length > 14 ? `${player.name.slice(0, 13)}…` : player.name;
+  ctx.save();
+  ctx.font = `700 ${fontSize}px sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  ctx.lineWidth = Math.max(2, fontSize * 0.18);
+  ctx.strokeStyle = "rgba(0,0,0,0.75)";
+  ctx.fillStyle = player.id === state.id ? "#3de88a" : "rgba(255,255,255,0.92)";
+  ctx.strokeText(label, cx, cy);
+  ctx.fillText(label, cx, cy);
+  ctx.restore();
 }
 
 function drawSnakeEyes(x, y, cell, dirX, dirY) {

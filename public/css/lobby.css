@@ -35,6 +35,24 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  cursor: pointer;
+  border-radius: 999px;
+  transition: background .15s;
+}
+
+.userBar:hover {
+  background: rgba(255,255,255,.04);
+}
+
+.settingsHint {
+  margin: 0 0 4px;
+  font-size: .8rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.settingsHint a {
+  color: var(--green);
 }
 
 .coinPill {

@@ -1,25 +1,29 @@
 let settings = SnakeStore.load();
-const nameInput = document.querySelector("#nameInput");
 const settingsModal = document.querySelector("#settingsModal");
 const audioToggle = document.querySelector("#audioToggle");
 const liveFeed = document.querySelector("#liveFeed");
 let shopData = { avatar: "😎", coins: 0 };
+let sessionUser = null;
 
-if (settings.name) nameInput.value = settings.name;
 if (audioToggle) {
   audioToggle.checked = SnakeAudio.isEnabled();
   audioToggle.addEventListener("change", () => SnakeAudio.setEnabled(audioToggle.checked));
 }
 updateUserBar(shopData, settings.name);
 
-initAuth({
+syncSessionUser({
+  shopData,
   onLogin(me) {
+    sessionUser = me;
     shopData = me.shopData || shopData;
     settings.name = me.name;
     if (socket?.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({ type: "shop_connect", name: me.name }));
     }
   },
+}).then((me) => {
+  if (me?.loggedIn) sessionUser = me;
+  connect();
 });
 
 // Matrix rain + particles hybrid
@@ -73,37 +77,33 @@ drawMatrix();
 window.addEventListener("resize", resizeParticles);
 document.body.addEventListener("pointerdown", () => { SnakeAudio.ensure(); SnakeAudio.startAmbient(); }, { once: true });
 
-// Settings
+// Settings — только звук
 document.querySelector("#btnSettings").addEventListener("click", () => settingsModal.classList.remove("hidden"));
 document.querySelector("#closeSettings").addEventListener("click", () => settingsModal.classList.add("hidden"));
 document.querySelector("#saveSettings").addEventListener("click", () => {
-  const name = nameInput.value.trim();
-  if (!name) { showToast("Введи никнейм!"); return; }
   SnakeAudio.play("ui");
-  SnakeStore.save({ name, audio: SnakeAudio.isEnabled() });
-  updateUserBar(shopData, name);
-  if (socket?.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify({ type: "shop_connect", name }));
-    socket.send(JSON.stringify({ type: "save_profile", name, oldName: settings.name, avatar: shopData.avatar }));
-  }
-  settings.name = name;
+  SnakeStore.save({ audio: SnakeAudio.isEnabled() });
   settingsModal.classList.add("hidden");
   showToast("Настройки сохранены!");
 });
 
 function goPlay() {
-  const name = nameInput.value.trim() || SnakeStore.getName();
-  if (!name) {
-    settingsModal.classList.remove("hidden");
-    showToast("Сначала введи никнейм в настройках!");
+  const name = sessionUser?.name || SnakeStore.getName();
+  if (!name || !sessionUser?.loggedIn) {
+    showToast("Войди через Google в профиле!");
+    location.href = "/profile.html";
     return;
   }
   SnakeAudio.play("ui");
-  SnakeStore.save({ name, audio: SnakeAudio.isEnabled() });
+  SnakeStore.save({ name, audio: SnakeAudio.isEnabled(), google: true });
   location.href = "/game.html";
 }
 
 document.querySelector("#btnPlay").addEventListener("click", goPlay);
+
+document.querySelector("#userBar")?.addEventListener("click", () => {
+  location.href = "/profile.html";
+});
 
 function setLiveFeed(text) {
   if (!liveFeed) return;
@@ -117,15 +117,16 @@ let socket = null;
 function connect() {
   socket = new WebSocket(getWebSocketUrl());
   socket.addEventListener("open", () => {
-    const name = SnakeStore.getName();
-    if (name) socket.send(JSON.stringify({ type: "shop_connect", name }));
+    if (sessionUser?.loggedIn && sessionUser.name) {
+      socket.send(JSON.stringify({ type: "shop_connect", name: sessionUser.name }));
+    }
   });
   socket.addEventListener("message", (event) => {
     const msg = JSON.parse(event.data);
     if (msg.type === "ping") return;
     if (msg.type === "shop_update") {
       shopData = msg.shopData;
-      updateUserBar(shopData, SnakeStore.getName());
+      updateUserBar(shopData, sessionUser?.name || SnakeStore.getName());
     }
     if (msg.type === "state" && msg.players) {
       const alive = msg.players.filter((p) => p.alive).length;
@@ -145,4 +146,3 @@ function connect() {
   });
   socket.addEventListener("close", () => setTimeout(connect, 1500));
 }
-connect();
