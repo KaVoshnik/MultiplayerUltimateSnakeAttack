@@ -16,9 +16,10 @@ const SNAKE_SPAWN_LEN = 4;
 const SPAWN_MARGIN = 18;
 const SPAWN_CLEAR_RADIUS = 5;
 const BAD_FOOD_HEAD_BUFFER = 3;
-const BOSS_MOVE_EVERY = 9;
-const BOSS_CHASE_RANGE = 16;
-const BOSS_RANDOM_MOVE_CHANCE = 0.38;
+const BOSS_MOVE_EVERY = 6;
+const BOSS_CHASE_RANGE = 22;
+const BOSS_RANDOM_MOVE_CHANCE = 0.24;
+const BOSS_HUNT_RANGE = 7;
 const BOSS_SPAWN_BUFFER = 14;
 const MAX_LEADERS = 20;
 
@@ -340,7 +341,7 @@ function tick() {
   if (players.size === 0) return;
   tickCount += 1;
   fillFood();
-  if (tickCount % (bosses.some((b) => b.enragedTicks > 0) ? 4 : BOSS_MOVE_EVERY) === 0) moveBosses();
+  if (tickCount % (bosses.some((b) => b.enragedTicks > 0) ? 3 : BOSS_MOVE_EVERY) === 0) moveBosses();
   tickBonusEffects();
 
   const occupied = new Map();
@@ -569,12 +570,12 @@ function updateBossPhase(boss, dist) {
     boss.size = 2;
     if (boss.enragedTicks <= 0) {
       boss.size = 1;
-      boss.phase = dist <= 5 ? "hunt" : "idle";
+      boss.phase = dist <= BOSS_HUNT_RANGE ? "hunt" : "idle";
     }
     return;
   }
   boss.size = 1;
-  boss.phase = dist <= 5 ? "hunt" : dist <= BOSS_CHASE_RANGE ? "stalk" : "idle";
+  boss.phase = dist <= BOSS_HUNT_RANGE ? "hunt" : dist <= BOSS_CHASE_RANGE ? "stalk" : "idle";
 }
 
 function moveBosses() {
@@ -590,12 +591,12 @@ function moveBosses() {
 
     const target = alive.sort((a, b) => distanceToBoss(a.snake[0], boss) - distanceToBoss(b.snake[0], boss))[0];
     const dist = target ? distanceToBoss(target.snake[0], boss) : 999;
-    boss.angry = dist <= 5 || boss.phase === "enraged";
+    boss.angry = dist <= BOSS_HUNT_RANGE || boss.phase === "enraged";
     updateBossPhase(boss, dist);
 
     let nextMove = null;
-    const chaseRange = boss.phase === "enraged" ? BOSS_CHASE_RANGE + 6 : BOSS_CHASE_RANGE;
-    const randomChance = boss.phase === "enraged" ? 0.15 : BOSS_RANDOM_MOVE_CHANCE;
+    const chaseRange = boss.phase === "enraged" ? BOSS_CHASE_RANGE + 10 : BOSS_CHASE_RANGE;
+    const randomChance = boss.phase === "enraged" ? 0.06 : BOSS_RANDOM_MOVE_CHANCE;
     if (target && dist <= chaseRange && Math.random() > randomChance) {
       const moves = bossMovesToward(boss, target.snake[0]);
       nextMove = moves.find((m) => bossCanMove(boss, m));
@@ -615,7 +616,7 @@ function moveBosses() {
     const killer = bossAt(head);
     if (killer) {
       killPlayer(player, `${killer.name} схватил за голову`);
-      killer.moveCooldown = killer.phase === "enraged" ? 3 : 6;
+      killer.moveCooldown = killer.phase === "enraged" ? 2 : 4;
     }
   }
 }

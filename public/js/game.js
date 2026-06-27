@@ -96,19 +96,11 @@ document.addEventListener("keydown", (event) => {
   send({ type: "turn", direction });
 });
 
-document.querySelectorAll("[data-dir]").forEach((button) => {
-  button.addEventListener("pointerdown", (event) => {
-    event.preventDefault();
-    if (state.menuOpen || !state.joined) return;
-    send({ type: "turn", direction: button.dataset.dir });
-  });
-});
-
 setupTouchControls();
 
 function setupTouchControls() {
   let touchStart = null;
-  const SWIPE_MIN = 24;
+  const SWIPE_MIN = 18;
 
   const sendTurn = (direction) => {
     if (state.menuOpen || !state.joined) return;
@@ -120,6 +112,10 @@ function setupTouchControls() {
     touchStart = { x: event.touches[0].clientX, y: event.touches[0].clientY };
   }, { passive: true });
 
+  canvasStage.addEventListener("touchmove", (event) => {
+    if (touchStart) event.preventDefault();
+  }, { passive: false });
+
   canvasStage.addEventListener("touchend", (event) => {
     if (!touchStart || event.changedTouches.length !== 1) return;
     const touch = event.changedTouches[0];
@@ -127,9 +123,10 @@ function setupTouchControls() {
     const dy = touch.clientY - touchStart.y;
     touchStart = null;
     if (Math.abs(dx) < SWIPE_MIN && Math.abs(dy) < SWIPE_MIN) return;
+    event.preventDefault();
     if (Math.abs(dx) > Math.abs(dy)) sendTurn(dx > 0 ? "right" : "left");
     else sendTurn(dy > 0 ? "down" : "up");
-  }, { passive: true });
+  }, { passive: false });
 
   canvasStage.addEventListener("touchcancel", () => { touchStart = null; });
 }
@@ -394,7 +391,7 @@ function getNearestBoss(point) {
 
 function computeCameraView(width, height) {
   const coarse = window.matchMedia("(hover: none) and (pointer: coarse)").matches;
-  const cell = coarse ? 28 : 40;
+  const cell = coarse ? 22 : 40;
   const halfW = width / cell / 2;
   const halfH = height / cell / 2;
 
