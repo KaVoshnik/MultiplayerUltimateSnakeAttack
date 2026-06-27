@@ -407,11 +407,11 @@ function smoothstep(t) {
   return t * t * (3 - 2 * t);
 }
 
-function snapshotHeads(players) {
+// Снимаем позиции ВСЕХ сегментов змейки, не только головы
+function snapshotSnakes(players) {
   const map = new Map();
   for (const p of players) {
-    const h = p.snake?.[0];
-    if (h) map.set(p.id, { x: h.x, y: h.y });
+    if (p.snake?.length) map.set(p.id, p.snake.map(seg => ({ x: seg.x, y: seg.y })));
   }
   return map;
 }
@@ -420,7 +420,8 @@ function applyRenderSnap(nextPlayers) {
   const now = performance.now();
   const prevDuration = state.renderSnap ? now - state.renderSnap.at : 115;
   state.renderSnap = {
-    prevHeads: state.players.length ? snapshotHeads(state.players) : snapshotHeads(nextPlayers),
+    // Снимок всех сегментов до обновления стейта
+    prevSnakes: state.players.length ? snapshotSnakes(state.players) : snapshotSnakes(nextPlayers),
     at: now,
     // Диапазон 40–200ms покрывает все сложности: insane=50ms, easy=160ms
     duration: clamp(prevDuration, 40, 200),
@@ -434,23 +435,25 @@ function getSnapT() {
   return smoothstep(raw);
 }
 
-function getSlideOffset(playerId, cell) {
-  if (!state.renderSnap) return { x: 0, y: 0 };
-  const prev = state.renderSnap.prevHeads.get(playerId);
-  const player = state.players.find((p) => p.id === playerId);
-  const head = player?.snake?.[0];
-  if (!prev || !head) return { x: 0, y: 0 };
+// Возвращает интерполированную позицию сегмента index для игрока playerId
+// Каждый сегмент интерполируется от своей предыдущей позиции к текущей
+function getSegmentPos(playerId, index, currentSeg, cell, offsetX, offsetY) {
+  if (!state.renderSnap) return { px: offsetX + currentSeg.x * cell, py: offsetY + currentSeg.y * cell };
+  const prevSnake = state.renderSnap.prevSnakes?.get(playerId);
+  const prev = prevSnake?.[index];
+  if (!prev) return { px: offsetX + currentSeg.x * cell, py: offsetY + currentSeg.y * cell };
   const t = getSnapT();
-  const ix = prev.x + (head.x - prev.x) * t;
-  const iy = prev.y + (head.y - prev.y) * t;
-  return { x: (ix - head.x) * cell, y: (iy - head.y) * cell };
+  const ix = prev.x + (currentSeg.x - prev.x) * t;
+  const iy = prev.y + (currentSeg.y - prev.y) * t;
+  return { px: offsetX + ix * cell, py: offsetY + iy * cell };
 }
 
 function getCameraHead(player) {
   const head = player?.snake?.[0];
   if (!head) return null;
   if (!state.renderSnap) return { x: head.x + 0.5, y: head.y + 0.5 };
-  const prev = state.renderSnap.prevHeads.get(player.id);
+  const prevSnake = state.renderSnap.prevSnakes?.get(player.id);
+  const prev = prevSnake?.[0];
   if (!prev) return { x: head.x + 0.5, y: head.y + 0.5 };
   const t = getSnapT();
   return {
@@ -643,7 +646,7 @@ function drawBackground(width, height, view) {
   // Пересоздаём градиенты только если изменился размер или режим босса
   const c = bgGradientCache;
   if (c.enraged !== enraged || c.width !== width || c.height !== height ||
-    c.mapL !== mapL || c.mapT !== mapT || c.mapW !== mapW || c.mapH !== mapH) {
+      c.mapL !== mapL || c.mapT !== mapT || c.mapW !== mapW || c.mapH !== mapH) {
     c.enraged = enraged;
     c.width = width; c.height = height;
     c.mapL = mapL; c.mapT = mapT; c.mapW = mapW; c.mapH = mapH;
@@ -790,7 +793,7 @@ function drawFoodShape(kind, cx, cy, r, cell) {
       ctx.fillStyle = "#e8453c";
       ctx.beginPath(); ctx.arc(cx, cy - r * 0.1, r * 0.75, Math.PI, 0); ctx.fill();
       break;
-    default:
+  default:
       ctx.fillStyle = "#d4cfc7";
       ctx.lineWidth = Math.max(2, cell * 0.08);
       ctx.strokeStyle = "#d4cfc7"; ctx.lineCap = "round";
@@ -878,21 +881,32 @@ function drawBoss(view) {
 function drawPlayers(view) {
   const { cell, offsetX, offsetY } = view;
   for (const player of state.players) {
-    const slide = getSlideOffset(player.id, cell);
     ctx.globalAlpha = player.alive ? 1 : 0.35;
     const isTagged = state.gameMode === "tag_time" && player.id === state.taggedPlayerId;
-    const head = player.snake[0];
-    const neck = player.snake[1] || head;
-    const dirX = head.x - neck.x;
-    const dirY = head.y - neck.y;
+
+    // Интерполированная позиция головы для направления
+    const { px: headPx, py: headPy } = getSegmentPos(player.id, 0, player.snake[0], cell, offsetX, offsetY);
+    const neck = player.snake[1] || player.snake[0];
+    const { px: neckPx, py: neckPy } = getSegmentPos(player.id, 1, neck, cell, offsetX, offsetY);
+    const dirX = headPx - neckPx;
+    const dirY = headPy - neckPy;
+    // Нормализуем в -1/0/1 для совместимости с drawSnakeEyes
+    const dirXn = dirX === 0 ? 0 : dirX > 0 ? 1 : -1;
+    const dirYn = dirY === 0 ? 0 : dirY > 0 ? 1 : -1;
+
     const customTex = typeof CustomSkins !== "undefined" && CustomSkins.isBody(player.skin)
       ? CustomSkins.get(player.skin)
       : null;
 
     player.snake.forEach((part, index) => {
-      if (!isInCameraView(part.x, part.y, view, 0.5)) return;
-      const px = offsetX + part.x * cell + slide.x;
-      const py = offsetY + part.y * cell + slide.y;
+      // Получаем интерполированную позицию этого конкретного сегмента
+      const { px, py } = getSegmentPos(player.id, index, part, cell, offsetX, offsetY);
+
+      // Проверяем видимость по интерполированной позиции
+      const gx = (px - offsetX) / cell;
+      const gy = (py - offsetY) / cell;
+      if (!isInCameraView(gx, gy, view, 0.5)) return;
+
       const bodyColor = player.rainbow ? `hsl(${(index * 40 + Date.now() / 20) % 360}, 80%, 60%)` : player.color;
       const heatGlow = (player.heat || 0) > 50;
       const segX = px + cell * 0.08;
@@ -930,7 +944,7 @@ function drawPlayers(view) {
 
       if (index === 0) {
         ctx.globalAlpha = player.alive ? 1 : 0.35;
-        drawSnakeEyes(px, py, cell, dirX, dirY);
+        drawSnakeEyes(px, py, cell, dirXn, dirYn);
         drawSnakeCosmetics(px, py, cell, player);
         drawPlayerNameLabel(px, py, cell, player);
       }
