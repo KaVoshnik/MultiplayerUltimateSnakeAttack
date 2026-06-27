@@ -21,7 +21,32 @@
   </nav>
 
   <main class="pageWrap profilePage">
-    <div class="profileGrid">
+    <section class="glass profileAccount" id="profileAccount">
+      <div class="accountGuest" id="accountGuest">
+        <div class="accountGuestText">
+          <h1>Твой профиль</h1>
+          <p>Войди через Google — сохраним прогресс, монеты и уникальный никнейм.</p>
+        </div>
+        <a class="btn googleBtn" id="btnGoogleLogin" href="/auth/google?return_to=/profile.html">Войти через Google</a>
+      </div>
+
+      <div class="accountUser hidden" id="accountUser">
+        <div class="accountUserMain">
+          <div class="accountAvatarWrap" id="accountAvatarWrap">
+            <span class="accountAvatarEmoji" id="accountAvatarEmoji">😎</span>
+            <img class="accountAvatarImg hidden" id="accountGoogleAvatar" alt="" referrerpolicy="no-referrer" />
+          </div>
+          <div class="accountUserInfo">
+            <h1 id="accountDisplayName">Игрок</h1>
+            <p class="accountEmail" id="accountEmail"></p>
+            <span class="accountBadge">Google аккаунт</span>
+          </div>
+        </div>
+        <button type="button" class="btn ghost" id="btnGoogleLogout">Выйти</button>
+      </div>
+    </section>
+
+    <div class="profileGrid" id="profileContent">
       <section class="glass profilePreview">
         <h2>Превью змеи</h2>
         <canvas id="snakePreview" width="280" height="200"></canvas>
@@ -31,14 +56,15 @@
       <section class="glass profileForm">
         <h2>Кастомизация</h2>
         <label for="profileName">Никнейм (до 16 символов)</label>
-        <input id="profileName" maxlength="16" placeholder="Твой ник" />
+        <input id="profileName" maxlength="16" placeholder="Твой ник" disabled />
 
         <label>Аватарка</label>
         <div class="avatarGrid" id="avatarGrid"></div>
 
-        <button type="button" class="btn primary" id="saveProfile" style="width:100%;margin-top:20px">
+        <button type="button" class="btn primary" id="saveProfile" style="width:100%;margin-top:20px" disabled>
           СОХРАНИТЬ ИЗМЕНЕНИЯ
         </button>
+        <p class="profileHint hidden" id="profileLoginHint">Войди через Google, чтобы менять ник и аватар.</p>
       </section>
 
       <section class="glass profileStats">

@@ -3,6 +3,7 @@ const crypto = require("crypto");
 const SESSION_COOKIE = "snake_session";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const pendingStates = new Map();
+const pendingReturns = new Map();
 
 function getGoogleConfig() {
   return {
@@ -55,23 +56,30 @@ function clearSessionCookie(res, req) {
   res.setHeader("Set-Cookie", `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`);
 }
 
-function createState() {
+function createState(returnTo = "/profile.html") {
   const state = crypto.randomBytes(16).toString("hex");
   pendingStates.set(state, Date.now() + 10 * 60 * 1000);
+  const safe = returnTo.startsWith("/") && !returnTo.startsWith("//") ? returnTo : "/profile.html";
+  pendingReturns.set(state, safe);
   return state;
 }
 
 function consumeState(state) {
   const expires = pendingStates.get(state);
+  const returnTo = pendingReturns.get(state) || "/profile.html";
   pendingStates.delete(state);
-  if (!expires || expires < Date.now()) return false;
-  return true;
+  pendingReturns.delete(state);
+  if (!expires || expires < Date.now()) return null;
+  return returnTo;
 }
 
 function cleanupStates() {
   const now = Date.now();
   for (const [state, expires] of pendingStates) {
-    if (expires < now) pendingStates.delete(state);
+    if (expires < now) {
+      pendingStates.delete(state);
+      pendingReturns.delete(state);
+    }
   }
 }
 
@@ -89,7 +97,7 @@ async function ensureGooglePlayer(ctx, googleUser) {
   let playerName = base;
   for (let i = 0; i < 50; i += 1) {
     const candidate = i === 0 ? base : ctx.cleanName(`${base.slice(0, 12)}${i + 1}`);
-    const taken = await ctx.db.findGoogleUserByPlayerName(candidate);
+    const taken = await ctx.db.isPlayerNameTaken(candidate);
     if (!taken) {
       playerName = candidate;
       break;
@@ -187,7 +195,8 @@ async function handleRequest(req, res, url, ctx) {
   }
 
   if (url.pathname === "/auth/google" && req.method === "GET") {
-    const state = createState();
+    const returnTo = url.searchParams.get("return_to") || "/profile.html";
+    const state = createState(returnTo);
     const params = new URLSearchParams({
       client_id: getGoogleConfig().clientId,
       redirect_uri: redirectUri,
@@ -205,15 +214,16 @@ async function handleRequest(req, res, url, ctx) {
   if (url.pathname === "/auth/google/callback" && req.method === "GET") {
     const error = url.searchParams.get("error");
     if (error) {
-      res.writeHead(302, { Location: `/?auth_error=${encodeURIComponent(error)}` });
+      res.writeHead(302, { Location: "/profile.html?auth_error=" + encodeURIComponent(error) });
       res.end();
       return true;
     }
 
     const code = url.searchParams.get("code");
     const state = url.searchParams.get("state");
-    if (!code || !state || !consumeState(state)) {
-      res.writeHead(302, { Location: "/?auth_error=invalid_state" });
+    const returnTo = state ? consumeState(state) : null;
+    if (!code || !returnTo) {
+      res.writeHead(302, { Location: "/profile.html?auth_error=invalid_state" });
       res.end();
       return true;
     }
@@ -229,11 +239,12 @@ async function handleRequest(req, res, url, ctx) {
         pictureUrl: googleUser.picture || "",
       });
       setSessionCookie(res, token, req);
-      res.writeHead(302, { Location: "/?auth=ok" });
+      const sep = returnTo.includes("?") ? "&" : "?";
+      res.writeHead(302, { Location: `${returnTo}${sep}auth=ok` });
       res.end();
     } catch (err) {
       console.error("Google OAuth:", err.message);
-      res.writeHead(302, { Location: "/?auth_error=oauth_failed" });
+      res.writeHead(302, { Location: "/profile.html?auth_error=oauth_failed" });
       res.end();
     }
     return true;

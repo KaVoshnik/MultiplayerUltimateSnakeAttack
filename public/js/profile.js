@@ -1,8 +1,13 @@
-const profileName = document.querySelector("#profileName");
+const profileNameInput = document.querySelector("#profileName");
 const avatarGrid = document.querySelector("#avatarGrid");
 const equippedList = document.querySelector("#equippedList");
 const previewCanvas = document.querySelector("#snakePreview");
 const previewCtx = previewCanvas.getContext("2d");
+const saveBtn = document.querySelector("#saveProfile");
+const accountGuest = document.querySelector("#accountGuest");
+const accountUser = document.querySelector("#accountUser");
+const profileLoginHint = document.querySelector("#profileLoginHint");
+const profileContent = document.querySelector("#profileContent");
 
 const state = {
   socket: null,
@@ -10,17 +15,67 @@ const state = {
   catalog: [],
   avatars: [],
   selectedAvatar: "😎",
-  oldName: SnakeStore.getName(),
+  oldName: "",
+  loggedIn: false,
+  me: null,
 };
 
-profileName.value = state.oldName;
+function setProfileEditable(enabled) {
+  profileNameInput.disabled = !enabled;
+  saveBtn.disabled = !enabled;
+  profileLoginHint?.classList.toggle("hidden", enabled);
+  profileContent?.classList.toggle("profileLocked", !enabled);
+  avatarGrid.querySelectorAll(".avatarBtn").forEach((btn) => {
+    btn.disabled = !enabled;
+  });
+}
+
+function renderAccount(me) {
+  const loginBtn = document.querySelector("#btnGoogleLogin");
+  if (me.loggedIn) {
+    accountGuest?.classList.add("hidden");
+    accountUser?.classList.remove("hidden");
+    loginBtn?.classList.add("hidden");
+
+    const displayName = document.querySelector("#accountDisplayName");
+    const emailEl = document.querySelector("#accountEmail");
+    const googleImg = document.querySelector("#accountGoogleAvatar");
+    const emojiEl = document.querySelector("#accountAvatarEmoji");
+
+    if (displayName) displayName.textContent = me.name;
+    if (emailEl) emailEl.textContent = me.email || "";
+
+    const picture = me.picture || me.shopData?.stats?.googlePicture;
+    if (picture && googleImg) {
+      googleImg.src = picture;
+      googleImg.classList.remove("hidden");
+      emojiEl?.classList.add("hidden");
+    } else {
+      googleImg?.classList.add("hidden");
+      if (emojiEl) {
+        emojiEl.textContent = me.shopData?.avatar || "😎";
+        emojiEl.classList.remove("hidden");
+      }
+    }
+
+    state.oldName = me.name;
+    profileNameInput.value = me.name;
+    setProfileEditable(true);
+  } else {
+    accountGuest?.classList.remove("hidden");
+    accountUser?.classList.add("hidden");
+    loginBtn?.classList.remove("hidden");
+    setProfileEditable(false);
+    profileNameInput.value = "";
+  }
+}
 
 function connect() {
   const socket = new WebSocket(getWebSocketUrl());
   state.socket = socket;
 
   socket.addEventListener("open", () => {
-    if (state.oldName) send({ type: "shop_connect", name: state.oldName });
+    socket.send(JSON.stringify({ type: "shop_connect", name: state.oldName || SnakeStore.getName() }));
   });
 
   socket.addEventListener("close", () => setTimeout(connect, 1200));
@@ -31,7 +86,9 @@ function connect() {
       state.avatars = msg.avatars || [];
       state.catalog = msg.catalog || [];
       renderAvatars();
-      if (state.oldName) send({ type: "shop_connect", name: state.oldName });
+      if (state.loggedIn && state.oldName) {
+        socket.send(JSON.stringify({ type: "shop_connect", name: state.oldName }));
+      }
     }
     if (msg.type === "shop_update") {
       state.shopData = msg.shopData;
@@ -46,8 +103,10 @@ function connect() {
     if (msg.type === "profile_saved") {
       if (msg.name) {
         state.oldName = msg.name;
-        SnakeStore.save({ name: msg.name });
-        profileName.value = msg.name;
+        SnakeStore.save({ name: msg.name, google: true });
+        profileNameInput.value = msg.name;
+        const displayName = document.querySelector("#accountDisplayName");
+        if (displayName) displayName.textContent = msg.name;
       }
       showToast("Профиль сохранён!");
     }
@@ -68,7 +127,9 @@ function renderAvatars() {
     btn.type = "button";
     btn.className = `avatarBtn${emoji === state.selectedAvatar ? " active" : ""}`;
     btn.textContent = emoji;
+    btn.disabled = !state.loggedIn;
     btn.addEventListener("click", () => {
+      if (!state.loggedIn) return;
       state.selectedAvatar = emoji;
       renderAvatars();
       drawPreview();
@@ -174,8 +235,12 @@ function roundRect(c, x, y, w, h, r) {
   c.closePath();
 }
 
-document.querySelector("#saveProfile").addEventListener("click", () => {
-  const name = profileName.value.trim();
+saveBtn.addEventListener("click", () => {
+  if (!state.loggedIn) {
+    showToast("Сначала войди через Google!");
+    return;
+  }
+  const name = profileNameInput.value.trim();
   if (!name) {
     showToast("Никнейм не может быть пустым!");
     return;
@@ -186,6 +251,35 @@ document.querySelector("#saveProfile").addEventListener("click", () => {
     oldName: state.oldName,
     avatar: state.selectedAvatar,
   });
+});
+
+initProfileAuth({
+  onLogin(me) {
+    state.loggedIn = true;
+    state.me = me;
+    state.shopData = me.shopData || state.shopData;
+    SnakeStore.save({ name: me.name, google: true });
+    renderAccount(me);
+    if (state.socket?.readyState === WebSocket.OPEN) {
+      state.socket.send(JSON.stringify({ type: "shop_connect", name: me.name }));
+    }
+  },
+  onLogout() {
+    state.loggedIn = false;
+    state.me = null;
+    state.shopData = null;
+    state.oldName = "";
+    renderAccount({ loggedIn: false });
+  },
+}).then((me) => {
+  if (me?.loggedIn) {
+    state.loggedIn = true;
+    state.me = me;
+    state.shopData = me.shopData;
+    renderAccount(me);
+  } else {
+    renderAccount({ loggedIn: false });
+  }
 });
 
 connect();

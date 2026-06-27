@@ -138,6 +138,7 @@ const bosses = createBosses();
 let leaderboard = [];
 let shopData = {};
 const shopClients = new Map(); // socket id -> player name (shop-only sessions)
+const socketSessions = new Map(); // socket id -> auth session row
 let tickCount = 0;
 let gameMode = "classic";
 let taggedPlayerId = null; // для Tag Time
@@ -258,6 +259,9 @@ server.on("upgrade", (req, socket) => {
 
   const id = String(nextClientId++);
   sockets.set(id, socket);
+  auth.getSession(req, db).then((session) => {
+    if (session) socketSessions.set(id, session);
+  }).catch(() => {});
   socket.on("data", (chunk) => readFrames(id, chunk));
   socket.on("close", () => removeClient(id));
   socket.on("error", () => removeClient(id));
@@ -841,14 +845,12 @@ function handleMessage(id, message) {
   if (message.type === "ping") return;
 
   if (message.type === "shop_connect") {
-    const name = cleanName(message.name);
-    shopClients.set(id, name);
-    sendShopPayload(id, name);
+    handleShopConnect(id, message).catch((err) => console.error("shop_connect:", err.message));
     return;
   }
 
   if (message.type === "save_profile") {
-    saveProfile(id, message);
+    saveProfile(id, message).catch((err) => console.error("save_profile:", err.message));
     return;
   }
 
@@ -868,20 +870,7 @@ function handleMessage(id, message) {
   }
 
   if (message.type === "join") {
-    const name = cleanName(message.name);
-    const difficulty = DIFFICULTIES[message.difficulty] ? message.difficulty : "normal";
-    const mode = MODES[message.mode] ? message.mode : "classic";
-    gameMode = mode;
-    const prof = getProfile(name);
-    const skin = getSkinDef(prof.activeSkin);
-    prof.stats.games = (prof.stats.games || 0) + 1;
-    prof.stats.sessionStart = Date.now();
-    shopData[name] = prof;
-    persistProfile(name, prof);
-    players.set(id, createPlayer(id, name, difficulty, skin));
-    if (mode === "tag_time" && !taggedPlayerId) taggedPlayerId = id; // первый — тэгер
-    restartTickInterval();
-    broadcastState();
+    handleJoin(id, message).catch((err) => console.error("join:", err.message));
     return;
   }
 
@@ -1005,20 +994,81 @@ function unequipItem(clientId, itemId, nameHint) {
   broadcastState();
 }
 
-function saveProfile(clientId, message) {
-  const oldName = resolveName(clientId, message.oldName || message.name);
+async function isNameTaken(name, exceptName = null) {
+  const n = profileName(name);
+  if (!n) return true;
+  const lower = n.toLowerCase();
+  if (exceptName && exceptName.toLowerCase() === lower) return false;
+  const inShop = Object.keys(shopData).some((k) => k.toLowerCase() === lower);
+  if (inShop) return true;
+  return db.isPlayerNameTaken(n, exceptName);
+}
+
+async function resolvePlayName(id, requestedName) {
+  const session = socketSessions.get(id);
+  if (session) return { ok: true, name: session.player_name };
+
+  const name = profileName(requestedName);
+  if (!name) return { ok: false, text: "Укажи никнейм в профиле!" };
+  if (await isNameTaken(name)) {
+    return { ok: false, text: "Это имя уже занято! Войди через Google в профиле." };
+  }
+  return { ok: true, name };
+}
+
+async function handleShopConnect(id, message) {
+  const resolved = await resolvePlayName(id, message.name);
+  if (!resolved.ok) {
+    send(id, { type: "notice", text: resolved.text });
+    return;
+  }
+  shopClients.set(id, resolved.name);
+  sendShopPayload(id, resolved.name);
+}
+
+async function handleJoin(id, message) {
+  const resolved = await resolvePlayName(id, message.name);
+  if (!resolved.ok) {
+    send(id, { type: "notice", text: resolved.text });
+    return;
+  }
+  const name = resolved.name;
+  const difficulty = DIFFICULTIES[message.difficulty] ? message.difficulty : "normal";
+  const mode = MODES[message.mode] ? message.mode : "classic";
+  gameMode = mode;
+  const prof = getProfile(name);
+  const skin = getSkinDef(prof.activeSkin);
+  prof.stats.games = (prof.stats.games || 0) + 1;
+  prof.stats.sessionStart = Date.now();
+  shopData[name] = prof;
+  persistProfile(name, prof);
+  shopClients.set(id, name);
+  players.set(id, createPlayer(id, name, difficulty, skin));
+  if (mode === "tag_time" && !taggedPlayerId) taggedPlayerId = id;
+  restartTickInterval();
+  broadcastState();
+}
+
+async function saveProfile(clientId, message) {
+  const session = socketSessions.get(clientId);
   const newName = profileName(message.name);
   if (!newName) {
     send(clientId, { type: "notice", text: "Никнейм не может быть пустым!" });
     return;
   }
+
+  if (!session) {
+    send(clientId, { type: "notice", text: "Войди через Google, чтобы редактировать профиль." });
+    return;
+  }
+
+  const oldName = session.player_name;
   const avatar = AVATAR_PRESETS.includes(message.avatar) ? message.avatar : "😎";
-  let entry = getProfile(oldName || newName);
+  let entry = getProfile(oldName);
   entry.avatar = avatar;
 
-  if (oldName && oldName !== newName) {
-    const taken = Object.keys(shopData).some((k) => k.toLowerCase() === newName.toLowerCase() && k !== oldName);
-    if (taken) {
+  if (oldName.toLowerCase() !== newName.toLowerCase()) {
+    if (await isNameTaken(newName, oldName)) {
       send(clientId, { type: "notice", text: "Это имя уже занято!" });
       return;
     }
@@ -1028,7 +1078,10 @@ function saveProfile(clientId, message) {
     const player = players.get(clientId);
     if (player) player.name = newName;
     shopData[newName] = entry;
-    db.renamePlayer(oldName, newName, entry).catch((err) => console.error("DB rename:", err.message));
+    session.player_name = newName;
+    socketSessions.set(clientId, session);
+    await db.updateGoogleUserPlayerName(session.google_id, newName);
+    await db.renamePlayer(oldName, newName, entry);
   } else {
     shopData[newName] = entry;
     persistProfile(newName, entry);
@@ -1262,6 +1315,7 @@ function broadcast(payload) { for (const id of sockets.keys()) send(id, payload)
 function removeClient(id) {
   sockets.delete(id);
   shopClients.delete(id);
+  socketSessions.delete(id);
   const player = players.get(id);
   if (player) {
     trackDisconnectStats(player);

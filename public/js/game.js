@@ -23,8 +23,8 @@ const deathStats = document.querySelector("#deathStats");
 const pausePanel = document.querySelector("#pausePanel");
 
 const settings = SnakeStore.load();
-if (!settings.name) {
-  location.href = "/";
+if (!settings.name || !settings.google) {
+  location.href = "/profile.html";
 }
 
 const BONUS_LABELS = {
