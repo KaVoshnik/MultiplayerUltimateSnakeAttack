@@ -290,8 +290,12 @@ async function bootstrap() {
     setInterval(spawnBonuses, 8000);
     setInterval(pingClients, 25000);
     setInterval(() => db.cleanupAuthSessions().catch(() => {}), 60 * 60 * 1000);
-    if (auth.isGoogleAuthEnabled()) console.log("Google OAuth: включён");
-    else console.log("Google OAuth: выключен (заполни GOOGLE_CLIENT_ID/SECRET в .env)");
+    if (auth.isGoogleAuthEnabled()) {
+      const sampleRedirect = process.env.GOOGLE_REDIRECT_URI
+        || (process.env.PUBLIC_URL ? `${process.env.PUBLIC_URL.replace(/\/$/, "")}/auth/google/callback` : "(из запроса)");
+      console.log("Google OAuth: включён");
+      console.log(`Google OAuth redirect: ${sampleRedirect}`);
+    } else console.log("Google OAuth: выключен (заполни GOOGLE_CLIENT_ID/SECRET в .env)");
     console.log(`Snake Attack → http://localhost:${PORT}`);
     for (const address of getLanAddresses()) console.log(`LAN → http://${address}:${PORT}`);
   });

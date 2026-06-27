@@ -9,7 +9,17 @@ function getGoogleConfig() {
     clientId: process.env.GOOGLE_CLIENT_ID || "",
     clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
     sessionSecret: process.env.SESSION_SECRET || "",
+    publicUrl: (process.env.PUBLIC_URL || "").replace(/\/$/, ""),
+    redirectUri: (process.env.GOOGLE_REDIRECT_URI || "").replace(/\/$/, ""),
   };
+}
+
+function resolveRedirectUri(req, ctx) {
+  const cfg = getGoogleConfig();
+  if (cfg.redirectUri) return cfg.redirectUri;
+  if (cfg.publicUrl) return `${cfg.publicUrl}/auth/google/callback`;
+  const origin = ctx.getRequestOrigin(req).http.replace(/\/$/, "");
+  return `${origin}/auth/google/callback`;
 }
 
 function isGoogleAuthEnabled() {
@@ -152,11 +162,10 @@ async function handleRequest(req, res, url, ctx) {
     return false;
   }
 
-  const origin = ctx.getRequestOrigin(req).http;
-  const redirectUri = `${origin}/auth/google/callback`;
+  const redirectUri = resolveRedirectUri(req, ctx);
 
   if (url.pathname === "/auth/config") {
-    ctx.sendJson(res, { enabled: true });
+    ctx.sendJson(res, { enabled: true, redirectUri });
     return true;
   }
 
@@ -248,4 +257,5 @@ module.exports = {
   isGoogleAuthEnabled,
   getSession,
   handleRequest,
+  resolveRedirectUri,
 };
