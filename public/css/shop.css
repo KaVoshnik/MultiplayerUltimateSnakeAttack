@@ -118,6 +118,32 @@
   filter: drop-shadow(0 4px 8px rgba(0,0,0,.4));
 }
 
+.customSkinPreview,
+.customHatPreview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 72px;
+  margin-bottom: 10px;
+  border-radius: 12px;
+  background: rgba(0,0,0,.25);
+  border: 1px solid rgba(255,255,255,.08);
+}
+
+.customSkinPreview img,
+.customHatPreview img {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,.4));
+}
+
+.customSkinPreview.placeholder,
+.customHatPreview.placeholder {
+  font-size: 2.4rem;
+}
+
 .skinPreview {
   --body: #33d17a;
   --head: #ffffff;

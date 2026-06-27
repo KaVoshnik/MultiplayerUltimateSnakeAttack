@@ -32,18 +32,11 @@ const SnakeFX = (() => {
   function drawCrt(w, h) {
     if (!crtCtx) return;
     crtCtx.clearRect(0, 0, w, h);
-    const t = Date.now() / 1000;
-    crtCtx.fillStyle = "rgba(0,0,0,0.08)";
-    for (let y = 0; y < h; y += 3) {
-      crtCtx.fillRect(0, y, w, 1);
-    }
     const vig = crtCtx.createRadialGradient(w / 2, h / 2, w * 0.2, w / 2, h / 2, w * 0.72);
     vig.addColorStop(0, "rgba(0,0,0,0)");
-    vig.addColorStop(1, "rgba(0,0,0,0.55)");
+    vig.addColorStop(1, "rgba(0,0,0,0.5)");
     crtCtx.fillStyle = vig;
     crtCtx.fillRect(0, 0, w, h);
-    crtCtx.fillStyle = `rgba(61,232,138,${0.02 + Math.sin(t * 2) * 0.01})`;
-    crtCtx.fillRect((Math.sin(t * 7) * 0.5 + 0.5) * w, 0, 2, h);
   }
 
   function addShake(amount = 6) {
@@ -57,21 +50,23 @@ const SnakeFX = (() => {
   }
 
   function updateTrails(players) {
+    const aliveIds = new Set();
     for (const p of players) {
       if (!p.alive) continue;
+      aliveIds.add(p.id);
       const tail = p.snake?.[p.snake.length - 1];
       if (!tail) continue;
       let list = trails.get(p.id);
       if (!list) { list = []; trails.set(p.id, list); }
       list.unshift({ x: tail.x, y: tail.y, life: 1, color: p.rainbow ? `hsl(${(Date.now() / 8) % 360},85%,60%)` : (p.trailColor || p.color) });
-      if (list.length > 18) list.length = 18;
+      if (list.length > 14) list.length = 14;
       for (let i = list.length - 1; i >= 0; i--) {
         list[i].life -= 0.07;
         if (list[i].life <= 0) list.splice(i, 1);
       }
     }
     for (const id of trails.keys()) {
-      if (!players.find((p) => p.id === id && p.alive)) trails.delete(id);
+      if (!aliveIds.has(id)) trails.delete(id);
     }
   }
 
@@ -79,16 +74,13 @@ const SnakeFX = (() => {
     for (const list of trails.values()) {
       for (let i = 0; i < list.length; i++) {
         const t = list[i];
-        const alpha = t.life * 0.45 * (1 - i / list.length);
-        const size = cell * (0.55 + t.life * 0.35);
+        const alpha = t.life * 0.4 * (1 - i / list.length);
+        const size = cell * (0.5 + t.life * 0.3);
         ctx.globalAlpha = alpha;
         ctx.fillStyle = t.color;
-        ctx.shadowColor = t.color;
-        ctx.shadowBlur = cell * 0.35;
         ctx.beginPath();
         ctx.arc(offsetX + t.x * cell + cell / 2, offsetY + t.y * cell + cell / 2, size * 0.35, 0, Math.PI * 2);
         ctx.fill();
-        ctx.shadowBlur = 0;
       }
     }
     ctx.globalAlpha = 1;
@@ -108,10 +100,7 @@ const SnakeFX = (() => {
       if (f.life <= 0) { floaters.splice(i, 1); continue; }
       ctx.globalAlpha = f.life;
       ctx.fillStyle = f.color;
-      ctx.shadowColor = f.color;
-      ctx.shadowBlur = 8;
       ctx.fillText(f.text, offsetX + f.x * cell + cell / 2, offsetY + f.y * cell);
-      ctx.shadowBlur = 0;
     }
     ctx.globalAlpha = 1;
   }
