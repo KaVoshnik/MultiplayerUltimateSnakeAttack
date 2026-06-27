@@ -3,12 +3,11 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const os = require("os");
+const db = require("./db");
 
 const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || "0.0.0.0";
 const PUBLIC_DIR = path.join(__dirname, "public");
-const LEADERBOARD_FILE = path.join(__dirname, "leaderboard.json");
-const SHOP_FILE = path.join(__dirname, "shop.json");
 
 const GRID = { width: 34, height: 22 };
 const FOOD_TARGET = 32;
@@ -129,8 +128,8 @@ const players = new Map();
 const food = [];
 const bonuses = []; // активные бонус-клетки на поле
 const boss = createBoss();
-let leaderboard = loadLeaderboard();
-let shopData = loadShop(); // { playerName -> { coins, unlockedSkins, activeSkin } }
+let leaderboard = [];
+let shopData = {};
 const shopClients = new Map(); // socket id -> player name (shop-only sessions)
 let tickCount = 0;
 let gameMode = "classic";
@@ -232,15 +231,33 @@ server.on("upgrade", (req, socket) => {
   });
 });
 
-server.listen(PORT, HOST, () => {
-  food.length = 0;
-  fillFood();
-  tickInterval = setInterval(tick, DIFFICULTIES.normal.tickMs);
-  setInterval(broadcastState, 250);
-  setInterval(spawnBonuses, 8000);
-  setInterval(pingClients, 25000);
-  console.log(`Snake Attack → http://localhost:${PORT}`);
-  for (const address of getLanAddresses()) console.log(`LAN → http://${address}:${PORT}`);
+async function bootstrap() {
+  try {
+    await db.init();
+    shopData = await db.loadAllPlayers();
+    leaderboard = await db.loadLeaderboard(MAX_LEADERS);
+    console.log(`PostgreSQL: ${Object.keys(shopData).length} игроков, ${leaderboard.length} рекордов`);
+  } catch (error) {
+    console.error("PostgreSQL недоступен:", error.message);
+    console.error("Проверь DATABASE_URL и что база запущена. Пример: npm run db:reset");
+    process.exit(1);
+  }
+
+  server.listen(PORT, HOST, () => {
+    food.length = 0;
+    fillFood();
+    tickInterval = setInterval(tick, DIFFICULTIES.normal.tickMs);
+    setInterval(broadcastState, 250);
+    setInterval(spawnBonuses, 8000);
+    setInterval(pingClients, 25000);
+    console.log(`Snake Attack → http://localhost:${PORT}`);
+    for (const address of getLanAddresses()) console.log(`LAN → http://${address}:${PORT}`);
+  });
+}
+
+bootstrap().catch((error) => {
+  console.error(error);
+  process.exit(1);
 });
 
 server.on("error", (error) => {
@@ -255,7 +272,9 @@ function shutdown(signal) {
   for (const socket of sockets.values()) {
     try { socket.destroy(); } catch { /* ignore */ }
   }
-  server.close(() => process.exit(0));
+  server.close(() => {
+    db.close().finally(() => process.exit(0));
+  });
 }
 
 process.on("SIGINT", () => shutdown("SIGINT"));
@@ -460,7 +479,7 @@ function recordScore(player) {
     else leaderboard.push({ name: player.name, score: player.score, date: new Date().toISOString(), difficulty: player.difficulty });
     leaderboard.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, "ru"));
     leaderboard = leaderboard.slice(0, MAX_LEADERS);
-    saveLeaderboard();
+    persistLeaderboardEntry(player.name, player.score, player.difficulty);
     broadcast({ type: "leaderboard", leaderboard: getEnrichedLeaderboard() });
   }
 }
@@ -672,7 +691,7 @@ function handleMessage(id, message) {
     prof.stats.games = (prof.stats.games || 0) + 1;
     prof.stats.sessionStart = Date.now();
     shopData[name] = prof;
-    saveShop();
+    persistProfile(name, prof);
     players.set(id, createPlayer(id, name, difficulty, skin));
     if (mode === "tag_time" && !taggedPlayerId) taggedPlayerId = id; // первый — тэгер
     restartTickInterval();
@@ -734,6 +753,7 @@ function buyItem(clientId, itemId, nameHint) {
   if (item.price === 0) {
     if (!entry.inventory.includes(itemId)) entry.inventory.push(itemId);
     shopData[name] = entry;
+    persistProfile(name, entry);
     equipItem(clientId, itemId, name);
     return;
   }
@@ -745,7 +765,7 @@ function buyItem(clientId, itemId, nameHint) {
   entry.coins = coins - item.price;
   entry.inventory.push(itemId);
   shopData[name] = entry;
-  saveShop();
+  persistProfile(name, entry);
   equipItem(clientId, itemId, name);
   send(clientId, { type: "notice", text: `Куплено: ${item.name}!` });
 }
@@ -772,7 +792,7 @@ function equipItem(clientId, itemId, nameHint) {
   }
 
   shopData[name] = entry;
-  saveShop();
+  persistProfile(name, entry);
   sendShopPayload(clientId, name);
   broadcastState();
 }
@@ -794,7 +814,7 @@ function unequipItem(clientId, itemId, nameHint) {
   }
 
   shopData[name] = entry;
-  saveShop();
+  persistProfile(name, entry);
   sendShopPayload(clientId, name);
   broadcastState();
 }
@@ -821,10 +841,13 @@ function saveProfile(clientId, message) {
     shopClients.set(clientId, newName);
     const player = players.get(clientId);
     if (player) player.name = newName;
+    shopData[newName] = entry;
+    db.renamePlayer(oldName, newName, entry).catch((err) => console.error("DB rename:", err.message));
+  } else {
+    shopData[newName] = entry;
+    persistProfile(newName, entry);
   }
 
-  shopData[newName] = entry;
-  saveShop();
   send(clientId, { type: "profile_saved", shopData: entry, name: newName });
   sendShopPayload(clientId, newName);
 }
@@ -897,7 +920,7 @@ function trackDeathStats(player) {
   const topScore = Math.max(...[...players.values()].filter((p) => p.alive).map((p) => p.score), player.score);
   if (player.score > 0 && player.score >= topScore) entry.stats.wins = (entry.stats.wins || 0) + 1;
   shopData[player.name] = entry;
-  saveShop();
+  persistProfile(player.name, entry);
 }
 
 function trackDisconnectStats(player) {
@@ -907,7 +930,7 @@ function trackDisconnectStats(player) {
     entry.stats.sessionStart = null;
   }
   shopData[player.name] = entry;
-  saveShop();
+  persistProfile(player.name, entry);
 }
 
 function getEnrichedLeaderboard() {
@@ -942,7 +965,7 @@ function savePlayerCoins(player) {
   const entry = getProfile(player.name);
   entry.coins = player.coins;
   shopData[player.name] = entry;
-  saveShop();
+  persistProfile(player.name, entry);
 }
 
 function createPlayer(id, name, difficulty, skin) {
@@ -1026,22 +1049,17 @@ function removeClient(id) {
 }
 
 // ============================================================
-// PERSISTENCE
+// PERSISTENCE (PostgreSQL)
 // ============================================================
 
-function loadLeaderboard() {
-  try { const p = JSON.parse(fs.readFileSync(LEADERBOARD_FILE, "utf8")); return Array.isArray(p) ? p.slice(0, MAX_LEADERS) : []; }
-  catch { return []; }
+function persistProfile(name, entry) {
+  shopData[name] = entry;
+  db.upsertPlayer(name, entry).catch((err) => console.error("DB player:", err.message));
 }
 
-function saveLeaderboard() { fs.writeFile(LEADERBOARD_FILE, JSON.stringify(leaderboard, null, 2), () => { }); }
-
-function loadShop() {
-  try { return JSON.parse(fs.readFileSync(SHOP_FILE, "utf8")) || {}; }
-  catch { return {}; }
+function persistLeaderboardEntry(name, score, difficulty) {
+  db.upsertLeaderboard(name, score, difficulty).catch((err) => console.error("DB leaderboard:", err.message));
 }
-
-function saveShop() { fs.writeFile(SHOP_FILE, JSON.stringify(shopData, null, 2), () => { }); }
 
 function defaultShopEntry() {
   return normalizeProfile({ coins: 0, unlockedSkins: ["default"], activeSkin: "default" });

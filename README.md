@@ -4,6 +4,24 @@
 
 **Играть:** [https://dastogram.ru](https://dastogram.ru)
 
+## База данных (PostgreSQL)
+
+Профили игроков и рекорды хранятся в PostgreSQL.
+
+```bash
+# Ubuntu: создать БД
+sudo -u postgres psql -c "CREATE USER snake WITH PASSWORD 'snake';"
+sudo -u postgres psql -c "CREATE DATABASE snake_attack OWNER snake;"
+
+cp .env.example .env   # задай DATABASE_URL
+npm install
+npm run db:reset       # пустые таблицы
+npm start
+```
+
+Переменная `DATABASE_URL` — строка подключения, например:
+`postgresql://snake:snake@127.0.0.1:5432/snake_attack`
+
 ## Локальный запуск
 
 ```bash
@@ -45,9 +63,9 @@ This is a roadmap for my game, I will add different goals here, and also write h
 
 > **server.js:** Game server and multiplayer logic.
 
-> **leaderboard.json:** Saved scores and leaderboard data.
+> **db.js:** PostgreSQL — profiles, shop inventory, leaderboard.
 
-> **shop.json:** Coins and unlocked skins per player.
+> **leaderboard.json**, **shop.json:** legacy, не используются (данные в PostgreSQL).
 
 ## In the further future:
 
@@ -70,5 +88,5 @@ This is a roadmap for my game, I will add different goals here, and also write h
 - Избегай **яда** (гниль, паук, гриб, кость).
 - Бонусы на поле: щит, скорость, замедление, x2, призрак.
 - Босс преследует ближайшую змейку — не давай ему наехать.
-- Таблица лидеров хранится на сервере в `leaderboard.json`.
-- Монеты и скины — в `shop.json`.
+- Таблица лидеров — PostgreSQL.
+- Монеты и скины — PostgreSQL.

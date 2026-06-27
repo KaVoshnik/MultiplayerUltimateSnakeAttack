@@ -101,36 +101,8 @@ function setLiveFeed(text) {
   liveFeed.style.color = "var(--text)";
 }
 
-// Socket + public URL
+// Socket
 let socket = null;
-
-async function loadServerInfo() {
-  try {
-    const res = await fetch("/info");
-    if (!res.ok) return;
-    const info = await res.json();
-    const box = document.querySelector("#shareBox");
-    const urlEl = document.querySelector("#publicUrl");
-    if (box && urlEl && info.publicUrl) {
-      urlEl.textContent = info.publicUrl;
-      box.classList.remove("hidden");
-    }
-  } catch { /* офлайн */ }
-}
-
-document.querySelector("#copyUrlBtn")?.addEventListener("click", async () => {
-  const url = document.querySelector("#publicUrl")?.textContent;
-  if (!url || url === "…") return;
-  try {
-    await navigator.clipboard.writeText(url);
-    showToast("Ссылка скопирована!");
-    SnakeAudio.play("ui");
-  } catch {
-    showToast(url);
-  }
-});
-
-loadServerInfo();
 
 function connect() {
   socket = new WebSocket(getWebSocketUrl());
@@ -157,7 +129,7 @@ function connect() {
       setLiveFeed(msg.feed[0].text);
     }
     if (msg.type === "hello") {
-      document.querySelector("#onlineCount").textContent = "Сервер онлайн · NEON DISTRICT";
+      document.querySelector("#onlineCount").textContent = "Сервер онлайн";
     }
   });
   socket.addEventListener("close", () => setTimeout(connect, 1500));

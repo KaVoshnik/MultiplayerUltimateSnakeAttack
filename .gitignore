@@ -1,0 +1,4 @@
+node_modules/
+.env
+shop.json
+leaderboard.json
