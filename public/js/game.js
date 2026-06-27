@@ -366,12 +366,26 @@ function renderFeed() {
 }
 
 function renderPlayers() {
-  playersEl.innerHTML = "";
-  for (const player of state.players) {
-    const li = document.createElement("li");
+  const players = state.players;
+  const existingItems = [...playersEl.children];
+
+  // Удаляем лишние строки
+  while (playersEl.children.length > players.length) {
+    playersEl.removeChild(playersEl.lastChild);
+  }
+  // Добавляем недостающие
+  while (playersEl.children.length < players.length) {
+    playersEl.appendChild(document.createElement("li"));
+  }
+
+  for (let i = 0; i < players.length; i++) {
+    const player = players[i];
+    const li = playersEl.children[i];
     const tag = state.gameMode === "tag_time" && player.id === state.taggedPlayerId ? " 🏷" : "";
-    li.innerHTML = `<span><span class="swatch" style="background:${player.color}"></span>${escapeHtml(player.name)}${tag}</span><span>${player.alive ? player.score : "💀"}</span>`;
-    playersEl.append(li);
+    const scoreText = player.alive ? String(player.score) : "💀";
+    // Обновляем только если изменилось
+    const newHtml = `<span><span class="swatch" style="background:${player.color}"></span>${escapeHtml(player.name)}${tag}</span><span>${scoreText}</span>`;
+    if (li.innerHTML !== newHtml) li.innerHTML = newHtml;
   }
 }
 
@@ -512,6 +526,9 @@ function isInCameraView(gx, gy, view, margin = 1) {
 
 let drawFrame = 0;
 
+// Кэш градиентов фона — пересоздаются только при изменении размера или режима босса
+const bgGradientCache = { mapGrad: null, edgeGrad: null, enraged: null, width: 0, height: 0, mapL: 0, mapT: 0, mapW: 0, mapH: 0 };
+
 function draw() {
   drawFrame += 1;
   const ratio = window.devicePixelRatio || 1;
@@ -622,13 +639,29 @@ function drawBackground(width, height, view) {
   ctx.fillStyle = "#020304";
   ctx.fillRect(0, 0, width, height);
 
-  const mapGrad = ctx.createRadialGradient(
-    mapL + mapW / 2, mapT + mapH / 2, 0,
-    mapL + mapW / 2, mapT + mapH / 2, Math.max(mapW, mapH) * 0.65,
-  );
-  mapGrad.addColorStop(0, enraged ? "#180808" : "#0c1218");
-  mapGrad.addColorStop(1, enraged ? "#080202" : "#040608");
-  ctx.fillStyle = mapGrad;
+  // Пересоздаём градиенты только если изменился размер или режим босса
+  const c = bgGradientCache;
+  if (c.enraged !== enraged || c.width !== width || c.height !== height ||
+    c.mapL !== mapL || c.mapT !== mapT || c.mapW !== mapW || c.mapH !== mapH) {
+    c.enraged = enraged;
+    c.width = width; c.height = height;
+    c.mapL = mapL; c.mapT = mapT; c.mapW = mapW; c.mapH = mapH;
+
+    const mg = ctx.createRadialGradient(
+      mapL + mapW / 2, mapT + mapH / 2, 0,
+      mapL + mapW / 2, mapT + mapH / 2, Math.max(mapW, mapH) * 0.65,
+    );
+    mg.addColorStop(0, enraged ? "#180808" : "#0c1218");
+    mg.addColorStop(1, enraged ? "#080202" : "#040608");
+    c.mapGrad = mg;
+
+    const eg = ctx.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.25, width / 2, height / 2, Math.max(width, height) * 0.58);
+    eg.addColorStop(0, "rgba(0,0,0,0)");
+    eg.addColorStop(1, "rgba(0,0,0,0.45)");
+    c.edgeGrad = eg;
+  }
+
+  ctx.fillStyle = c.mapGrad;
   ctx.fillRect(mapL, mapT, mapW, mapH);
 
   const t = Date.now() / 1000;
@@ -664,35 +697,41 @@ function drawBackground(width, height, view) {
     ctx.fillRect(mapL, mapT, mapW, mapH);
   }
 
-  const edge = ctx.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.25, width / 2, height / 2, Math.max(width, height) * 0.58);
-  edge.addColorStop(0, "rgba(0,0,0,0)");
-  edge.addColorStop(1, "rgba(0,0,0,0.45)");
-  ctx.fillStyle = edge;
+  ctx.fillStyle = c.edgeGrad;
   ctx.fillRect(0, 0, width, height);
 }
 
 function drawFood(view) {
   const { cell, offsetX, offsetY } = view;
   const t = Date.now() / 1000;
+
+  // Сначала рисуем плохую еду (без shadow) — один проход без save/restore
   for (const item of state.food) {
     if (!isInCameraView(item.x, item.y, view)) continue;
+    if (isGoodFood(item)) continue;
     const kind = resolveFoodKind(item);
-    const good = isGoodFood(item);
     const cx = offsetX + item.x * cell + cell / 2;
     const cy = offsetY + item.y * cell + cell / 2;
     const r = cell * 0.34;
     const bob = Math.sin(t * 3 + item.x + item.y) * cell * 0.03;
-
-    if (good) {
-      ctx.save();
-      ctx.shadowColor = "rgba(61, 232, 138, 0.45)";
-      ctx.shadowBlur = cell * 0.22;
-      drawFoodShape(kind, cx, cy + bob, r, cell);
-      ctx.restore();
-    } else {
-      drawFoodShape(kind, cx, cy + bob, r, cell);
-    }
+    drawFoodShape(kind, cx, cy + bob, r, cell);
   }
+
+  // Затем хорошую еду — один общий shadow для всего прохода
+  ctx.save();
+  ctx.shadowColor = "rgba(61, 232, 138, 0.45)";
+  ctx.shadowBlur = cell * 0.22;
+  for (const item of state.food) {
+    if (!isInCameraView(item.x, item.y, view)) continue;
+    if (!isGoodFood(item)) continue;
+    const kind = resolveFoodKind(item);
+    const cx = offsetX + item.x * cell + cell / 2;
+    const cy = offsetY + item.y * cell + cell / 2;
+    const r = cell * 0.34;
+    const bob = Math.sin(t * 3 + item.x + item.y) * cell * 0.03;
+    drawFoodShape(kind, cx, cy + bob, r, cell);
+  }
+  ctx.restore();
 }
 
 function drawFoodShape(kind, cx, cy, r, cell) {
@@ -750,7 +789,7 @@ function drawFoodShape(kind, cx, cy, r, cell) {
       ctx.fillStyle = "#e8453c";
       ctx.beginPath(); ctx.arc(cx, cy - r * 0.1, r * 0.75, Math.PI, 0); ctx.fill();
       break;
-  default:
+    default:
       ctx.fillStyle = "#d4cfc7";
       ctx.lineWidth = Math.max(2, cell * 0.08);
       ctx.strokeStyle = "#d4cfc7"; ctx.lineCap = "round";
