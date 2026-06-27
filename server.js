@@ -355,7 +355,8 @@ async function bootstrap() {
     food.length = 0;
     fillFood();
     tickInterval = setInterval(tick, DIFFICULTIES.normal.tickMs);
-    setInterval(broadcastState, 250);
+    // setInterval(broadcastState, 250) убран — broadcastState вызывается в конце каждого tick()
+    // чтобы клиент получал обновления строго синхронно с игровой логикой
     setInterval(spawnBonuses, 8000);
     setInterval(pingClients, 25000);
     setInterval(() => db.cleanupAuthSessions().catch(() => { }), 60 * 60 * 1000);
@@ -551,8 +552,9 @@ function tick() {
     }
   }
 
-  // broadcastState убран из tick() — рассылка идёт через setInterval(broadcastState, 250)
-  // fillFood вызывается один раз в начале тика — второй вызов здесь убран
+  // broadcastState вызывается каждый тик — клиент должен получать обновления синхронно с игровой логикой.
+  // Лишняя нагрузка снята через occupancySet и убранный дублирующий setInterval(broadcastState, 250).
+  broadcastState();
 }
 
 function activateBonus(player, bonusType) {

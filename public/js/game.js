@@ -422,7 +422,8 @@ function applyRenderSnap(nextPlayers) {
   state.renderSnap = {
     prevHeads: state.players.length ? snapshotHeads(state.players) : snapshotHeads(nextPlayers),
     at: now,
-    duration: clamp(prevDuration, 80, 140),
+    // Диапазон 40–200ms покрывает все сложности: insane=50ms, easy=160ms
+    duration: clamp(prevDuration, 40, 200),
   };
   state.players = nextPlayers;
 }
