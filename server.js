@@ -9,9 +9,13 @@ const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || "0.0.0.0";
 const PUBLIC_DIR = path.join(__dirname, "public");
 
-const GRID = { width: 34, height: 22 };
-const FOOD_TARGET = 32;
-const MIN_GOOD_FOOD = 12;
+const GRID = { width: 42, height: 28 };
+const FOOD_TARGET = 40;
+const MIN_GOOD_FOOD = 14;
+const SNAKE_SPAWN_LEN = 4;
+const SPAWN_MARGIN = 5;
+const SPAWN_CLEAR_RADIUS = 3;
+const BAD_FOOD_HEAD_BUFFER = 2;
 const BOSS_MOVE_EVERY = 9;
 const BOSS_CHASE_RANGE = 14;
 const BOSS_RANDOM_MOVE_CHANCE = 0.38;
@@ -456,8 +460,8 @@ function tickBonusEffects() {
 
 function spawnBonuses() {
   if (players.size === 0) return;
-  if (bonuses.length >= 3) return; // максимум 3 бонуса одновременно
-  const point = randomEmptyPoint();
+  if (bonuses.length >= 3) return;
+  const point = randomEmptyPoint({ avoidNearHeads: true });
   if (!point) return;
   const types = Object.keys(BONUS_TYPES);
   const bonusType = types[Math.floor(Math.random() * types.length)];
@@ -642,9 +646,10 @@ function fillFood() {
     food.push(createGoodFood(point));
   }
   while (food.length < FOOD_TARGET) {
-    const point = randomEmptyPoint();
+    const wantBad = Math.random() < diff;
+    const point = randomEmptyPoint({ avoidNearHeads: wantBad });
     if (!point) return;
-    food.push(Math.random() < diff ? createBadFood(point) : createGoodFood(point));
+    food.push(wantBad ? createBadFood(point) : createGoodFood(point));
   }
 }
 
@@ -987,11 +992,10 @@ function savePlayerCoins(player) {
 }
 
 function createPlayer(id, name, difficulty, skin) {
-  const direction = { x: 1, y: 0 };
-  const head = findSpawnPoint();
-  const snake = [head];
-  const tailDir = { x: -direction.x, y: -direction.y };
-  for (let i = 1; i < 4; i++) snake.push(wrapPoint({ x: head.x + tailDir.x * i, y: head.y + tailDir.y * i }));
+  const layout = findSpawnLayout();
+  const direction = layout?.direction || { x: 1, y: 0 };
+  const snake = layout?.snake || [{ x: Math.floor(GRID.width / 2), y: Math.floor(GRID.height / 2) }];
+  clearBoardAroundSpawn(snake[0]);
   const shopEntry = getProfile(name);
   const cos = getPlayerCosmetics(name);
   const player = {
@@ -1007,6 +1011,7 @@ function createPlayer(id, name, difficulty, skin) {
     combo: 0, maxCombo: 0,
     avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji,
   };
+  removeEntitiesUnderSnake(player);
   return player;
 }
 
@@ -1087,27 +1092,103 @@ function defaultShopEntry() {
 // UTILS
 // ============================================================
 
-function randomEmptyPoint() {
-  for (let attempt = 0; attempt < 300; attempt++) {
+function randomEmptyPoint(opts = {}) {
+  for (let attempt = 0; attempt < 400; attempt++) {
     const point = { x: Math.floor(Math.random() * GRID.width), y: Math.floor(Math.random() * GRID.height) };
-    if (isEmpty(point)) return point;
+    if (isEmpty(point, opts)) return point;
   }
   return null;
 }
 
-function findSpawnPoint() {
-  for (let attempt = 0; attempt < 300; attempt++) {
-    const point = { x: 7 + Math.floor(Math.random() * (GRID.width - 16)), y: 7 + Math.floor(Math.random() * (GRID.height - 14)) };
-    if (isEmpty(point)) return point;
+const SPAWN_DIRECTIONS = [{ x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 }];
+
+function snakeSegmentsFromHead(head, direction, length = SNAKE_SPAWN_LEN) {
+  const tailDir = { x: -direction.x, y: -direction.y };
+  const segments = [head];
+  for (let i = 1; i < length; i++) {
+    segments.push({ x: head.x + tailDir.x * i, y: head.y + tailDir.y * i });
   }
-  return { x: Math.floor(GRID.width / 2), y: Math.floor(GRID.height / 2) };
+  return segments;
 }
 
-function isEmpty(point) {
+function allSegmentsInsideGrid(segments) {
+  return segments.every(insideGrid);
+}
+
+function segmentsConflict(segments, ignorePlayerId = null) {
+  for (const part of segments) {
+    if (bossOccupies(part)) return true;
+    if (food.some((item) => item.x === part.x && item.y === part.y)) return true;
+    if (bonuses.some((bonus) => bonus.x === part.x && bonus.y === part.y)) return true;
+  }
+  for (const player of players.values()) {
+    if (ignorePlayerId && player.id === ignorePlayerId) continue;
+    for (const part of player.snake) {
+      if (segments.some((seg) => seg.x === part.x && seg.y === part.y)) return true;
+    }
+  }
+  return false;
+}
+
+function findSpawnLayout(ignorePlayerId = null) {
+  for (let attempt = 0; attempt < 500; attempt++) {
+    const head = {
+      x: SPAWN_MARGIN + Math.floor(Math.random() * (GRID.width - SPAWN_MARGIN * 2)),
+      y: SPAWN_MARGIN + Math.floor(Math.random() * (GRID.height - SPAWN_MARGIN * 2)),
+    };
+    const direction = SPAWN_DIRECTIONS[Math.floor(Math.random() * SPAWN_DIRECTIONS.length)];
+    const snake = snakeSegmentsFromHead(head, direction);
+    if (!allSegmentsInsideGrid(snake)) continue;
+    if (segmentsConflict(snake, ignorePlayerId)) continue;
+    if (distanceToBoss(head) < 6) continue;
+    return { direction, snake };
+  }
+
+  for (const direction of SPAWN_DIRECTIONS) {
+    for (let y = SPAWN_MARGIN; y < GRID.height - SPAWN_MARGIN; y++) {
+      for (let x = SPAWN_MARGIN; x < GRID.width - SPAWN_MARGIN; x++) {
+        const snake = snakeSegmentsFromHead({ x, y }, direction);
+        if (!allSegmentsInsideGrid(snake)) continue;
+        if (segmentsConflict(snake, ignorePlayerId)) continue;
+        return { direction, snake };
+      }
+    }
+  }
+  return null;
+}
+
+function clearBoardAroundSpawn(head, radius = SPAWN_CLEAR_RADIUS) {
+  for (let i = food.length - 1; i >= 0; i--) {
+    const item = food[i];
+    if (Math.abs(item.x - head.x) + Math.abs(item.y - head.y) <= radius) food.splice(i, 1);
+  }
+  for (let i = bonuses.length - 1; i >= 0; i--) {
+    const bonus = bonuses[i];
+    if (Math.abs(bonus.x - head.x) + Math.abs(bonus.y - head.y) <= radius) bonuses.splice(i, 1);
+  }
+}
+
+function removeEntitiesUnderSnake(player) {
+  const occupied = new Set(player.snake.map(pointKey));
+  for (let i = food.length - 1; i >= 0; i--) {
+    if (occupied.has(pointKey(food[i]))) food.splice(i, 1);
+  }
+  for (let i = bonuses.length - 1; i >= 0; i--) {
+    if (occupied.has(pointKey(bonuses[i]))) bonuses.splice(i, 1);
+  }
+}
+
+function isEmpty(point, opts = {}) {
   if (bossOccupies(point)) return false;
-  if (food.some((i) => i.x === point.x && i.y === point.y)) return false;
-  if (bonuses.some((b) => b.x === point.x && b.y === point.y)) return false;
-  for (const player of players.values()) if (player.snake.some((p) => p.x === point.x && p.y === point.y)) return false;
+  if (food.some((item) => item.x === point.x && item.y === point.y)) return false;
+  if (bonuses.some((bonus) => bonus.x === point.x && bonus.y === point.y)) return false;
+  for (const player of players.values()) {
+    if (player.snake.some((part) => part.x === point.x && part.y === point.y)) return false;
+    if (opts.avoidNearHeads && player.alive) {
+      const head = player.snake[0];
+      if (Math.abs(point.x - head.x) + Math.abs(point.y - head.y) <= BAD_FOOD_HEAD_BUFFER) return false;
+    }
+  }
   return true;
 }
 

@@ -38,7 +38,7 @@ const particles = [];
 const state = {
   socket: null,
   id: null,
-  grid: { width: 34, height: 22 },
+  grid: { width: 42, height: 28 },
   food: [],
   bonuses: [],
   players: [],
@@ -93,11 +93,42 @@ document.addEventListener("keydown", (event) => {
 });
 
 document.querySelectorAll("[data-dir]").forEach((button) => {
-  button.addEventListener("click", () => {
+  button.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
     if (state.menuOpen || !state.joined) return;
     send({ type: "turn", direction: button.dataset.dir });
   });
 });
+
+setupTouchControls();
+
+function setupTouchControls() {
+  let touchStart = null;
+  const SWIPE_MIN = 24;
+
+  const sendTurn = (direction) => {
+    if (state.menuOpen || !state.joined) return;
+    send({ type: "turn", direction });
+  };
+
+  canvasStage.addEventListener("touchstart", (event) => {
+    if (event.touches.length !== 1) return;
+    touchStart = { x: event.touches[0].clientX, y: event.touches[0].clientY };
+  }, { passive: true });
+
+  canvasStage.addEventListener("touchend", (event) => {
+    if (!touchStart || event.changedTouches.length !== 1) return;
+    const touch = event.changedTouches[0];
+    const dx = touch.clientX - touchStart.x;
+    const dy = touch.clientY - touchStart.y;
+    touchStart = null;
+    if (Math.abs(dx) < SWIPE_MIN && Math.abs(dy) < SWIPE_MIN) return;
+    if (Math.abs(dx) > Math.abs(dy)) sendTurn(dx > 0 ? "right" : "left");
+    else sendTurn(dy > 0 ? "down" : "up");
+  }, { passive: true });
+
+  canvasStage.addEventListener("touchcancel", () => { touchStart = null; });
+}
 
 function resizeCanvas() {
   const w = canvasStage.clientWidth;

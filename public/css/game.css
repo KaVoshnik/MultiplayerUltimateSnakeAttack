@@ -83,6 +83,7 @@ html, body.gameBody {
   position: relative;
   min-height: 0;
   overflow: hidden;
+  touch-action: none;
 }
 
 .canvasStage canvas {
@@ -265,29 +266,52 @@ html, body.gameBody {
 }
 
 .gameControls {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(52px, 72px));
+  display: none;
   justify-content: center;
-  gap: 8px;
-  padding: 12px 16px 16px;
+  padding: 10px 16px max(16px, env(safe-area-inset-bottom));
   background: rgba(3, 6, 10, 0.92);
   border-top: 1px solid var(--line);
+  touch-action: manipulation;
+  user-select: none;
 }
+
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(56px, 72px));
+  grid-template-rows: repeat(3, minmax(56px, 72px));
+  gap: 6px;
+  grid-template-areas:
+    ". up ."
+    "left down right";
+}
+
+.pad-up { grid-area: up; }
+.pad-left { grid-area: left; }
+.pad-down { grid-area: down; }
+.pad-right { grid-area: right; }
 
 .pad {
   aspect-ratio: 1;
   border: 1px solid var(--line);
-  border-radius: 12px;
-  background: rgba(255,255,255,.04);
+  border-radius: 14px;
+  background: rgba(255,255,255,.05);
   color: var(--text);
-  font-size: 1.4rem;
+  font-size: 1.25rem;
   cursor: pointer;
-  transition: all .15s;
+  transition: all .12s;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.pad:hover, .pad:active {
+.pad:hover, .pad:active, .pad:focus-visible {
   border-color: var(--green);
   background: var(--green-dim);
+  outline: none;
+}
+
+.gameBody {
+  touch-action: manipulation;
+  overscroll-behavior: none;
 }
 
 .overlayPanel {
@@ -372,6 +396,12 @@ html, body.gameBody {
   margin-right: 4px;
 }
 
-@media (min-width: 900px) {
-  .gameControls { display: none; }
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
+  .touchControls { display: flex; }
+  .killFeed { max-height: 120px; }
+  .playersFloat { display: none; }
+}
+
+@media (min-width: 901px) and (hover: hover) and (pointer: fine) {
+  .touchControls { display: none; }
 }
