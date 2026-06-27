@@ -62,6 +62,15 @@ const state = {
   freezeEndsAt: 0,
   renderSnap: null,
   lastMinimapDraw: 0,
+  // Буфер для нажатий во время spawn freeze
+  bufferedDirection: null,
+  // FPS / ping
+  fps: 0,
+  ping: 0,
+  showStats: false,
+  _fpsFrames: 0,
+  _fpsLast: 0,
+  _pingSentAt: 0,
 };
 
 let isCoarsePointer = window.matchMedia("(hover: none) and (pointer: coarse)").matches;
@@ -91,6 +100,10 @@ document.querySelector("#pauseBtn").addEventListener("click", () => toggleMenu()
 document.querySelector("#resumeBtn").addEventListener("click", () => setMenu(false));
 document.querySelector("#restartBtn").addEventListener("click", () => { send({ type: "restart" }); setMenu(false); });
 document.querySelector("#retryBtn").addEventListener("click", () => { send({ type: "restart" }); deathPanel.classList.add("hidden"); });
+document.querySelector("#statsToggleBtn").addEventListener("click", () => {
+  state.showStats = !state.showStats;
+  document.querySelector("#statsToggleBtn").textContent = state.showStats ? "Скрыть FPS / Пинг" : "Показать FPS / Пинг";
+});
 
 document.addEventListener("keydown", (event) => {
   if (event.code === "Escape") {
@@ -99,8 +112,13 @@ document.addEventListener("keydown", (event) => {
     return;
   }
   const direction = keys[event.code];
-  if (!direction || state.menuOpen || !state.joined || isSpawnFrozen()) return;
+  if (!direction || state.menuOpen || !state.joined) return;
   event.preventDefault();
+  if (isSpawnFrozen()) {
+    // Буферизируем — отправим сразу как freeze снимется
+    state.bufferedDirection = direction;
+    return;
+  }
   send({ type: "turn", direction });
 });
 
@@ -111,7 +129,11 @@ function setupTouchControls() {
   const SWIPE_MIN = 18;
 
   const sendTurn = (direction) => {
-    if (state.menuOpen || !state.joined || isSpawnFrozen()) return;
+    if (state.menuOpen || !state.joined) return;
+    if (isSpawnFrozen()) {
+      state.bufferedDirection = direction;
+      return;
+    }
     send({ type: "turn", direction });
   };
 
@@ -149,10 +171,16 @@ function isSpawnFrozen() {
 
 function syncSpawnFreeze(me) {
   if (!me) return;
+  const wasFrozen = state.freezeEndsAt > Date.now();
   if ((me.spawnFrozenLeft || 0) > 0) {
     state.freezeEndsAt = Date.now() + me.spawnFrozenLeft;
   } else {
     state.freezeEndsAt = 0;
+    // Freeze только что снялся — отправляем буферизированное нажатие
+    if (wasFrozen && state.bufferedDirection) {
+      send({ type: "turn", direction: state.bufferedDirection });
+      state.bufferedDirection = null;
+    }
   }
 }
 
@@ -196,7 +224,12 @@ function connect() {
   });
   socket.addEventListener("message", (event) => {
     const message = JSON.parse(event.data);
-    if (message.type === "ping") return;
+    if (message.type === "ping") {
+      // Отвечаем pong для измерения RTT
+      send({ type: "pong", t: message.t });
+      if (message.t) state.ping = Math.round(Date.now() - message.t);
+      return;
+    }
     if (message.type === "hello") {
       state.id = message.id;
       state.grid = message.grid;
@@ -218,14 +251,15 @@ function connect() {
       state.grid = message.grid;
       state.food = message.food;
       state.bonuses = message.bonuses || [];
-      state.players = message.players;
+      // applyRenderSnap ПЕРВЫМ — он снимает снепшот из старого state.players,
+      // затем сам перезаписывает state.players на новые данные
+      applyRenderSnap(message.players);
       state.bosses = message.bosses || (message.boss ? [message.boss] : []);
       state.gameMode = message.gameMode || "classic";
       state.taggedPlayerId = message.taggedPlayerId;
       const me = message.players.find((p) => p.id === state.id);
       syncSpawnFreeze(me);
       updateHud(me, prevScore, prevCombo);
-      applyRenderSnap(message.players);
       renderPlayers();
       SnakeFX.updateTrails(state.players);
       const anyEnraged = state.bosses.some((b) => b.phase === "enraged");
@@ -366,12 +400,26 @@ function renderFeed() {
 }
 
 function renderPlayers() {
-  playersEl.innerHTML = "";
-  for (const player of state.players) {
-    const li = document.createElement("li");
+  const players = state.players;
+  const existingItems = [...playersEl.children];
+
+  // Удаляем лишние строки
+  while (playersEl.children.length > players.length) {
+    playersEl.removeChild(playersEl.lastChild);
+  }
+  // Добавляем недостающие
+  while (playersEl.children.length < players.length) {
+    playersEl.appendChild(document.createElement("li"));
+  }
+
+  for (let i = 0; i < players.length; i++) {
+    const player = players[i];
+    const li = playersEl.children[i];
     const tag = state.gameMode === "tag_time" && player.id === state.taggedPlayerId ? " 🏷" : "";
-    li.innerHTML = `<span><span class="swatch" style="background:${player.color}"></span>${escapeHtml(player.name)}${tag}</span><span>${player.alive ? player.score : "💀"}</span>`;
-    playersEl.append(li);
+    const scoreText = player.alive ? String(player.score) : "💀";
+    // Обновляем только если изменилось
+    const newHtml = `<span><span class="swatch" style="background:${player.color}"></span>${escapeHtml(player.name)}${tag}</span><span>${scoreText}</span>`;
+    if (li.innerHTML !== newHtml) li.innerHTML = newHtml;
   }
 }
 
@@ -393,11 +441,11 @@ function smoothstep(t) {
   return t * t * (3 - 2 * t);
 }
 
-function snapshotHeads(players) {
+// Снимаем позиции ВСЕХ сегментов змейки, не только головы
+function snapshotSnakes(players) {
   const map = new Map();
   for (const p of players) {
-    const h = p.snake?.[0];
-    if (h) map.set(p.id, { x: h.x, y: h.y });
+    if (p.snake?.length) map.set(p.id, p.snake.map(seg => ({ x: seg.x, y: seg.y })));
   }
   return map;
 }
@@ -406,9 +454,11 @@ function applyRenderSnap(nextPlayers) {
   const now = performance.now();
   const prevDuration = state.renderSnap ? now - state.renderSnap.at : 115;
   state.renderSnap = {
-    prevHeads: state.players.length ? snapshotHeads(state.players) : snapshotHeads(nextPlayers),
+    // Снимок всех сегментов до обновления стейта
+    prevSnakes: state.players.length ? snapshotSnakes(state.players) : snapshotSnakes(nextPlayers),
     at: now,
-    duration: clamp(prevDuration, 80, 140),
+    // Диапазон 40–200ms покрывает все сложности: insane=50ms, easy=160ms
+    duration: clamp(prevDuration, 40, 200),
   };
   state.players = nextPlayers;
 }
@@ -419,23 +469,25 @@ function getSnapT() {
   return smoothstep(raw);
 }
 
-function getSlideOffset(playerId, cell) {
-  if (!state.renderSnap) return { x: 0, y: 0 };
-  const prev = state.renderSnap.prevHeads.get(playerId);
-  const player = state.players.find((p) => p.id === playerId);
-  const head = player?.snake?.[0];
-  if (!prev || !head) return { x: 0, y: 0 };
+// Возвращает интерполированную позицию сегмента index для игрока playerId
+// Каждый сегмент интерполируется от своей предыдущей позиции к текущей
+function getSegmentPos(playerId, index, currentSeg, cell, offsetX, offsetY) {
+  if (!state.renderSnap) return { px: offsetX + currentSeg.x * cell, py: offsetY + currentSeg.y * cell };
+  const prevSnake = state.renderSnap.prevSnakes?.get(playerId);
+  const prev = prevSnake?.[index];
+  if (!prev) return { px: offsetX + currentSeg.x * cell, py: offsetY + currentSeg.y * cell };
   const t = getSnapT();
-  const ix = prev.x + (head.x - prev.x) * t;
-  const iy = prev.y + (head.y - prev.y) * t;
-  return { x: (ix - head.x) * cell, y: (iy - head.y) * cell };
+  const ix = prev.x + (currentSeg.x - prev.x) * t;
+  const iy = prev.y + (currentSeg.y - prev.y) * t;
+  return { px: offsetX + ix * cell, py: offsetY + iy * cell };
 }
 
 function getCameraHead(player) {
   const head = player?.snake?.[0];
   if (!head) return null;
   if (!state.renderSnap) return { x: head.x + 0.5, y: head.y + 0.5 };
-  const prev = state.renderSnap.prevHeads.get(player.id);
+  const prevSnake = state.renderSnap.prevSnakes?.get(player.id);
+  const prev = prevSnake?.[0];
   if (!prev) return { x: head.x + 0.5, y: head.y + 0.5 };
   const t = getSnapT();
   return {
@@ -512,11 +564,24 @@ function isInCameraView(gx, gy, view, margin = 1) {
 
 let drawFrame = 0;
 
+// Кэш градиентов фона — пересоздаются только при изменении размера или режима босса
+const bgGradientCache = { mapGrad: null, edgeGrad: null, enraged: null, width: 0, height: 0, mapL: 0, mapT: 0, mapW: 0, mapH: 0 };
+
 function draw() {
   drawFrame += 1;
   const ratio = window.devicePixelRatio || 1;
   const width = board.width / ratio;
   const height = board.height / ratio;
+
+  // Подсчёт FPS
+  const now = performance.now();
+  state._fpsFrames += 1;
+  if (now - state._fpsLast >= 500) {
+    state.fps = Math.round(state._fpsFrames / ((now - state._fpsLast) / 1000));
+    state._fpsFrames = 0;
+    state._fpsLast = now;
+  }
+
   updateCameraFollow();
   const view = computeCameraView(width, height);
   const shake = SnakeFX.getShakeOffset();
@@ -537,12 +602,52 @@ function draw() {
 
   SnakeFX.drawConfetti(ctx, width, height);
   if (drawFrame % 2 === 0) SnakeFX.drawCrt(width, height);
-  const now = performance.now();
   if (now - state.lastMinimapDraw > 150) {
     drawMinimap(view);
     state.lastMinimapDraw = now;
   }
+
+  if (state.showStats) drawStatsOverlay(width);
+
   requestAnimationFrame(draw);
+}
+
+function drawStatsOverlay(width) {
+  const fps = state.fps;
+  const ping = state.ping;
+  const fpsColor = fps >= 55 ? "#33d17a" : fps >= 30 ? "#f9f06b" : "#f66151";
+  const pingColor = ping < 60 ? "#33d17a" : ping < 120 ? "#f9f06b" : "#f66151";
+
+  ctx.save();
+  ctx.font = "bold 13px monospace";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "top";
+
+  const lines = [
+    { label: "FPS", value: `${fps}`, color: fpsColor },
+    { label: "PING", value: ping > 0 ? `${ping}ms` : "—", color: pingColor },
+  ];
+
+  const padR = 10, padT = 10, lineH = 18, boxW = 110, boxH = lines.length * lineH + 10;
+  const bx = width - padR - boxW;
+  const by = padT;
+
+  ctx.fillStyle = "rgba(2,3,4,0.72)";
+  ctx.beginPath();
+  ctx.roundRect(bx, by, boxW, boxH, 6);
+  ctx.fill();
+
+  lines.forEach((line, i) => {
+    const y = by + 5 + i * lineH;
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.textAlign = "left";
+    ctx.fillText(line.label, bx + 8, y);
+    ctx.fillStyle = line.color;
+    ctx.textAlign = "right";
+    ctx.fillText(line.value, bx + boxW - 8, y);
+  });
+
+  ctx.restore();
 }
 
 function drawSpawnOverlay(width, height) {
@@ -622,13 +727,29 @@ function drawBackground(width, height, view) {
   ctx.fillStyle = "#020304";
   ctx.fillRect(0, 0, width, height);
 
-  const mapGrad = ctx.createRadialGradient(
-    mapL + mapW / 2, mapT + mapH / 2, 0,
-    mapL + mapW / 2, mapT + mapH / 2, Math.max(mapW, mapH) * 0.65,
-  );
-  mapGrad.addColorStop(0, enraged ? "#180808" : "#0c1218");
-  mapGrad.addColorStop(1, enraged ? "#080202" : "#040608");
-  ctx.fillStyle = mapGrad;
+  // Пересоздаём градиенты только если изменился размер или режим босса
+  const c = bgGradientCache;
+  if (c.enraged !== enraged || c.width !== width || c.height !== height ||
+      c.mapL !== mapL || c.mapT !== mapT || c.mapW !== mapW || c.mapH !== mapH) {
+    c.enraged = enraged;
+    c.width = width; c.height = height;
+    c.mapL = mapL; c.mapT = mapT; c.mapW = mapW; c.mapH = mapH;
+
+    const mg = ctx.createRadialGradient(
+      mapL + mapW / 2, mapT + mapH / 2, 0,
+      mapL + mapW / 2, mapT + mapH / 2, Math.max(mapW, mapH) * 0.65,
+    );
+    mg.addColorStop(0, enraged ? "#180808" : "#0c1218");
+    mg.addColorStop(1, enraged ? "#080202" : "#040608");
+    c.mapGrad = mg;
+
+    const eg = ctx.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.25, width / 2, height / 2, Math.max(width, height) * 0.58);
+    eg.addColorStop(0, "rgba(0,0,0,0)");
+    eg.addColorStop(1, "rgba(0,0,0,0.45)");
+    c.edgeGrad = eg;
+  }
+
+  ctx.fillStyle = c.mapGrad;
   ctx.fillRect(mapL, mapT, mapW, mapH);
 
   const t = Date.now() / 1000;
@@ -664,35 +785,41 @@ function drawBackground(width, height, view) {
     ctx.fillRect(mapL, mapT, mapW, mapH);
   }
 
-  const edge = ctx.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.25, width / 2, height / 2, Math.max(width, height) * 0.58);
-  edge.addColorStop(0, "rgba(0,0,0,0)");
-  edge.addColorStop(1, "rgba(0,0,0,0.45)");
-  ctx.fillStyle = edge;
+  ctx.fillStyle = c.edgeGrad;
   ctx.fillRect(0, 0, width, height);
 }
 
 function drawFood(view) {
   const { cell, offsetX, offsetY } = view;
   const t = Date.now() / 1000;
+
+  // Сначала рисуем плохую еду (без shadow) — один проход без save/restore
   for (const item of state.food) {
     if (!isInCameraView(item.x, item.y, view)) continue;
+    if (isGoodFood(item)) continue;
     const kind = resolveFoodKind(item);
-    const good = isGoodFood(item);
     const cx = offsetX + item.x * cell + cell / 2;
     const cy = offsetY + item.y * cell + cell / 2;
     const r = cell * 0.34;
     const bob = Math.sin(t * 3 + item.x + item.y) * cell * 0.03;
-
-    if (good) {
-      ctx.save();
-      ctx.shadowColor = "rgba(61, 232, 138, 0.45)";
-      ctx.shadowBlur = cell * 0.22;
-      drawFoodShape(kind, cx, cy + bob, r, cell);
-      ctx.restore();
-    } else {
-      drawFoodShape(kind, cx, cy + bob, r, cell);
-    }
+    drawFoodShape(kind, cx, cy + bob, r, cell);
   }
+
+  // Затем хорошую еду — один общий shadow для всего прохода
+  ctx.save();
+  ctx.shadowColor = "rgba(61, 232, 138, 0.45)";
+  ctx.shadowBlur = cell * 0.22;
+  for (const item of state.food) {
+    if (!isInCameraView(item.x, item.y, view)) continue;
+    if (!isGoodFood(item)) continue;
+    const kind = resolveFoodKind(item);
+    const cx = offsetX + item.x * cell + cell / 2;
+    const cy = offsetY + item.y * cell + cell / 2;
+    const r = cell * 0.34;
+    const bob = Math.sin(t * 3 + item.x + item.y) * cell * 0.03;
+    drawFoodShape(kind, cx, cy + bob, r, cell);
+  }
+  ctx.restore();
 }
 
 function drawFoodShape(kind, cx, cy, r, cell) {
@@ -838,21 +965,32 @@ function drawBoss(view) {
 function drawPlayers(view) {
   const { cell, offsetX, offsetY } = view;
   for (const player of state.players) {
-    const slide = getSlideOffset(player.id, cell);
     ctx.globalAlpha = player.alive ? 1 : 0.35;
     const isTagged = state.gameMode === "tag_time" && player.id === state.taggedPlayerId;
-    const head = player.snake[0];
-    const neck = player.snake[1] || head;
-    const dirX = head.x - neck.x;
-    const dirY = head.y - neck.y;
+
+    // Интерполированная позиция головы для направления
+    const { px: headPx, py: headPy } = getSegmentPos(player.id, 0, player.snake[0], cell, offsetX, offsetY);
+    const neck = player.snake[1] || player.snake[0];
+    const { px: neckPx, py: neckPy } = getSegmentPos(player.id, 1, neck, cell, offsetX, offsetY);
+    const dirX = headPx - neckPx;
+    const dirY = headPy - neckPy;
+    // Нормализуем в -1/0/1 для совместимости с drawSnakeEyes
+    const dirXn = dirX === 0 ? 0 : dirX > 0 ? 1 : -1;
+    const dirYn = dirY === 0 ? 0 : dirY > 0 ? 1 : -1;
+
     const customTex = typeof CustomSkins !== "undefined" && CustomSkins.isBody(player.skin)
       ? CustomSkins.get(player.skin)
       : null;
 
     player.snake.forEach((part, index) => {
-      if (!isInCameraView(part.x, part.y, view, 0.5)) return;
-      const px = offsetX + part.x * cell + slide.x;
-      const py = offsetY + part.y * cell + slide.y;
+      // Получаем интерполированную позицию этого конкретного сегмента
+      const { px, py } = getSegmentPos(player.id, index, part, cell, offsetX, offsetY);
+
+      // Проверяем видимость по интерполированной позиции
+      const gx = (px - offsetX) / cell;
+      const gy = (py - offsetY) / cell;
+      if (!isInCameraView(gx, gy, view, 0.5)) return;
+
       const bodyColor = player.rainbow ? `hsl(${(index * 40 + Date.now() / 20) % 360}, 80%, 60%)` : player.color;
       const heatGlow = (player.heat || 0) > 50;
       const segX = px + cell * 0.08;
@@ -890,7 +1028,7 @@ function drawPlayers(view) {
 
       if (index === 0) {
         ctx.globalAlpha = player.alive ? 1 : 0.35;
-        drawSnakeEyes(px, py, cell, dirX, dirY);
+        drawSnakeEyes(px, py, cell, dirXn, dirYn);
         drawSnakeCosmetics(px, py, cell, player);
         drawPlayerNameLabel(px, py, cell, player);
       }

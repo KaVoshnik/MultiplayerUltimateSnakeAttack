@@ -145,6 +145,23 @@ const players = new Map();
 const food = [];
 const bonuses = []; // активные бонус-клетки на поле
 const bosses = createBosses();
+
+// --- OCCUPANCY SET ---
+// Быстрый O(1) поиск занятых клеток вместо O(n) .some()
+const occupancySet = new Set();
+
+function occupancyAdd(point) { occupancySet.add(`${point.x}:${point.y}`); }
+function occupancyDel(point) { occupancySet.delete(`${point.x}:${point.y}`); }
+function occupancyHas(point) { return occupancySet.has(`${point.x}:${point.y}`); }
+
+function occupancyRebuild() {
+  occupancySet.clear();
+  for (const item of food) occupancyAdd(item);
+  for (const b of bonuses) occupancyAdd(b);
+  for (const player of players.values()) {
+    for (const part of player.snake) occupancyAdd(part);
+  }
+}
 let leaderboard = [];
 let shopData = {};
 const shopClients = new Map(); // socket id -> player name (shop-only sessions)
@@ -338,7 +355,8 @@ async function bootstrap() {
     food.length = 0;
     fillFood();
     tickInterval = setInterval(tick, DIFFICULTIES.normal.tickMs);
-    setInterval(broadcastState, 250);
+    // setInterval(broadcastState, 250) убран — broadcastState вызывается в конце каждого tick()
+    // чтобы клиент получал обновления строго синхронно с игровой логикой
     setInterval(spawnBonuses, 8000);
     setInterval(pingClients, 25000);
     setInterval(() => db.cleanupAuthSessions().catch(() => { }), 60 * 60 * 1000);
@@ -430,6 +448,8 @@ function tick() {
   fillFood();
   if (tickCount % (bosses.some((b) => b.enragedTicks > 0) ? 3 : BOSS_MOVE_EVERY) === 0) moveBosses();
   tickBonusEffects();
+  // Перестраиваем occupancySet один раз за тик вместо O(n) .some() в каждой проверке
+  occupancyRebuild();
 
   const occupied = new Map();
   for (const player of players.values()) {
@@ -532,7 +552,8 @@ function tick() {
     }
   }
 
-  fillFood();
+  // broadcastState вызывается каждый тик — клиент должен получать обновления синхронно с игровой логикой.
+  // Лишняя нагрузка снята через occupancySet и убранный дублирующий setInterval(broadcastState, 250).
   broadcastState();
 }
 
@@ -1511,11 +1532,10 @@ function removeEntitiesUnderSnake(player) {
 
 function isEmpty(point, opts = {}) {
   if (anyBossOccupies(point)) return false;
-  if (food.some((item) => item.x === point.x && item.y === point.y)) return false;
-  if (bonuses.some((bonus) => bonus.x === point.x && bonus.y === point.y)) return false;
-  for (const player of players.values()) {
-    if (player.snake.some((part) => part.x === point.x && part.y === point.y)) return false;
-    if (opts.avoidNearHeads && player.alive) {
+  if (occupancyHas(point)) return false;
+  if (opts.avoidNearHeads) {
+    for (const player of players.values()) {
+      if (!player.alive) continue;
       const head = player.snake[0];
       if (Math.abs(point.x - head.x) + Math.abs(point.y - head.y) <= BAD_FOOD_HEAD_BUFFER) return false;
     }
