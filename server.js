@@ -61,7 +61,7 @@ const BONUS_TYPES = {
   ghost: { label: "GH", duration: 4000, color: "#8ff0a4", desc: "призрак" },
 };
 
-const SPAWN_FREEZE_MS = 1000;
+const SPAWN_FREEZE_MS = 3000;
 
 // --- СКИНЫ (цвет тела) + ШЛЯПЫ в едином каталоге ---
 const SHOP_CATALOG = [
@@ -613,7 +613,7 @@ function broadcastState() {
         difficulty: p.difficulty, skin: p.skin, rainbow: p.rainbow,
         combo: p.combo || 0, maxCombo: p.maxCombo || 0,
         coinsEarned: p.coinsEarned || 0,
-        frozenUntil: p.frozenUntil || 0,
+        spawnFrozenLeft: Math.max(0, (p.frozenUntil || 0) - Date.now()),
         heat: Math.min(100, Math.round((p.score || 0) * 0.4 + (p.combo || 0) * 9)),
         isTagged: gameMode === "tag_time" && p.id === taggedPlayerId,
         avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji,

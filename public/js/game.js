@@ -59,6 +59,7 @@ const state = {
   personalBest: 0,
   bossRageSound: false,
   camera: { x: 0, y: 0, ready: false },
+  freezeEndsAt: 0,
 };
 
 SnakeFX.initCrt(canvasStage);
@@ -136,8 +137,16 @@ function getMe() {
 }
 
 function isSpawnFrozen() {
-  const me = getMe();
-  return Boolean(me?.frozenUntil && Date.now() < me.frozenUntil);
+  return state.freezeEndsAt > Date.now();
+}
+
+function syncSpawnFreeze(me) {
+  if (!me) return;
+  if ((me.spawnFrozenLeft || 0) > 0) {
+    state.freezeEndsAt = Date.now() + me.spawnFrozenLeft;
+  } else {
+    state.freezeEndsAt = 0;
+  }
 }
 
 function resizeCanvas() {
@@ -207,6 +216,7 @@ function connect() {
       state.gameMode = message.gameMode || "classic";
       state.taggedPlayerId = message.taggedPlayerId;
       const me = message.players.find((p) => p.id === state.id);
+      syncSpawnFreeze(me);
       updateHud(me, prevScore, prevCombo);
       renderPlayers();
       SnakeFX.updateTrails(state.players);
@@ -468,8 +478,7 @@ function draw() {
 
 function drawSpawnOverlay(width, height) {
   if (!isSpawnFrozen()) return;
-  const me = getMe();
-  const left = Math.max(0, (me?.frozenUntil || 0) - Date.now());
+  const left = Math.max(0, state.freezeEndsAt - Date.now());
   const sec = (left / 1000).toFixed(1);
   ctx.save();
   ctx.fillStyle = "rgba(0,0,0,0.35)";
