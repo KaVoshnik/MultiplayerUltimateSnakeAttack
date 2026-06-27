@@ -112,9 +112,73 @@ function updateUserBar(shopData, name) {
   const avatarEl = document.querySelector("#userAvatar");
   const nameEl = document.querySelector("#userName");
   const coinsEl = document.querySelector("#headerCoins");
-  if (avatarEl) avatarEl.textContent = shopData?.avatar || "😎";
+  const picture = shopData?.stats?.googlePicture;
+  if (avatarEl) {
+    if (picture) {
+      avatarEl.innerHTML = `<img src="${escapeHtml(picture)}" alt="" class="userAvatarImg" referrerpolicy="no-referrer" />`;
+    } else {
+      avatarEl.textContent = shopData?.avatar || "😎";
+    }
+  }
   if (nameEl) nameEl.textContent = name || SnakeStore.getName() || "Гость";
   if (coinsEl) coinsEl.textContent = shopData?.coins ?? 0;
+}
+
+async function initAuth(options = {}) {
+  const loginBtn = document.querySelector("#btnGoogleLogin");
+  const logoutBtn = document.querySelector("#btnGoogleLogout");
+  const authBlock = document.querySelector("#authBlock");
+  const authHint = document.querySelector("#authHint");
+  const nameInput = document.querySelector("#nameInput");
+
+  let config = { enabled: false };
+  try {
+    const res = await fetch("/auth/config");
+    config = await res.json();
+  } catch { /* offline */ }
+
+  if (!config.enabled) {
+    authBlock?.classList.add("hidden");
+    return null;
+  }
+
+  authBlock?.classList.remove("hidden");
+
+  let me = { loggedIn: false };
+  try {
+    const res = await fetch("/api/me", { credentials: "same-origin" });
+    me = await res.json();
+  } catch { /* ignore */ }
+
+  if (me.loggedIn) {
+    SnakeStore.save({ name: me.name, google: true });
+    if (nameInput) nameInput.value = me.name;
+    loginBtn?.classList.add("hidden");
+    logoutBtn?.classList.remove("hidden");
+    authHint && (authHint.textContent = me.email ? `Google: ${me.email}` : "Вход через Google выполнен");
+    updateUserBar(me.shopData || {}, me.name);
+    options.onLogin?.(me);
+  } else {
+    loginBtn?.classList.remove("hidden");
+    logoutBtn?.classList.add("hidden");
+  }
+
+  logoutBtn?.addEventListener("click", () => {
+    location.href = "/auth/logout";
+  });
+
+  const params = new URLSearchParams(location.search);
+  if (params.get("auth") === "ok") {
+    showToast("Вход через Google выполнен!");
+    history.replaceState({}, "", location.pathname);
+  }
+  const authError = params.get("auth_error");
+  if (authError) {
+    showToast("Не удалось войти через Google");
+    history.replaceState({}, "", location.pathname);
+  }
+
+  return me;
 }
 
 function connectProfileSocket(onMessage) {

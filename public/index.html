@@ -70,6 +70,12 @@
       <label for="nameInput">Никнейм</label>
       <input id="nameInput" maxlength="16" placeholder="До 16 символов" />
 
+      <div class="authBlock" id="authBlock">
+        <a class="btn googleBtn" id="btnGoogleLogin" href="/auth/google">Войти через Google</a>
+        <button type="button" class="btn ghost hidden" id="btnGoogleLogout">Выйти</button>
+        <p class="authHint" id="authHint">Войди через Google — прогресс сохранится в аккаунте</p>
+      </div>
+
       <label class="toggleRow">
         <input type="checkbox" id="audioToggle" checked />
         <span>Синтвейв-звук и эмбиент</span>

@@ -12,6 +12,16 @@ if (audioToggle) {
 }
 updateUserBar(shopData, settings.name);
 
+initAuth({
+  onLogin(me) {
+    shopData = me.shopData || shopData;
+    settings.name = me.name;
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: "shop_connect", name: me.name }));
+    }
+  },
+});
+
 // Matrix rain + particles hybrid
 const pCanvas = document.querySelector("#particles");
 const pCtx = pCanvas.getContext("2d");

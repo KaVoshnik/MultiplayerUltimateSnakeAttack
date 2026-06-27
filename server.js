@@ -4,6 +4,7 @@ const path = require("path");
 const crypto = require("crypto");
 const os = require("os");
 const db = require("./db");
+const auth = require("./auth");
 
 const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -171,6 +172,29 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  const authCtx = {
+    db,
+    shopData,
+    getProfile,
+    persistProfile,
+    cleanName,
+    defaultShopEntry,
+    getRequestOrigin,
+    sendJson,
+  };
+
+  auth.handleRequest(req, res, url, authCtx).then((handled) => {
+    if (handled) return;
+    handleHttpRequest(req, res, url);
+  }).catch((error) => {
+    console.error("HTTP:", error.message);
+    res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Server error");
+  });
+});
+
+function handleHttpRequest(req, res, url) {
+
   if (url.pathname === "/health") {
     sendJson(res, { ok: true, uptime: process.uptime(), players: players.size, sockets: sockets.size });
     return;
@@ -216,7 +240,7 @@ const server = http.createServer((req, res) => {
     });
     res.end(content);
   });
-});
+}
 
 server.on("upgrade", (req, socket) => {
   if (req.headers.upgrade?.toLowerCase() !== "websocket") { socket.destroy(); return; }
@@ -265,6 +289,9 @@ async function bootstrap() {
     setInterval(broadcastState, 250);
     setInterval(spawnBonuses, 8000);
     setInterval(pingClients, 25000);
+    setInterval(() => db.cleanupAuthSessions().catch(() => {}), 60 * 60 * 1000);
+    if (auth.isGoogleAuthEnabled()) console.log("Google OAuth: включён");
+    else console.log("Google OAuth: выключен (заполни GOOGLE_CLIENT_ID/SECRET в .env)");
     console.log(`Snake Attack → http://localhost:${PORT}`);
     for (const address of getLanAddresses()) console.log(`LAN → http://${address}:${PORT}`);
   });
