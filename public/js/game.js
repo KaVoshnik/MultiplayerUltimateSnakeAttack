@@ -37,6 +37,8 @@ const BONUS_LABELS = {
 const BAD_KINDS = ["rotten", "spider", "mushroom", "bone"];
 const particles = [];
 
+const DIFFICULTY_TICK_MS = { easy: 160, normal: 115, hard: 80, insane: 50 };
+
 const state = {
   socket: null,
   id: null,
@@ -62,6 +64,9 @@ const state = {
   lastMinimapDraw: 0,
   // Буфер для нажатий во время spawn freeze
   bufferedDirection: null,
+  predictedDir: null,
+  lastStateAt: 0,
+  estimatedTickMs: 115,
   // FPS / ping
   fps: 0,
   ping: 0,
@@ -97,15 +102,11 @@ requestAnimationFrame(draw);
 document.querySelector("#retryBtn").addEventListener("click", () => { send({ type: "restart" }); deathPanel.classList.add("hidden"); });
 
 document.addEventListener("keydown", (event) => {
+  if (event.repeat) return;
   const direction = keys[event.code];
   if (!direction || !state.joined) return;
   event.preventDefault();
-  if (isSpawnFrozen()) {
-    // Буферизируем — отправим сразу как freeze снимется
-    state.bufferedDirection = direction;
-    return;
-  }
-  send({ type: "turn", direction });
+  queueTurn(direction);
 });
 
 setupTouchControls();
@@ -114,14 +115,7 @@ function setupTouchControls() {
   let touchStart = null;
   const SWIPE_MIN = 18;
 
-  const sendTurn = (direction) => {
-    if (!state.joined) return;
-    if (isSpawnFrozen()) {
-      state.bufferedDirection = direction;
-      return;
-    }
-    send({ type: "turn", direction });
-  };
+  const sendTurn = (direction) => queueTurn(direction);
 
   canvasStage.addEventListener("touchstart", (event) => {
     if (event.touches.length !== 1) return;
@@ -151,6 +145,69 @@ function getMe() {
   return state.players.find((p) => p.id === state.id);
 }
 
+function directionToVec(direction) {
+  return ({ up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } })[direction] || null;
+}
+
+function facingFromSnake(player) {
+  if (!player?.snake?.length) return null;
+  const head = player.snake[0];
+  const neck = player.snake[1] || head;
+  const dx = head.x - neck.x;
+  const dy = head.y - neck.y;
+  if (dx === 0 && dy === 0) return state.predictedDir || { x: 1, y: 0 };
+  return { x: Math.sign(dx), y: Math.sign(dy) };
+}
+
+function isOppositeVec(a, b) {
+  return a && b && a.x + b.x === 0 && a.y + b.y === 0;
+}
+
+function queueTurn(direction) {
+  if (!state.joined) return;
+  const vec = directionToVec(direction);
+  if (!vec) return;
+
+  const me = getMe();
+  const facing = state.predictedDir || (me ? facingFromSnake(me) : null);
+  if (facing && isOppositeVec(facing, vec)) return;
+
+  if (isSpawnFrozen()) {
+    state.bufferedDirection = direction;
+    return;
+  }
+
+  state.predictedDir = vec;
+  send({ type: "turn", direction });
+}
+
+function reconcilePrediction(me) {
+  if (!me) return;
+  state.lastStateAt = performance.now();
+  if (me.difficulty && DIFFICULTY_TICK_MS[me.difficulty]) {
+    state.estimatedTickMs = DIFFICULTY_TICK_MS[me.difficulty];
+  }
+  const serverFacing = facingFromSnake(me);
+  if (!state.predictedDir || !serverFacing) return;
+  if (serverFacing.x === state.predictedDir.x && serverFacing.y === state.predictedDir.y) {
+    state.predictedDir = null;
+  } else {
+    state.predictedDir = serverFacing;
+  }
+}
+
+function getLocalHeadLead(cell) {
+  if (isSpawnFrozen()) return { dx: 0, dy: 0 };
+  const me = getMe();
+  if (!me?.alive) return { dx: 0, dy: 0 };
+  const facing = state.predictedDir || facingFromSnake(me);
+  if (!facing) return { dx: 0, dy: 0 };
+  const elapsed = Math.max(0, performance.now() - state.lastStateAt);
+  const tickMs = state.estimatedTickMs || 115;
+  const progress = Math.min(0.92, elapsed / tickMs);
+  return { dx: facing.x * cell * progress, dy: facing.y * cell * progress };
+}
+
 function isSpawnFrozen() {
   return state.freezeEndsAt > Date.now();
 }
@@ -164,7 +221,7 @@ function syncSpawnFreeze(me) {
     state.freezeEndsAt = 0;
     // Freeze только что снялся — отправляем буферизированное нажатие
     if (wasFrozen && state.bufferedDirection) {
-      send({ type: "turn", direction: state.bufferedDirection });
+      queueTurn(state.bufferedDirection);
       state.bufferedDirection = null;
     }
   }
@@ -240,6 +297,7 @@ function connect() {
       // applyRenderSnap ПЕРВЫМ — он снимает снепшот из старого state.players,
       // затем сам перезаписывает state.players на новые данные
       applyRenderSnap(message.players);
+      if (message.tickMs) state.estimatedTickMs = message.tickMs;
       state.bosses = message.bosses || (message.boss ? [message.boss] : []);
       state.gameMode = message.gameMode || "classic";
       state.taggedPlayerId = message.taggedPlayerId;
@@ -428,15 +486,14 @@ function snapshotSnakes(players) {
 
 function applyRenderSnap(nextPlayers) {
   const now = performance.now();
-  const prevDuration = state.renderSnap ? now - state.renderSnap.at : 115;
+  const prevDuration = state.renderSnap ? now - state.renderSnap.at : state.estimatedTickMs;
   state.renderSnap = {
-    // Снимок всех сегментов до обновления стейта
     prevSnakes: state.players.length ? snapshotSnakes(state.players) : snapshotSnakes(nextPlayers),
     at: now,
-    // Диапазон 40–200ms покрывает все сложности: insane=50ms, easy=160ms
-    duration: clamp(prevDuration, 40, 200),
+    duration: clamp(prevDuration, 16, 70),
   };
   state.players = nextPlayers;
+  reconcilePrediction(nextPlayers.find((p) => p.id === state.id));
 }
 
 function getSnapT() {
@@ -448,10 +505,18 @@ function getSnapT() {
 // Возвращает интерполированную позицию сегмента index для игрока playerId
 // Каждый сегмент интерполируется от своей предыдущей позиции к текущей
 function getSegmentPos(playerId, index, currentSeg, cell, offsetX, offsetY) {
-  if (!state.renderSnap) return { px: offsetX + currentSeg.x * cell, py: offsetY + currentSeg.y * cell };
+  const baseX = offsetX + currentSeg.x * cell;
+  const baseY = offsetY + currentSeg.y * cell;
+
+  if (index === 0 && playerId === state.id) {
+    const lead = getLocalHeadLead(cell);
+    return { px: baseX + lead.dx, py: baseY + lead.dy };
+  }
+
+  if (!state.renderSnap) return { px: baseX, py: baseY };
   const prevSnake = state.renderSnap.prevSnakes?.get(playerId);
   const prev = prevSnake?.[index];
-  if (!prev) return { px: offsetX + currentSeg.x * cell, py: offsetY + currentSeg.y * cell };
+  if (!prev) return { px: baseX, py: baseY };
   const t = getSnapT();
   const ix = prev.x + (currentSeg.x - prev.x) * t;
   const iy = prev.y + (currentSeg.y - prev.y) * t;
@@ -461,6 +526,14 @@ function getSegmentPos(playerId, index, currentSeg, cell, offsetX, offsetY) {
 function getCameraHead(player) {
   const head = player?.snake?.[0];
   if (!head) return null;
+  if (player.id === state.id) {
+    const cell = isCoarsePointer ? 22 : 40;
+    const lead = getLocalHeadLead(cell);
+    return {
+      x: head.x + 0.5 + lead.dx / cell,
+      y: head.y + 0.5 + lead.dy / cell,
+    };
+  }
   if (!state.renderSnap) return { x: head.x + 0.5, y: head.y + 0.5 };
   const prevSnake = state.renderSnap.prevSnakes?.get(player.id);
   const prev = prevSnake?.[0];
