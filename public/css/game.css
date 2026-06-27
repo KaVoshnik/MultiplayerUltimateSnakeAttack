@@ -170,9 +170,12 @@ html, body.gameBody {
   font-size: .72rem;
   color: var(--muted);
   line-height: 1.3;
-  animation: feedIn .35s ease;
   border-left: 2px solid transparent;
   padding-left: 6px;
+}
+
+.killFeed li.feed-new {
+  animation: feedIn .35s ease;
 }
 
 .killFeed li.death { border-color: var(--red); color: #ffb4a9; }

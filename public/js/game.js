@@ -148,6 +148,10 @@ function connect() {
         state.shopData = message.shopData;
         state.personalBest = message.shopData.stats?.best || state.personalBest;
       }
+      if (message.feed?.length) {
+        state.feed = message.feed;
+        renderFeed();
+      }
       sendJoin();
     }
     if (message.type === "state") {
@@ -160,11 +164,9 @@ function connect() {
       state.boss = message.boss || null;
       state.gameMode = message.gameMode || "classic";
       state.taggedPlayerId = message.taggedPlayerId;
-      if (message.feed) state.feed = message.feed;
       const me = message.players.find((p) => p.id === state.id);
       updateHud(me, prevScore, prevCombo);
       renderPlayers();
-      renderFeed();
       SnakeFX.updateTrails(state.players);
       if (state.boss?.phase === "enraged" && !state.bossRageSound) {
         state.bossRageSound = true;
@@ -176,7 +178,6 @@ function connect() {
     if (message.type === "feed") {
       state.feed = message.feed || [];
       renderFeed();
-      SnakeAudio.play("feed");
     }
     if (message.type === "notice") { showToast(message.text); SnakeAudio.play("feed"); }
     if (message.type === "tagged") showToast(message.tagger ? "Тэг передан!" : "Тебе передали тэг!");
@@ -276,12 +277,26 @@ function updateHud(me, prevScore = 0, prevCombo = 0) {
 
 function renderFeed() {
   if (!feedList) return;
-  feedList.innerHTML = "";
-  for (const ev of (state.feed || []).slice(0, 8)) {
+  const items = (state.feed || []).slice(0, 8);
+  const key = items.map((ev) => ev.id).join("|");
+  if (key === renderFeed.lastKey) return;
+  renderFeed.lastKey = key;
+
+  const keepIds = new Set(items.map((ev) => ev.id));
+  for (const li of [...feedList.children]) {
+    if (!keepIds.has(li.dataset.id)) li.remove();
+  }
+
+  const have = new Set([...feedList.children].map((li) => li.dataset.id));
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    const ev = items[i];
+    if (have.has(ev.id)) continue;
     const li = document.createElement("li");
     li.className = ev.kind || "";
+    if (i === 0) li.classList.add("feed-new");
+    li.dataset.id = ev.id;
     li.textContent = ev.text;
-    feedList.append(li);
+    feedList.prepend(li);
   }
 }
 

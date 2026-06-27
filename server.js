@@ -135,6 +135,10 @@ let tickCount = 0;
 let gameMode = "classic";
 let taggedPlayerId = null; // для Tag Time
 const feedLog = [];
+const feedDedupe = new Map();
+let feedBroadcastTimer = null;
+const FEED_DEDUPE_MS = 4000;
+const FEED_BROADCAST_MS = 1200;
 
 // Тик-интервалы по сложности (отдельный тик для каждого игрока не делаем — берём минимальный)
 let currentTickMs = DIFFICULTIES.normal.tickMs;
@@ -228,6 +232,7 @@ server.on("upgrade", (req, socket) => {
     skins: SHOP_SKINS, catalog: SHOP_CATALOG, avatars: AVATAR_PRESETS,
     modes: MODES, difficulties: DIFFICULTIES,
     shopData: defaultShopEntry(),
+    feed: feedLog.slice(0, 8),
   });
 });
 
@@ -300,9 +305,23 @@ function getRequestOrigin(req) {
 // ============================================================
 
 function pushFeed(kind, text, playerName = "") {
-  feedLog.unshift({ id: `${Date.now()}-${Math.random()}`, kind, text, playerName, at: Date.now() });
-  if (feedLog.length > 16) feedLog.length = 16;
-  broadcast({ type: "feed", feed: feedLog.slice(0, 10) });
+  const dedupeKey = `${kind}:${text}`;
+  const now = Date.now();
+  const lastAt = feedDedupe.get(dedupeKey);
+  if (lastAt && now - lastAt < FEED_DEDUPE_MS) return;
+  feedDedupe.set(dedupeKey, now);
+
+  feedLog.unshift({ id: `${now}-${feedLog.length}`, kind, text, playerName, at: now });
+  if (feedLog.length > 12) feedLog.length = 12;
+  scheduleFeedBroadcast();
+}
+
+function scheduleFeedBroadcast() {
+  if (feedBroadcastTimer) return;
+  feedBroadcastTimer = setTimeout(() => {
+    feedBroadcastTimer = null;
+    if (feedLog.length) broadcast({ type: "feed", feed: feedLog.slice(0, 8) });
+  }, FEED_BROADCAST_MS);
 }
 
 function comboMultiplier(combo) {
@@ -398,7 +417,7 @@ function tick() {
         player.coins = (player.coins || 0) + pts;
         player.best = Math.max(player.best, player.score);
         savePlayerCoins(player);
-        if (player.combo === 3 || player.combo === 6 || player.combo === 10) {
+        if (player.combo === 5 || player.combo === 10) {
           pushFeed("combo", `🔥 ${player.name}: COMBO ×${player.combo}!`, player.name);
         }
       } else if (player.activeBonus === "shield") {
@@ -451,6 +470,7 @@ function spawnBonuses() {
 }
 
 function killPlayer(player, reason) {
+  if (!player.alive) return;
   savePlayerCoins(player);
   trackDeathStats(player);
   const wasBoss = reason.toLowerCase().includes("босс");
@@ -467,7 +487,6 @@ function killPlayer(player, reason) {
     boss.enragedTicks = 50;
     boss.size = 2;
     boss.phase = "enraged";
-    pushFeed("boss", `👹 БОСС уничтожил ${player.name}!`, player.name);
   }
 }
 
@@ -505,7 +524,6 @@ function broadcastState() {
       };
     }),
     boss, leaderboard: getEnrichedLeaderboard(), gameMode, taggedPlayerId,
-    feed: feedLog.slice(0, 10),
     shopMeta: { skins: SHOP_SKINS, catalog: SHOP_CATALOG },
   });
 }
