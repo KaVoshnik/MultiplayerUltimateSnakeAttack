@@ -91,7 +91,22 @@ async function getSession(req, db) {
 
 async function ensureGooglePlayer(ctx, googleUser) {
   const existing = await ctx.db.findGoogleUser(googleUser.sub);
-  if (existing) return existing.player_name;
+  if (existing) {
+    let row = await ctx.db.findPlayerByGoogleId(googleUser.sub);
+    if (!row) {
+      const entry = ctx.getProfile(existing.player_name);
+      entry.googleId = googleUser.sub;
+      ctx.shopData[existing.player_name] = entry;
+      await ctx.persistProfile(existing.player_name, entry);
+    } else {
+      const entry = ctx.getProfile(row.name);
+      entry.id = row.id;
+      entry.googleId = googleUser.sub;
+      ctx.shopData[row.name] = entry;
+      await ctx.persistProfile(row.name, entry);
+    }
+    return existing.player_name;
+  }
 
   const base = ctx.cleanName(googleUser.name || googleUser.email?.split("@")[0] || "Snake");
   let playerName = base;
@@ -114,14 +129,25 @@ async function ensureGooglePlayer(ctx, googleUser) {
 
   if (!ctx.shopData[playerName]) {
     const entry = ctx.defaultShopEntry();
+    entry.googleId = googleUser.sub;
     entry.stats = { ...(entry.stats || {}), googlePicture: googleUser.picture || null };
     ctx.shopData[playerName] = entry;
     await ctx.persistProfile(playerName, entry);
-  } else if (googleUser.picture) {
+  } else {
     const entry = ctx.getProfile(playerName);
-    entry.stats = { ...(entry.stats || {}), googlePicture: googleUser.picture };
-    ctx.shopData[playerName] = entry;
-    await ctx.persistProfile(playerName, entry);
+    let changed = false;
+    if (!entry.googleId) {
+      entry.googleId = googleUser.sub;
+      changed = true;
+    }
+    if (googleUser.picture && entry.stats?.googlePicture !== googleUser.picture) {
+      entry.stats = { ...(entry.stats || {}), googlePicture: googleUser.picture };
+      changed = true;
+    }
+    if (changed) {
+      ctx.shopData[playerName] = entry;
+      await ctx.persistProfile(playerName, entry);
+    }
   }
 
   return playerName;
@@ -188,6 +214,7 @@ async function handleRequest(req, res, url, ctx) {
     const profile = ctx.getProfile(session.player_name);
     ctx.sendJson(res, {
       loggedIn: true,
+      playerId: profile.id || null,
       name: session.player_name,
       email: session.email,
       picture: profile.stats?.googlePicture || session.picture_url || null,

@@ -1,6 +1,7 @@
 let settings = SnakeStore.load();
 const settingsModal = document.querySelector("#settingsModal");
 const audioToggle = document.querySelector("#audioToggle");
+const showStatsToggle = document.querySelector("#showStatsToggle");
 const liveFeed = document.querySelector("#liveFeed");
 let shopData = { avatar: "😎", coins: 0 };
 let sessionUser = null;
@@ -8,6 +9,9 @@ let sessionUser = null;
 if (audioToggle) {
   audioToggle.checked = SnakeAudio.isEnabled();
   audioToggle.addEventListener("change", () => SnakeAudio.setEnabled(audioToggle.checked));
+}
+if (showStatsToggle) {
+  showStatsToggle.checked = Boolean(settings.showStats);
 }
 updateUserBar(shopData, settings.name);
 
@@ -17,6 +21,12 @@ syncSessionUser({
     sessionUser = me;
     shopData = me.shopData || shopData;
     settings.name = me.name;
+    SnakeStore.save({
+      name: me.name,
+      google: true,
+      playerId: me.playerId || me.shopData?.id || null,
+      showStats: SnakeStore.load().showStats,
+    });
     if (socket?.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({ type: "shop_connect", name: me.name }));
     }
@@ -78,11 +88,17 @@ window.addEventListener("resize", resizeParticles);
 document.body.addEventListener("pointerdown", () => { SnakeAudio.ensure(); SnakeAudio.startAmbient(); }, { once: true });
 
 // Settings — только звук
-document.querySelector("#btnSettings").addEventListener("click", () => settingsModal.classList.remove("hidden"));
+document.querySelector("#btnSettings").addEventListener("click", () => {
+  if (showStatsToggle) showStatsToggle.checked = Boolean(SnakeStore.load().showStats);
+  settingsModal.classList.remove("hidden");
+});
 document.querySelector("#closeSettings").addEventListener("click", () => settingsModal.classList.add("hidden"));
 document.querySelector("#saveSettings").addEventListener("click", () => {
   SnakeAudio.play("ui");
-  SnakeStore.save({ audio: SnakeAudio.isEnabled() });
+  SnakeStore.save({
+    audio: SnakeAudio.isEnabled(),
+    showStats: showStatsToggle?.checked ?? false,
+  });
   settingsModal.classList.add("hidden");
   showToast("Настройки сохранены!");
 });
@@ -95,7 +111,7 @@ function goPlay() {
     return;
   }
   SnakeAudio.play("ui");
-  SnakeStore.save({ name, audio: SnakeAudio.isEnabled(), google: true });
+  SnakeStore.save({ name, audio: SnakeAudio.isEnabled(), google: true, showStats: SnakeStore.load().showStats });
   location.href = "/game.html";
 }
 

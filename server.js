@@ -119,8 +119,7 @@ function getSkinDef(id) {
 function ownsItem(entry, itemId) {
   const item = SHOP_CATALOG.find((i) => i.id === itemId);
   if (!item) return false;
-  if (item.customTexture && item.price === 0) return true;
-  if (item.category === "skin" && item.price === 0) return true;
+  if (Number(item.price) === 0) return true;
   return entry.inventory.includes(itemId);
 }
 
@@ -253,6 +252,7 @@ function handleHttpRequest(req, res, url) {
     if (!key) { sendJson(res, { error: "not_found" }); return; }
     const prof = getProfile(key);
     sendJson(res, {
+      id: prof.id || null,
       name: key,
       coins: prof.coins,
       activeSkin: prof.activeSkin,
@@ -325,7 +325,10 @@ server.on("upgrade", (req, socket) => {
   const id = String(nextClientId++);
   sockets.set(id, socket);
   auth.getSession(req, db).then((session) => {
-    if (session) socketSessions.set(id, session);
+    if (session) {
+      socketSessions.set(id, session);
+      send(id, { type: "auth_ready", name: session.player_name, googleId: session.google_id });
+    }
   }).catch(() => { });
   socket.on("data", (chunk) => readFrames(id, chunk));
   socket.on("close", () => removeClient(id));
@@ -991,7 +994,22 @@ function handleMessage(id, message) {
 
 function sendShopPayload(clientId, name) {
   const entry = getProfile(name);
+  syncProfileCoins(name, entry);
+  shopData[name] = entry;
   send(clientId, { type: "shop_update", shopData: entry, skins: SHOP_SKINS, catalog: SHOP_CATALOG, avatars: AVATAR_PRESETS });
+}
+
+function syncProfileCoins(name, entry) {
+  if (!entry || !name) return 0;
+  let coins = Number(entry.coins) || 0;
+  const lower = name.toLowerCase();
+  for (const p of players.values()) {
+    if (p.name.toLowerCase() === lower) {
+      coins = Math.max(coins, Number(p.coins) || 0);
+    }
+  }
+  entry.coins = coins;
+  return coins;
 }
 
 function buyItem(clientId, itemId, nameHint) {
@@ -1001,25 +1019,30 @@ function buyItem(clientId, itemId, nameHint) {
   if (!item) return;
   const entry = getProfile(name);
   const player = players.get(clientId);
-  const coins = player?.coins ?? entry.coins ?? 0;
+
+  syncProfileCoins(name, entry);
+  const coins = Number(entry.coins) || 0;
+  const price = Number(item.price) || 0;
 
   if (entry.inventory.includes(itemId)) {
     equipItem(clientId, itemId, name);
     return;
   }
-  if (item.price === 0) {
+  if (price === 0) {
     if (!entry.inventory.includes(itemId)) entry.inventory.push(itemId);
     shopData[name] = entry;
     persistProfile(name, entry);
     equipItem(clientId, itemId, name);
     return;
   }
-  if (coins < item.price) {
+  if (coins < price) {
     send(clientId, { type: "notice", text: "Недостаточно монет!" });
+    sendShopPayload(clientId, name);
     return;
   }
-  if (player) player.coins = coins - item.price;
-  entry.coins = coins - item.price;
+  const newCoins = coins - price;
+  if (player) player.coins = newCoins;
+  entry.coins = newCoins;
   entry.inventory.push(itemId);
   shopData[name] = entry;
   persistProfile(name, entry);
@@ -1048,6 +1071,7 @@ function equipItem(clientId, itemId, nameHint) {
     applyCosmeticsToPlayer(player, name);
   }
 
+  syncProfileCoins(name, entry);
   shopData[name] = entry;
   persistProfile(name, entry);
   sendShopPayload(clientId, name);
@@ -1143,16 +1167,20 @@ async function saveProfile(clientId, message) {
 
   const oldName = session.player_name;
   const avatar = AVATAR_PRESETS.includes(message.avatar) ? message.avatar : "😎";
+
   let entry = getProfile(oldName);
   entry.avatar = avatar;
+  syncProfileCoins(oldName, entry);
+  if (session.google_id) entry.googleId = session.google_id;
+  if (!entry.id) await persistProfile(oldName, entry);
 
   if (oldName.toLowerCase() !== newName.toLowerCase()) {
     if (await isNameTaken(newName, oldName)) {
       send(clientId, { type: "notice", text: "Это имя уже занято!" });
       return;
     }
+    syncProfileCoins(oldName, entry);
     delete shopData[oldName];
-    entry = { ...getProfile(oldName), avatar };
     shopClients.set(clientId, newName);
     const player = players.get(clientId);
     if (player) player.name = newName;
@@ -1162,15 +1190,19 @@ async function saveProfile(clientId, message) {
     await db.updateGoogleUserPlayerName(session.google_id, newName);
     await db.renamePlayer(oldName, newName, entry);
   } else {
+    syncProfileCoins(newName, entry);
+    if (session.google_id) entry.googleId = session.google_id;
     shopData[newName] = entry;
-    persistProfile(newName, entry);
+    await persistProfile(newName, entry);
   }
 
-  send(clientId, { type: "profile_saved", shopData: entry, name: newName });
+  send(clientId, { type: "profile_saved", shopData: entry, name: newName, playerId: entry.id || null });
   sendShopPayload(clientId, newName);
 }
 
 function resolveName(clientId, hint) {
+  const session = socketSessions.get(clientId);
+  if (session?.player_name) return session.player_name;
   return profileName(hint) || players.get(clientId)?.name || shopClients.get(clientId) || null;
 }
 
@@ -1195,7 +1227,9 @@ function startNewLife(name) {
 
 function normalizeProfile(raw) {
   const entry = {
-    coins: raw.coins || 0,
+    id: raw.id || null,
+    googleId: raw.googleId || raw.google_id || null,
+    coins: Number(raw.coins) || 0,
     unlockedSkins: raw.unlockedSkins || ["default"],
     activeSkin: raw.activeSkin || "default",
     avatar: AVATAR_PRESETS.includes(raw.avatar) ? raw.avatar : "😎",
@@ -1429,7 +1463,14 @@ function removeClient(id) {
 
 function persistProfile(name, entry) {
   shopData[name] = entry;
-  db.upsertPlayer(name, entry).catch((err) => console.error("DB player:", err.message));
+  return db.upsertPlayer(name, entry).then((id) => {
+    if (id) entry.id = id;
+    shopData[name] = entry;
+    return entry;
+  }).catch((err) => {
+    console.error("DB player:", err.message);
+    return entry;
+  });
 }
 
 function persistLeaderboardEntry(name, score, difficulty) {

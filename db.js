@@ -1,5 +1,6 @@
 const path = require("path");
 const { Pool } = require("pg");
+const crypto = require("crypto");
 
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 
@@ -15,11 +16,43 @@ function getDatabaseUrl() {
 
 let pool;
 
+async function migratePlayersTable() {
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS id UUID DEFAULT gen_random_uuid()`);
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS google_id VARCHAR(128)`);
+  await pool.query(`UPDATE players SET id = gen_random_uuid() WHERE id IS NULL`);
+
+  const { rows: pkRows } = await pool.query(`
+    SELECT a.attname
+    FROM pg_index i
+    JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+    WHERE i.indrelid = 'players'::regclass AND i.indisprimary
+  `);
+  if (pkRows[0]?.attname === "name") {
+    await pool.query(`ALTER TABLE players DROP CONSTRAINT players_pkey`);
+    await pool.query(`ALTER TABLE players ADD PRIMARY KEY (id)`);
+  }
+
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS players_name_lower_key ON players (name_lower)`);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS players_google_id_key
+    ON players (google_id) WHERE google_id IS NOT NULL
+  `);
+
+  await pool.query(`
+    UPDATE players p
+    SET google_id = g.google_id
+    FROM google_users g
+    WHERE p.google_id IS NULL AND LOWER(p.name) = LOWER(g.player_name)
+  `);
+}
+
 async function init() {
   pool = new Pool({ connectionString: getDatabaseUrl() });
   await pool.query(`
     CREATE TABLE IF NOT EXISTS players (
-      name VARCHAR(32) PRIMARY KEY,
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      google_id VARCHAR(128),
+      name VARCHAR(32) NOT NULL,
       name_lower VARCHAR(32) NOT NULL UNIQUE,
       coins INTEGER NOT NULL DEFAULT 0,
       active_skin VARCHAR(64) NOT NULL DEFAULT 'default',
@@ -60,6 +93,8 @@ async function init() {
 
     CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires ON auth_sessions (expires_at);
   `);
+
+  await migratePlayersTable();
 }
 
 async function findGoogleUser(googleId) {
@@ -74,6 +109,22 @@ async function findGoogleUserByPlayerName(playerName) {
   const { rows } = await pool.query(
     "SELECT google_id, player_name FROM google_users WHERE LOWER(player_name) = LOWER($1) LIMIT 1",
     [playerName],
+  );
+  return rows[0] || null;
+}
+
+async function findPlayerByGoogleId(googleId) {
+  const { rows } = await pool.query(
+    "SELECT * FROM players WHERE google_id = $1 LIMIT 1",
+    [googleId],
+  );
+  return rows[0] || null;
+}
+
+async function findPlayerById(playerId) {
+  const { rows } = await pool.query(
+    "SELECT * FROM players WHERE id = $1 LIMIT 1",
+    [playerId],
   );
   return rows[0] || null;
 }
@@ -155,6 +206,8 @@ async function cleanupAuthSessions() {
 
 function rowToRawProfile(row) {
   return {
+    id: row.id,
+    googleId: row.google_id || null,
     coins: row.coins,
     activeSkin: row.active_skin,
     avatar: row.avatar,
@@ -188,21 +241,27 @@ async function loadLeaderboard(limit = 20) {
 }
 
 async function upsertPlayer(name, entry) {
-  await pool.query(
-    `INSERT INTO players (name, name_lower, coins, active_skin, avatar, snake_hat, inventory, stats, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-     ON CONFLICT (name) DO UPDATE SET
+  const playerId = entry.id || crypto.randomUUID();
+  const { rows } = await pool.query(
+    `INSERT INTO players (id, google_id, name, name_lower, coins, active_skin, avatar, snake_hat, inventory, stats, updated_at)
+     VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+     ON CONFLICT (name_lower) DO UPDATE SET
+       google_id = COALESCE(EXCLUDED.google_id, players.google_id),
+       name = EXCLUDED.name,
        coins = EXCLUDED.coins,
        active_skin = EXCLUDED.active_skin,
        avatar = EXCLUDED.avatar,
        snake_hat = EXCLUDED.snake_hat,
        inventory = EXCLUDED.inventory,
        stats = EXCLUDED.stats,
-       updated_at = NOW()`,
+       updated_at = NOW()
+     RETURNING id`,
     [
+      playerId,
+      entry.googleId || null,
       name,
       name.toLowerCase(),
-      entry.coins || 0,
+      Number(entry.coins) || 0,
       entry.activeSkin || "default",
       entry.avatar || "😎",
       entry.equipped?.snakeHat || null,
@@ -210,6 +269,7 @@ async function upsertPlayer(name, entry) {
       JSON.stringify(entry.stats || {}),
     ],
   );
+  return rows[0]?.id || playerId;
 }
 
 async function deletePlayer(name) {
@@ -220,19 +280,25 @@ async function renamePlayer(oldName, newName, entry) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    await client.query("DELETE FROM players WHERE name_lower = $1", [oldName.toLowerCase()]);
+    const playerId = entry.id;
+    if (!playerId) throw new Error("rename_missing_player_id");
+
     await client.query(
-      `INSERT INTO players (name, name_lower, coins, active_skin, avatar, snake_hat, inventory, stats, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
+      `UPDATE players
+       SET name = $1, name_lower = $2, coins = $3, active_skin = $4, avatar = $5,
+           snake_hat = $6, inventory = $7, stats = $8, google_id = COALESCE($9, google_id), updated_at = NOW()
+       WHERE id = $10::uuid`,
       [
         newName,
         newName.toLowerCase(),
-        entry.coins || 0,
+        Number(entry.coins) || 0,
         entry.activeSkin || "default",
         entry.avatar || "😎",
         entry.equipped?.snakeHat || null,
         JSON.stringify(entry.inventory || ["default"]),
         JSON.stringify(entry.stats || {}),
+        entry.googleId || null,
+        playerId,
       ],
     );
     await client.query(
@@ -289,6 +355,8 @@ module.exports = {
   close,
   findGoogleUser,
   findGoogleUserByPlayerName,
+  findPlayerByGoogleId,
+  findPlayerById,
   isPlayerNameTaken,
   updateGoogleUserPlayerName,
   linkGoogleUser,
