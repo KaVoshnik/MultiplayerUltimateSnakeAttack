@@ -218,14 +218,15 @@ function connect() {
       state.grid = message.grid;
       state.food = message.food;
       state.bonuses = message.bonuses || [];
-      state.players = message.players;
+      // applyRenderSnap ПЕРВЫМ — он снимает снепшот из старого state.players,
+      // затем сам перезаписывает state.players на новые данные
+      applyRenderSnap(message.players);
       state.bosses = message.bosses || (message.boss ? [message.boss] : []);
       state.gameMode = message.gameMode || "classic";
       state.taggedPlayerId = message.taggedPlayerId;
       const me = message.players.find((p) => p.id === state.id);
       syncSpawnFreeze(me);
       updateHud(me, prevScore, prevCombo);
-      applyRenderSnap(message.players);
       renderPlayers();
       SnakeFX.updateTrails(state.players);
       const anyEnraged = state.bosses.some((b) => b.phase === "enraged");
