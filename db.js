@@ -1,12 +1,22 @@
+const path = require("path");
 const { Pool } = require("pg");
 
-const DATABASE_URL = process.env.DATABASE_URL
-  || "postgresql://snake:snake@127.0.0.1:5432/snake_attack";
+require("dotenv").config({ path: path.join(__dirname, ".env") });
+
+function getDatabaseUrl() {
+  if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
+  const user = process.env.PGUSER || "snake";
+  const password = encodeURIComponent(process.env.PGPASSWORD || "snake");
+  const host = process.env.PGHOST || "127.0.0.1";
+  const port = process.env.PGPORT || "5432";
+  const database = process.env.PGDATABASE || "snake_attack";
+  return `postgresql://${user}:${password}@${host}:${port}/${database}`;
+}
 
 let pool;
 
 async function init() {
-  pool = new Pool({ connectionString: DATABASE_URL });
+  pool = new Pool({ connectionString: getDatabaseUrl() });
   await pool.query(`
     CREATE TABLE IF NOT EXISTS players (
       name VARCHAR(32) PRIMARY KEY,
