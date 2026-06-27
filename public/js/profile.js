@@ -18,7 +18,10 @@ const state = {
   oldName: "",
   loggedIn: false,
   me: null,
+  viewMode: false,
 };
+
+const viewPlayerName = new URLSearchParams(location.search).get("player")?.trim() || "";
 
 function setProfileEditable(enabled) {
   profileNameInput.disabled = !enabled;
@@ -146,11 +149,74 @@ function renderAvatars() {
 function renderStats() {
   const s = state.shopData?.stats || {};
   document.querySelector("#statGames").textContent = s.games || 0;
-  document.querySelector("#statWins").textContent = s.wins || 0;
-  document.querySelector("#statLosses").textContent = s.losses || 0;
+  document.querySelector("#statDeaths").textContent = s.deaths ?? s.losses ?? 0;
   document.querySelector("#statBest").textContent = s.best || 0;
   document.querySelector("#statTime").textContent = formatPlayTime(s.playTimeMs);
   document.querySelector("#statCoins").textContent = state.shopData?.coins || 0;
+}
+
+async function loadPublicProfile(name) {
+  const res = await fetch(`/profile?name=${encodeURIComponent(name)}`);
+  const data = await res.json();
+  if (data.error) {
+    showToast("Игрок не найден");
+    return false;
+  }
+
+  try {
+    const catRes = await fetch("/catalog");
+    const catData = await catRes.json();
+    state.catalog = catData.catalog || [];
+    state.avatars = catData.avatars || [];
+  } catch { /* ignore */ }
+
+  state.viewMode = true;
+  state.shopData = {
+    coins: data.coins,
+    activeSkin: data.activeSkin,
+    avatar: data.avatar,
+    equipped: data.equipped || {},
+    inventory: data.inventory || [],
+    stats: data.stats,
+  };
+  state.selectedAvatar = data.avatar || "😎";
+  state.oldName = data.name;
+  profileNameInput.value = data.name;
+  setProfileEditable(false);
+  profileLoginHint?.classList.add("hidden");
+
+  accountGuest?.classList.add("hidden");
+  accountUser?.classList.remove("hidden");
+  document.querySelector("#btnGoogleLogin")?.classList.add("hidden");
+  document.querySelector("#btnGoogleLogout")?.classList.add("hidden");
+  document.querySelector(".accountBadge").textContent = "Публичный профиль";
+
+  const displayName = document.querySelector("#accountDisplayName");
+  const emailEl = document.querySelector("#accountEmail");
+  const googleImg = document.querySelector("#accountGoogleAvatar");
+  const emojiEl = document.querySelector("#accountAvatarEmoji");
+
+  if (displayName) displayName.textContent = data.name;
+  if (emailEl) emailEl.textContent = `Игр: ${data.stats?.games || 0} · Смертей: ${data.stats?.deaths || 0}`;
+
+  if (data.googlePicture && googleImg) {
+    googleImg.src = data.googlePicture;
+    googleImg.classList.remove("hidden");
+    emojiEl?.classList.add("hidden");
+  } else {
+    googleImg?.classList.add("hidden");
+    if (emojiEl) {
+      emojiEl.textContent = data.avatar || "😎";
+      emojiEl.classList.remove("hidden");
+    }
+  }
+
+  document.title = `${data.name} — Профиль`;
+  renderStats();
+  renderEquipped();
+  drawPreview();
+  renderAvatars();
+  return true;
 }
 
 function renderEquipped() {
@@ -258,35 +324,42 @@ saveBtn.addEventListener("click", () => {
   });
 });
 
-initProfileAuth({
-  onLogin(me) {
-    state.loggedIn = true;
-    state.me = me;
-    state.shopData = me.shopData || state.shopData;
-    SnakeStore.save({ name: me.name, google: true });
-    renderAccount(me);
-    if (state.socket?.readyState === WebSocket.OPEN) {
-      state.socket.send(JSON.stringify({ type: "shop_connect", name: me.name }));
-    }
-  },
-  onLogout() {
-    state.loggedIn = false;
-    state.me = null;
-    state.shopData = null;
-    state.oldName = "";
-    renderAccount({ loggedIn: false });
-  },
-}).then((me) => {
+async function boot() {
+  if (viewPlayerName) {
+    await loadPublicProfile(viewPlayerName);
+    connect();
+    return;
+  }
+
+  const me = await initProfileAuth({
+    onLogin(loginMe) {
+      state.loggedIn = true;
+      state.me = loginMe;
+      state.shopData = loginMe.shopData || state.shopData;
+      SnakeStore.save({ name: loginMe.name, google: true });
+      renderAccount(loginMe);
+      if (state.socket?.readyState === WebSocket.OPEN) {
+        state.socket.send(JSON.stringify({ type: "shop_connect", name: loginMe.name }));
+      }
+    },
+    onLogout() {
+      state.loggedIn = false;
+      state.me = null;
+      state.shopData = null;
+      state.oldName = "";
+      renderAccount({ loggedIn: false });
+    },
+  });
+
   if (me?.loggedIn) {
     state.loggedIn = true;
     state.me = me;
     state.shopData = me.shopData;
     renderAccount(me);
-    if (state.socket?.readyState === WebSocket.OPEN) {
-      state.socket.send(JSON.stringify({ type: "shop_connect", name: me.name }));
-    }
   } else {
     renderAccount({ loggedIn: false });
   }
   connect();
-});
+}
+
+boot();

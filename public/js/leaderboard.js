@@ -3,11 +3,14 @@ const listEl = document.querySelector("#leaderboard");
 const paginationEl = document.querySelector("#pagination");
 const emptyEl = document.querySelector("#emptyState");
 const tabButtons = document.querySelectorAll(".lbTab");
+const searchInput = document.querySelector("#lbSearch");
+const searchResults = document.querySelector("#lbSearchResults");
 
 const PAGE_SIZE = 7;
 let allEntries = [];
 let currentPage = 0;
 let sortMode = "score";
+let searchTimer = null;
 
 const MEDALS = ["🥇", "🥈", "🥉"];
 
@@ -21,6 +24,23 @@ tabButtons.forEach((btn) => {
   });
 });
 
+function avatarHtml(entry, className = "lbAvatar") {
+  if (entry.googlePicture) {
+    return `<img class="${className} lbAvatarImg" src="${escapeHtml(entry.googlePicture)}" alt="" referrerpolicy="no-referrer" />`;
+  }
+  return `<span class="${className} lbAvatarEmoji">${entry.avatar || "😎"}</span>`;
+}
+
+function openPlayerProfile(name) {
+  location.href = `/profile.html?player=${encodeURIComponent(name)}`;
+}
+
+function bindProfileClick(el, name) {
+  el.classList.add("lbClickable");
+  el.title = `Открыть профиль ${name}`;
+  el.addEventListener("click", () => openPlayerProfile(name));
+}
+
 async function loadLeaderboard() {
   try {
     const url = sortMode === "coins" ? "/leaderboard?sort=coins" : "/leaderboard";
@@ -33,6 +53,55 @@ async function loadLeaderboard() {
     emptyEl.textContent = "Не удалось загрузить рекорды.";
   }
 }
+
+async function runSearch(query) {
+  const q = query.trim();
+  if (!q) {
+    searchResults.classList.add("hidden");
+    searchResults.innerHTML = "";
+    return;
+  }
+  try {
+    const res = await fetch(`/api/players?q=${encodeURIComponent(q)}`);
+    const players = await res.json();
+    searchResults.innerHTML = "";
+    if (!players.length) {
+      searchResults.innerHTML = `<div class="lbSearchEmpty">Никого не найдено</div>`;
+    } else {
+      for (const p of players) {
+        const row = document.createElement("button");
+        row.type = "button";
+        row.className = "lbSearchRow";
+        row.innerHTML = `
+          ${avatarHtml(p, "lbSearchAvatar")}
+          <span class="lbSearchName">${escapeHtml(p.name)}</span>
+          <span class="lbSearchMeta">🎮 ${p.games || 0} · 💀 ${p.deaths || 0}</span>
+        `;
+        row.addEventListener("click", () => openPlayerProfile(p.name));
+        searchResults.append(row);
+      }
+    }
+    searchResults.classList.remove("hidden");
+  } catch {
+    searchResults.innerHTML = `<div class="lbSearchEmpty">Ошибка поиска</div>`;
+    searchResults.classList.remove("hidden");
+  }
+}
+
+searchInput?.addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => runSearch(searchInput.value), 250);
+});
+
+searchInput?.addEventListener("focus", () => {
+  if (searchInput.value.trim()) runSearch(searchInput.value);
+});
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".lbSearchWrap")) {
+    searchResults?.classList.add("hidden");
+  }
+});
 
 function valueLabel() {
   return sortMode === "coins" ? "монет" : "очков";
@@ -54,14 +123,15 @@ function renderPodium(top3) {
     card.className = `podiumCard place-${place}`;
     card.innerHTML = `
       <div class="podiumMedal">${MEDALS[place - 1] || ""}</div>
-      <div class="podiumAvatar">${entry.avatar || "😎"}</div>
+      ${avatarHtml(entry, "podiumAvatar")}
       <div class="podiumName">${escapeHtml(entry.name)}</div>
       <div class="podiumStats">
-        <span>🏆 Побед<strong>${entry.wins || 0}</strong></span>
+        <span>🎮 Игр<strong>${entry.games || 0}</strong></span>
         <span>📈 Рекорд<strong>${entry.best || entry.score}</strong></span>
       </div>
       <div class="podiumScore">${sortMode === "coins" ? "💰 " : ""}${entryValue(entry)}</div>
     `;
+    bindProfileClick(card, entry.name);
     podiumEl.append(card);
   }
 }
@@ -79,12 +149,13 @@ function renderList(rest) {
       : "";
     const extra = sortMode === "coins"
       ? `<br><small style="color:var(--muted)">📈 рекорд ${entry.best || 0}</small>`
-      : `<br><small style="color:var(--muted)">🏆 ${entry.wins || 0} побед · 💰 ${entry.coins || 0}</small>`;
+      : `<br><small style="color:var(--muted)">🎮 ${entry.games || 0} игр · 💀 ${entry.deaths || 0} · 💰 ${entry.coins || 0}</small>`;
     li.innerHTML = `
       <span class="rank">#${entry.rank}</span>
-      <span class="name">${entry.avatar || "😎"} ${escapeHtml(entry.name)}${diff}${extra}</span>
+      <span class="name">${avatarHtml(entry, "lbListAvatar")} ${escapeHtml(entry.name)}${diff}${extra}</span>
       <span class="score">${sortMode === "coins" ? "💰 " : ""}${entryValue(entry)}</span>
     `;
+    bindProfileClick(li, entry.name);
     listEl.append(li);
   });
 

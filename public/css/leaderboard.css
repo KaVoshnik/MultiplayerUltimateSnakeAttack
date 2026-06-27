@@ -105,7 +105,88 @@
   font-size: 2.4rem;
   margin-bottom: 6px;
   filter: drop-shadow(0 4px 8px rgba(0,0,0,.4));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  margin-inline: auto;
 }
+
+.lbAvatarImg,
+.podiumAvatar.lbAvatarImg,
+.lbListAvatar.lbAvatarImg,
+.lbSearchAvatar.lbAvatarImg {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(255,255,255,.2);
+}
+
+.lbListAvatar,
+.lbSearchAvatar {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  vertical-align: middle;
+  margin-right: 6px;
+  align-items: center;
+  justify-content: center;
+}
+
+.lbSearchWrap {
+  position: relative;
+  max-width: 360px;
+  margin: 16px auto 0;
+}
+
+.lbSearch {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(0,0,0,.35);
+  color: var(--text);
+  font-size: .9rem;
+}
+
+.lbSearchResults {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 20;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #0a1018;
+  box-shadow: 0 12px 32px rgba(0,0,0,.45);
+  max-height: 280px;
+  overflow: auto;
+}
+
+.lbSearchRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.lbSearchRow:hover { background: rgba(61,232,138,.08); }
+
+.lbSearchName { font-weight: 700; flex: 1; }
+.lbSearchMeta { font-size: .75rem; color: var(--muted); }
+.lbSearchEmpty { padding: 12px; color: var(--muted); font-size: .85rem; }
+
+.lbClickable { cursor: pointer; transition: transform .12s, box-shadow .12s; }
+.lbClickable:hover { transform: translateY(-2px); }
+.lbRest .leaderList li.lbClickable:hover { background: rgba(61,232,138,.06); border-radius: 8px; }
 
 .podiumName {
   font-weight: 800;

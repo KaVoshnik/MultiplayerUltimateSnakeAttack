@@ -91,7 +91,7 @@ document.addEventListener("keydown", (event) => {
     return;
   }
   const direction = keys[event.code];
-  if (!direction || state.menuOpen || !state.joined) return;
+  if (!direction || state.menuOpen || !state.joined || isSpawnFrozen()) return;
   event.preventDefault();
   send({ type: "turn", direction });
 });
@@ -103,7 +103,7 @@ function setupTouchControls() {
   const SWIPE_MIN = 18;
 
   const sendTurn = (direction) => {
-    if (state.menuOpen || !state.joined) return;
+    if (state.menuOpen || !state.joined || isSpawnFrozen()) return;
     send({ type: "turn", direction });
   };
 
@@ -129,6 +129,15 @@ function setupTouchControls() {
   }, { passive: false });
 
   canvasStage.addEventListener("touchcancel", () => { touchStart = null; });
+}
+
+function getMe() {
+  return state.players.find((p) => p.id === state.id);
+}
+
+function isSpawnFrozen() {
+  const me = getMe();
+  return Boolean(me?.frozenUntil && Date.now() < me.frozenUntil);
 }
 
 function resizeCanvas() {
@@ -448,12 +457,35 @@ function draw() {
   drawPlayers(view);
   drawParticles(view);
   SnakeFX.drawFloaters(ctx, view.cell, view.offsetX, view.offsetY);
+  drawSpawnOverlay(width, height);
   ctx.restore();
 
   SnakeFX.drawConfetti(ctx, width, height);
   SnakeFX.drawCrt(width, height);
   drawMinimap(view);
   requestAnimationFrame(draw);
+}
+
+function drawSpawnOverlay(width, height) {
+  if (!isSpawnFrozen()) return;
+  const me = getMe();
+  const left = Math.max(0, (me?.frozenUntil || 0) - Date.now());
+  const sec = (left / 1000).toFixed(1);
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.fillRect(0, 0, width, height);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = `800 ${Math.max(18, width * 0.04)}px Orbitron, sans-serif`;
+  ctx.fillStyle = "#3de88a";
+  ctx.shadowColor = "#3de88a";
+  ctx.shadowBlur = 12;
+  ctx.fillText(`СТАРТ ${sec}`, width / 2, height / 2);
+  ctx.shadowBlur = 0;
+  ctx.font = `600 ${Math.max(11, width * 0.018)}px sans-serif`;
+  ctx.fillStyle = "rgba(255,255,255,0.75)";
+  ctx.fillText("Приготовься…", width / 2, height / 2 + width * 0.05);
+  ctx.restore();
 }
 
 function drawMinimap(view) {
@@ -734,6 +766,9 @@ function drawPlayers(view) {
     const neck = player.snake[1] || head;
     const dirX = head.x - neck.x;
     const dirY = head.y - neck.y;
+    const customTex = typeof CustomSkins !== "undefined" && CustomSkins.isCustom(player.skin)
+      ? CustomSkins.get(player.skin)
+      : null;
 
     player.snake.forEach((part, index) => {
       if (!isInCameraView(part.x, part.y, view, 0.5)) return;
@@ -741,22 +776,36 @@ function drawPlayers(view) {
       const py = offsetY + part.y * cell;
       const bodyColor = player.rainbow ? `hsl(${(index * 40 + Date.now() / 20) % 360}, 80%, 60%)` : player.color;
       const heatGlow = (player.heat || 0) > 50;
+      const segX = px + cell * 0.08;
+      const segY = py + cell * 0.08;
+      const segS = cell * 0.84;
+
       if (index === 0) {
-        ctx.fillStyle = player.headColor || "#fff";
         if (isTagged) { ctx.strokeStyle = "#ffd166"; ctx.lineWidth = cell * 0.1; roundRect(px + cell * 0.04, py + cell * 0.04, cell * 0.92, cell * 0.92, cell * 0.2); ctx.stroke(); }
         if (player.activeBonus === "ghost") ctx.globalAlpha = 0.6;
         if (heatGlow) { ctx.shadowColor = player.color; ctx.shadowBlur = cell * 0.45; }
       } else {
-        ctx.fillStyle = bodyColor;
         ctx.globalAlpha = player.alive ? (player.activeBonus === "ghost" ? 0.5 : 0.9) : 0.35;
       }
-      roundRect(px + cell * 0.08, py + cell * 0.08, cell * 0.84, cell * 0.84, cell * 0.18);
-      ctx.fill();
-      if (index === 0) {
+
+      if (customTex) {
+        ctx.drawImage(customTex, segX, segY, segS, segS);
+      } else if (index === 0) {
+        ctx.fillStyle = player.headColor || "#fff";
+        roundRect(segX, segY, segS, segS, cell * 0.18);
+        ctx.fill();
         ctx.globalAlpha = player.alive ? 1 : 0.35;
         ctx.fillStyle = bodyColor;
         roundRect(px + cell * 0.24, py + cell * 0.24, cell * 0.52, cell * 0.52, cell * 0.14);
         ctx.fill();
+      } else {
+        ctx.fillStyle = bodyColor;
+        roundRect(segX, segY, segS, segS, cell * 0.18);
+        ctx.fill();
+      }
+
+      if (index === 0) {
+        ctx.globalAlpha = player.alive ? 1 : 0.35;
         drawSnakeEyes(px, py, cell, dirX, dirY);
         drawSnakeCosmetics(px, py, cell, player);
         ctx.shadowBlur = 0;
