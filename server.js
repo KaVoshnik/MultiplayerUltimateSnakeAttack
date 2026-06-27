@@ -17,7 +17,8 @@ const MIN_GOOD_FOOD = 70;
 const SNAKE_SPAWN_LEN = 4;
 const SPAWN_MARGIN = 18;
 const SPAWN_CLEAR_RADIUS = 5;
-const BAD_FOOD_HEAD_BUFFER = 3;
+const BAD_FOOD_HEAD_BUFFER = 6;
+const FOOD_PATH_AVOID_CELLS = 7;
 const BOSS_MOVE_EVERY = 6;
 const BOSS_CHASE_RANGE = 22;
 const BOSS_RANDOM_MOVE_CHANCE = 0.24;
@@ -510,13 +511,39 @@ function pushFoodItem(item) {
   tickJournal.foodAdded.push(gameSync.compactFood(item));
 }
 
+function getMovementPathCells(steps = FOOD_PATH_AVOID_CELLS) {
+  const cells = new Set();
+  for (const player of players.values()) {
+    if (!player.alive) continue;
+    if (player.frozenUntil && Date.now() < player.frozenUntil) continue;
+    if (player.activeBonus === "slow_down" && tickCount % 2 === 0) continue;
+    const dir = player.nextDirection || player.direction;
+    if (!dir) continue;
+    const diff = DIFFICULTIES[player.difficulty] || DIFFICULTIES.normal;
+    let x = player.snake[0].x;
+    let y = player.snake[0].y;
+    for (let i = 0; i < steps; i += 1) {
+      x += dir.x;
+      y += dir.y;
+      if (!insideGrid({ x, y })) {
+        if (diff.wallDeath) break;
+        x = (x + GRID.width) % GRID.width;
+        y = (y + GRID.height) % GRID.height;
+      }
+      cells.add(pointKey({ x, y }));
+    }
+  }
+  return cells;
+}
+
 function tick() {
   if (players.size === 0) return;
   tickJournal = gameSync.createJournal();
   tickCount += 1;
-  fillFood();
+  const pathCells = getMovementPathCells();
+  fillFood({ avoidCells: pathCells });
   if (tickCount % (bosses.some((b) => b.enragedTicks > 0) ? 3 : BOSS_MOVE_EVERY) === 0) {
-    moveBosses();
+    moveBosses(pathCells);
     tickJournal.bossesChanged = true;
   }
   tickBonusEffects();
@@ -788,7 +815,7 @@ function updateBossPhase(boss, dist) {
   boss.phase = dist <= BOSS_HUNT_RANGE ? "hunt" : dist <= BOSS_CHASE_RANGE ? "stalk" : "idle";
 }
 
-function moveBosses() {
+function moveBosses(avoidCells) {
   const alive = [...players.values()].filter((p) => p.alive);
   removeFoodUnderBosses();
 
@@ -813,15 +840,15 @@ function moveBosses() {
 
     const head = target?.snake?.[0];
     let move = pickBossMove(boss, head, dist);
-    if (move) applyBossStep(boss, move);
+    if (move) applyBossStep(boss, move, avoidCells);
 
     if (boss.trait === "dash" && boss.phase === "enraged" && head && Math.random() < 0.38) {
       move = pickBossMove(boss, head, distanceToBoss(head, boss));
-      if (move) applyBossStep(boss, move);
+      if (move) applyBossStep(boss, move, avoidCells);
     }
     if (boss.trait === "blink" && (boss.phase === "stalk" || boss.agitatedTicks > 0) && head && dist <= BOSS_CHASE_RANGE && Math.random() < 0.22) {
       move = pickBossMove(boss, head, distanceToBoss(head, boss));
-      if (move) applyBossStep(boss, move);
+      if (move) applyBossStep(boss, move, avoidCells);
     }
 
     boss.pulse = (boss.pulse + 1) % 1000;
@@ -837,7 +864,7 @@ function moveBosses() {
   }
 }
 
-function applyBossStep(boss, move) {
+function applyBossStep(boss, move, avoidCells) {
   const prevX = boss.x;
   const prevY = boss.y;
   boss.x += move.x;
@@ -845,13 +872,14 @@ function applyBossStep(boss, move) {
   clampBossInGrid(boss);
 
   if (boss.trait === "poison" && boss.phase === "enraged") {
-    leavePoisonCell(boss, prevX, prevY);
+    leavePoisonCell(boss, prevX, prevY, avoidCells);
   }
 }
 
-function leavePoisonCell(boss, x, y) {
+function leavePoisonCell(boss, x, y, avoidCells) {
   if (Math.random() > 0.45) return;
   if (!insideGrid({ x, y }) || anyBossOccupies({ x, y })) return;
+  if (avoidCells?.has(pointKey({ x, y }))) return;
   if (food.some((item) => item.x === x && item.y === y)) return;
   if (food.length >= FOOD_TARGET + 24) return;
   pushFoodItem(createBadFood({ x, y }));
@@ -942,7 +970,7 @@ function removeFoodUnderBosses() {
 // FOOD
 // ============================================================
 
-function fillFood() {
+function fillFood(opts = {}) {
   for (let i = food.length - 1; i >= 0; i--) {
     if (!food[i].kind) {
       const pt = { x: food[i].x, y: food[i].y };
@@ -957,15 +985,16 @@ function fillFood() {
     }
   }
 
+  const spawnOpts = { avoidCells: opts.avoidCells };
   const diff = getAverageBadFoodRatio();
   while (food.filter((i) => i.good).length < MIN_GOOD_FOOD) {
-    const point = randomEmptyPoint();
+    const point = randomEmptyPoint(spawnOpts);
     if (!point) return;
     pushFoodItem(createGoodFood(point));
   }
   while (food.length < FOOD_TARGET) {
     const wantBad = Math.random() < diff;
-    const point = randomEmptyPoint({ avoidNearHeads: wantBad });
+    const point = randomEmptyPoint({ ...spawnOpts, avoidNearHeads: wantBad });
     if (!point) return;
     pushFoodItem(wantBad ? createBadFood(point) : createGoodFood(point));
   }
@@ -1650,6 +1679,7 @@ function removeEntitiesUnderSnake(player) {
 function isEmpty(point, opts = {}) {
   if (anyBossOccupies(point)) return false;
   if (occupancyHas(point)) return false;
+  if (opts.avoidCells?.has(pointKey(point))) return false;
   if (opts.avoidNearHeads) {
     for (const player of players.values()) {
       if (!player.alive) continue;
