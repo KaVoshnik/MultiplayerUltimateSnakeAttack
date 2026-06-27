@@ -54,9 +54,6 @@
 - [Магазин и Кастомизация](#магазин-и-кастомизация)
 - [Таблица рекордов](#таблица-рекордов)
 - [Технологии](#технологии)
-- [Структура проекта](#структура-проекта)
-- [Roadmap](#roadmap)
-- [Contributing](#contributing)
 - [Лицензия](#лицензия)
 - [Контрибьюторы](#контрибьюторы)
 
@@ -271,4 +268,5 @@
     <img src="https://img.shields.io/github/watchers/KaVoshnik/MultiplayerUltimateSnakeAttack?style=social" alt="GitHub watchers" />
   </a>
 </p>
+
 
