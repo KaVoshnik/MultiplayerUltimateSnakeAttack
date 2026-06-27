@@ -62,6 +62,15 @@ const state = {
   freezeEndsAt: 0,
   renderSnap: null,
   lastMinimapDraw: 0,
+  // Буфер для нажатий во время spawn freeze
+  bufferedDirection: null,
+  // FPS / ping
+  fps: 0,
+  ping: 0,
+  showStats: false,
+  _fpsFrames: 0,
+  _fpsLast: 0,
+  _pingSentAt: 0,
 };
 
 let isCoarsePointer = window.matchMedia("(hover: none) and (pointer: coarse)").matches;
@@ -91,6 +100,10 @@ document.querySelector("#pauseBtn").addEventListener("click", () => toggleMenu()
 document.querySelector("#resumeBtn").addEventListener("click", () => setMenu(false));
 document.querySelector("#restartBtn").addEventListener("click", () => { send({ type: "restart" }); setMenu(false); });
 document.querySelector("#retryBtn").addEventListener("click", () => { send({ type: "restart" }); deathPanel.classList.add("hidden"); });
+document.querySelector("#statsToggleBtn").addEventListener("click", () => {
+  state.showStats = !state.showStats;
+  document.querySelector("#statsToggleBtn").textContent = state.showStats ? "Скрыть FPS / Пинг" : "Показать FPS / Пинг";
+});
 
 document.addEventListener("keydown", (event) => {
   if (event.code === "Escape") {
@@ -99,8 +112,13 @@ document.addEventListener("keydown", (event) => {
     return;
   }
   const direction = keys[event.code];
-  if (!direction || state.menuOpen || !state.joined || isSpawnFrozen()) return;
+  if (!direction || state.menuOpen || !state.joined) return;
   event.preventDefault();
+  if (isSpawnFrozen()) {
+    // Буферизируем — отправим сразу как freeze снимется
+    state.bufferedDirection = direction;
+    return;
+  }
   send({ type: "turn", direction });
 });
 
@@ -111,7 +129,11 @@ function setupTouchControls() {
   const SWIPE_MIN = 18;
 
   const sendTurn = (direction) => {
-    if (state.menuOpen || !state.joined || isSpawnFrozen()) return;
+    if (state.menuOpen || !state.joined) return;
+    if (isSpawnFrozen()) {
+      state.bufferedDirection = direction;
+      return;
+    }
     send({ type: "turn", direction });
   };
 
@@ -149,10 +171,16 @@ function isSpawnFrozen() {
 
 function syncSpawnFreeze(me) {
   if (!me) return;
+  const wasFrozen = state.freezeEndsAt > Date.now();
   if ((me.spawnFrozenLeft || 0) > 0) {
     state.freezeEndsAt = Date.now() + me.spawnFrozenLeft;
   } else {
     state.freezeEndsAt = 0;
+    // Freeze только что снялся — отправляем буферизированное нажатие
+    if (wasFrozen && state.bufferedDirection) {
+      send({ type: "turn", direction: state.bufferedDirection });
+      state.bufferedDirection = null;
+    }
   }
 }
 
@@ -196,7 +224,12 @@ function connect() {
   });
   socket.addEventListener("message", (event) => {
     const message = JSON.parse(event.data);
-    if (message.type === "ping") return;
+    if (message.type === "ping") {
+      // Отвечаем pong для измерения RTT
+      send({ type: "pong", t: message.t });
+      if (message.t) state.ping = Math.round(Date.now() - message.t);
+      return;
+    }
     if (message.type === "hello") {
       state.id = message.id;
       state.grid = message.grid;
@@ -539,6 +572,16 @@ function draw() {
   const ratio = window.devicePixelRatio || 1;
   const width = board.width / ratio;
   const height = board.height / ratio;
+
+  // Подсчёт FPS
+  const now = performance.now();
+  state._fpsFrames += 1;
+  if (now - state._fpsLast >= 500) {
+    state.fps = Math.round(state._fpsFrames / ((now - state._fpsLast) / 1000));
+    state._fpsFrames = 0;
+    state._fpsLast = now;
+  }
+
   updateCameraFollow();
   const view = computeCameraView(width, height);
   const shake = SnakeFX.getShakeOffset();
@@ -559,12 +602,52 @@ function draw() {
 
   SnakeFX.drawConfetti(ctx, width, height);
   if (drawFrame % 2 === 0) SnakeFX.drawCrt(width, height);
-  const now = performance.now();
   if (now - state.lastMinimapDraw > 150) {
     drawMinimap(view);
     state.lastMinimapDraw = now;
   }
+
+  if (state.showStats) drawStatsOverlay(width);
+
   requestAnimationFrame(draw);
+}
+
+function drawStatsOverlay(width) {
+  const fps = state.fps;
+  const ping = state.ping;
+  const fpsColor = fps >= 55 ? "#33d17a" : fps >= 30 ? "#f9f06b" : "#f66151";
+  const pingColor = ping < 60 ? "#33d17a" : ping < 120 ? "#f9f06b" : "#f66151";
+
+  ctx.save();
+  ctx.font = "bold 13px monospace";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "top";
+
+  const lines = [
+    { label: "FPS", value: `${fps}`, color: fpsColor },
+    { label: "PING", value: ping > 0 ? `${ping}ms` : "—", color: pingColor },
+  ];
+
+  const padR = 10, padT = 10, lineH = 18, boxW = 110, boxH = lines.length * lineH + 10;
+  const bx = width - padR - boxW;
+  const by = padT;
+
+  ctx.fillStyle = "rgba(2,3,4,0.72)";
+  ctx.beginPath();
+  ctx.roundRect(bx, by, boxW, boxH, 6);
+  ctx.fill();
+
+  lines.forEach((line, i) => {
+    const y = by + 5 + i * lineH;
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.textAlign = "left";
+    ctx.fillText(line.label, bx + 8, y);
+    ctx.fillStyle = line.color;
+    ctx.textAlign = "right";
+    ctx.fillText(line.value, bx + boxW - 8, y);
+  });
+
+  ctx.restore();
 }
 
 function drawSpawnOverlay(width, height) {
