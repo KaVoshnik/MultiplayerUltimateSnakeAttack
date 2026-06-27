@@ -60,6 +60,9 @@
 
 .leaderList .name {
   font-weight: 700;
+}
+
+.lbRest .leaderList .lbPlayerText .name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

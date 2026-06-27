@@ -148,11 +148,17 @@ function renderList(rest) {
       ? `<span class="diffBadge ${entry.difficulty}">${entry.difficulty}</span>`
       : "";
     const extra = sortMode === "coins"
-      ? `<br><small style="color:var(--muted)">📈 рекорд ${entry.best || 0}</small>`
-      : `<br><small style="color:var(--muted)">🎮 ${entry.games || 0} игр · 💀 ${entry.deaths || 0} · 💰 ${entry.coins || 0}</small>`;
+      ? `<small class="lbPlayerExtra">📈 рекорд ${entry.best || 0}</small>`
+      : `<small class="lbPlayerExtra">🎮 ${entry.games || 0} игр · 💀 ${entry.deaths || 0} · 💰 ${entry.coins || 0}</small>`;
     li.innerHTML = `
       <span class="rank">#${entry.rank}</span>
-      <span class="name">${avatarHtml(entry, "lbListAvatar")} ${escapeHtml(entry.name)}${diff}${extra}</span>
+      <div class="lbPlayerMain">
+        <span class="lbListAvatarWrap">${avatarHtml(entry, "lbListAvatar")}</span>
+        <div class="lbPlayerText">
+          <span class="name">${escapeHtml(entry.name)}${diff}</span>
+          ${extra}
+        </div>
+      </div>
       <span class="score">${sortMode === "coins" ? "💰 " : ""}${entryValue(entry)}</span>
     `;
     bindProfileClick(li, entry.name);

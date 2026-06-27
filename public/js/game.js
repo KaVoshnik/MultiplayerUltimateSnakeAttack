@@ -60,6 +60,8 @@ const state = {
   bossRageSound: false,
   camera: { x: 0, y: 0, ready: false },
   freezeEndsAt: 0,
+  renderSnap: null,
+  lastTrailUpdate: 0,
 };
 
 SnakeFX.initCrt(canvasStage);
@@ -218,8 +220,8 @@ function connect() {
       const me = message.players.find((p) => p.id === state.id);
       syncSpawnFreeze(me);
       updateHud(me, prevScore, prevCombo);
+      applyRenderSnap(message.players);
       renderPlayers();
-      SnakeFX.updateTrails(state.players);
       const anyEnraged = state.bosses.some((b) => b.phase === "enraged");
       if (anyEnraged && !state.bossRageSound) {
         state.bossRageSound = true;
@@ -381,8 +383,62 @@ function clamp(v, lo, hi) {
   return Math.max(lo, Math.min(hi, v));
 }
 
+function smoothstep(t) {
+  return t * t * (3 - 2 * t);
+}
+
+function snapshotPlayers(players) {
+  return players.map((p) => ({
+    ...p,
+    snake: (p.snake || []).map((s) => ({ x: s.x, y: s.y })),
+  }));
+}
+
+function applyRenderSnap(nextPlayers) {
+  const now = performance.now();
+  const prevDuration = state.renderSnap ? now - state.renderSnap.at : 115;
+  const duration = clamp(prevDuration, 70, 160);
+  const from = state.players.length ? snapshotPlayers(state.players) : snapshotPlayers(nextPlayers);
+  state.renderSnap = {
+    from,
+    to: snapshotPlayers(nextPlayers),
+    at: now,
+    duration,
+  };
+  state.players = nextPlayers;
+}
+
+function getRenderPlayers() {
+  if (!state.renderSnap) return state.players;
+  const { from, to, at, duration } = state.renderSnap;
+  const raw = duration > 0 ? clamp((performance.now() - at) / duration, 0, 1) : 1;
+  const t = smoothstep(raw);
+
+  return to.map((player) => {
+    const prev = from.find((p) => p.id === player.id);
+    if (!prev) return player;
+
+    const fromSnake = prev.snake || [];
+    const toSnake = player.snake || [];
+    const count = Math.max(fromSnake.length, toSnake.length);
+    const snake = [];
+
+    for (let i = 0; i < count; i += 1) {
+      const a = fromSnake[i] || toSnake[i];
+      const b = toSnake[i] || fromSnake[i];
+      if (!a || !b) continue;
+      snake.push({
+        x: a.x + (b.x - a.x) * t,
+        y: a.y + (b.y - a.y) * t,
+      });
+    }
+
+    return snake.length ? { ...player, snake } : player;
+  });
+}
+
 function updateCameraFollow() {
-  const me = state.players.find((p) => p.id === state.id);
+  const me = getRenderPlayers().find((p) => p.id === state.id);
   const head = me?.snake?.[0];
   const targetX = head ? head.x + 0.5 : state.grid.width / 2;
   const targetY = head ? head.y + 0.5 : state.grid.height / 2;
@@ -394,7 +450,7 @@ function updateCameraFollow() {
     return;
   }
 
-  const ease = head && me.alive ? 0.22 : 0.1;
+  const ease = head && me?.alive ? 0.38 : 0.14;
   state.camera.x += (targetX - state.camera.x) * ease;
   state.camera.y += (targetY - state.camera.y) * ease;
 }
@@ -454,6 +510,12 @@ function draw() {
   const height = board.height / ratio;
   updateCameraFollow();
   const view = computeCameraView(width, height);
+  const renderPlayers = getRenderPlayers();
+  const now = performance.now();
+  if (now - state.lastTrailUpdate > 40) {
+    SnakeFX.updateTrails(renderPlayers);
+    state.lastTrailUpdate = now;
+  }
   const shake = SnakeFX.getShakeOffset();
 
   ctx.save();
@@ -464,7 +526,7 @@ function draw() {
   drawFood(view);
   drawBonuses(view);
   drawBoss(view);
-  drawPlayers(view);
+  drawPlayers(view, renderPlayers);
   drawParticles(view);
   SnakeFX.drawFloaters(ctx, view.cell, view.offsetX, view.offsetY);
   drawSpawnOverlay(width, height);
@@ -766,9 +828,9 @@ function drawBoss(view) {
   }
 }
 
-function drawPlayers(view) {
+function drawPlayers(view, players = getRenderPlayers()) {
   const { cell, offsetX, offsetY } = view;
-  for (const player of state.players) {
+  for (const player of players) {
     ctx.globalAlpha = player.alive ? 1 : 0.35;
     const isTagged = state.gameMode === "tag_time" && player.id === state.taggedPlayerId;
     const head = player.snake[0];
@@ -817,11 +879,30 @@ function drawPlayers(view) {
         ctx.globalAlpha = player.alive ? 1 : 0.35;
         drawSnakeEyes(px, py, cell, dirX, dirY);
         drawSnakeCosmetics(px, py, cell, player);
+        drawPlayerNameLabel(px, py, cell, player);
         ctx.shadowBlur = 0;
       }
     });
     ctx.globalAlpha = 1;
   }
+}
+
+function drawPlayerNameLabel(x, y, cell, player) {
+  if (!player.alive || !player.name) return;
+  const cx = x + cell / 2;
+  const cy = y + cell + cell * 0.06;
+  const fontSize = Math.max(9, Math.min(13, cell * 0.24));
+  const label = player.name.length > 14 ? `${player.name.slice(0, 13)}…` : player.name;
+  ctx.save();
+  ctx.font = `700 ${fontSize}px sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  ctx.lineWidth = Math.max(2, fontSize * 0.18);
+  ctx.strokeStyle = "rgba(0,0,0,0.75)";
+  ctx.fillStyle = player.id === state.id ? "#3de88a" : "rgba(255,255,255,0.92)";
+  ctx.strokeText(label, cx, cy);
+  ctx.fillText(label, cx, cy);
+  ctx.restore();
 }
 
 function drawSnakeEyes(x, y, cell, dirX, dirY) {

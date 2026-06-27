@@ -334,7 +334,7 @@ async function bootstrap() {
     food.length = 0;
     fillFood();
     tickInterval = setInterval(tick, DIFFICULTIES.normal.tickMs);
-    setInterval(broadcastState, 250);
+    setInterval(broadcastState, 100);
     setInterval(spawnBonuses, 8000);
     setInterval(pingClients, 25000);
     setInterval(() => db.cleanupAuthSessions().catch(() => { }), 60 * 60 * 1000);
@@ -482,7 +482,12 @@ function tick() {
         send(player.id, { type: "tagged", tagger: true });
         if (sockets.has(hitId)) send(hitId, { type: "tagged", tagger: false });
       } else {
-        killPlayer(player, "Столкнулся со змейкой");
+        const killerId = occupied.get(key);
+        const killer = killerId && killerId !== player.id ? players.get(killerId) : null;
+        killPlayer(player, killer ? `${killer.name} убил ${player.name}` : "Столкнулся со змейкой", {
+          at: nextHead,
+          killerPlayer: killer,
+        });
         continue;
       }
     }
@@ -566,7 +571,7 @@ function killPlayer(player, reason, opts = {}) {
   trackDeathStats(player);
   player.alive = false;
   player.deaths += 1;
-  player.reason = reason;
+  player.reason = opts.killerPlayer ? `${opts.killerPlayer.name} убил тебя` : reason;
   player.activeBonus = null;
   player.bonusExpires = null;
   player.combo = 0;
@@ -578,7 +583,11 @@ function killPlayer(player, reason, opts = {}) {
     pushFeed("bonus", `💰 ${player.name}: +${reward} монет`, player.name);
   }
   recordScore(player);
-  pushFeed("death", `💀 ${player.name}: ${reason}`, player.name);
+  if (opts.killerPlayer) {
+    pushFeed("kill", `⚔ ${opts.killerPlayer.name} убил ${player.name}`, opts.killerPlayer.name);
+  } else {
+    pushFeed("death", `💀 ${player.name}: ${reason}`, player.name);
+  }
   const hitCell = opts.at || player.snake[0];
   const killerBoss = opts.boss || bossAt(hitCell) || bosses.find((b) => reason.includes(b.name));
   if (killerBoss) enrageBoss(killerBoss);
