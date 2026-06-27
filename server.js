@@ -4,53 +4,8 @@ const path = require("path");
 const crypto = require("crypto");
 const os = require("os");
 
-const CONFIG_FILE = path.join(__dirname, "config.json");
-
-function loadConfig() {
-  const defaults = {
-    bindHost: "0.0.0.0",
-    port: 8080,
-    publicHost: "176.123.166.78",
-    publicProtocol: "http",
-  };
-  let fileConfig = {};
-  try {
-    if (fs.existsSync(CONFIG_FILE)) {
-      fileConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8"));
-    }
-  } catch (error) {
-    console.warn("config.json не читается, используются значения по умолчанию:", error.message);
-  }
-  return {
-    ...defaults,
-    ...fileConfig,
-    bindHost: process.env.HOST || fileConfig.bindHost || defaults.bindHost,
-    port: Number(process.env.PORT || fileConfig.port || defaults.port),
-    publicHost: process.env.PUBLIC_HOST || fileConfig.publicHost || defaults.publicHost,
-    publicProtocol: process.env.PUBLIC_PROTOCOL || fileConfig.publicProtocol || defaults.publicProtocol,
-  };
-}
-
-function getPublicUrl(config) {
-  const standardPort = (config.publicProtocol === "https" && config.port === 443)
-    || (config.publicProtocol === "http" && config.port === 80);
-  const portPart = standardPort ? "" : `:${config.port}`;
-  return `${config.publicProtocol}://${config.publicHost}${portPart}`;
-}
-
-function getWsPublicUrl(config) {
-  const wsProtocol = config.publicProtocol === "https" ? "wss" : "ws";
-  const standardPort = (wsProtocol === "wss" && config.port === 443)
-    || (wsProtocol === "ws" && config.port === 80);
-  const portPart = standardPort ? "" : `:${config.port}`;
-  return `${wsProtocol}://${config.publicHost}${portPart}`;
-}
-
-const CONFIG = loadConfig();
-const PORT = CONFIG.port;
-const HOST = CONFIG.bindHost;
-const PUBLIC_URL = getPublicUrl(CONFIG);
-const WS_PUBLIC_URL = getWsPublicUrl(CONFIG);
+const PORT = Number(process.env.PORT || 8080);
+const HOST = process.env.HOST || "0.0.0.0";
 const PUBLIC_DIR = path.join(__dirname, "public");
 const LEADERBOARD_FILE = path.join(__dirname, "leaderboard.json");
 const SHOP_FILE = path.join(__dirname, "shop.json");
@@ -213,16 +168,12 @@ const server = http.createServer((req, res) => {
   }
 
   if (url.pathname === "/info") {
+    const base = getRequestOrigin(req);
     sendJson(res, {
       name: "THE ULTIMATE MULTIPLAYER SNAKE ATTACK",
-      publicUrl: PUBLIC_URL,
-      wsUrl: WS_PUBLIC_URL,
-      host: CONFIG.publicHost,
-      port: CONFIG.port,
-      protocol: CONFIG.publicProtocol,
-      bindHost: CONFIG.bindHost,
+      publicUrl: base.http,
+      wsUrl: base.ws,
       playersOnline: players.size,
-      lanAddresses: getLanAddresses(),
     });
     return;
   }
@@ -278,7 +229,6 @@ server.on("upgrade", (req, socket) => {
     skins: SHOP_SKINS, catalog: SHOP_CATALOG, avatars: AVATAR_PRESETS,
     modes: MODES, difficulties: DIFFICULTIES,
     shopData: defaultShopEntry(),
-    server: { publicUrl: PUBLIC_URL, wsUrl: WS_PUBLIC_URL, host: CONFIG.publicHost, port: CONFIG.port },
   });
 });
 
@@ -289,53 +239,27 @@ server.listen(PORT, HOST, () => {
   setInterval(broadcastState, 250);
   setInterval(spawnBonuses, 8000);
   setInterval(pingClients, 25000);
-  printStartupBanner();
+  console.log(`Snake Attack → http://localhost:${PORT}`);
+  for (const address of getLanAddresses()) console.log(`LAN → http://${address}:${PORT}`);
 });
 
 server.on("error", (error) => {
-  if (error.code === "EADDRINUSE") {
-    console.error(`Порт ${PORT} уже занят. Смени port в config.json или переменную PORT.`);
-  } else if (error.code === "EADDRNOTAVAIL") {
-    console.error(`Нельзя слушать ${HOST}:${PORT}. Оставь bindHost = "0.0.0.0" в config.json.`);
-  } else {
-    console.error("Ошибка сервера:", error.message);
-  }
+  if (error.code === "EADDRINUSE") console.error(`Порт ${PORT} занят.`);
+  else console.error("Ошибка сервера:", error.message);
   process.exit(1);
 });
 
 function shutdown(signal) {
-  console.log(`\n${signal}: останавливаю сервер…`);
+  console.log(`${signal}: остановка…`);
   if (tickInterval) clearInterval(tickInterval);
   for (const socket of sockets.values()) {
     try { socket.destroy(); } catch { /* ignore */ }
   }
   server.close(() => process.exit(0));
-  setTimeout(() => process.exit(1), 5000).unref();
 }
 
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
-
-function printStartupBanner() {
-  const lan = getLanAddresses();
-  console.log("");
-  console.log("══════════════════════════════════════════════════════");
-  console.log("  THE ULTIMATE MULTIPLAYER SNAKE ATTACK — ONLINE");
-  console.log("══════════════════════════════════════════════════════");
-  console.log(`  Слушаю:     ${HOST}:${PORT}`);
-  console.log(`  Публично:   ${PUBLIC_URL}`);
-  console.log(`  WebSocket:  ${WS_PUBLIC_URL}`);
-  console.log(`  Локально:   http://localhost:${PORT}`);
-  if (lan.length) {
-    console.log("  LAN:");
-    for (const ip of lan) console.log(`    → http://${ip}:${PORT}`);
-  }
-  console.log("──────────────────────────────────────────────────────");
-  console.log("  Друзья подключаются по публичному адресу ↑");
-  console.log(`  Открой в файрволе TCP-порт ${PORT}`);
-  console.log("══════════════════════════════════════════════════════");
-  console.log("");
-}
 
 function pingClients() {
   const frame = makeFrame(JSON.stringify({ type: "ping", t: Date.now() }));
@@ -343,6 +267,13 @@ function pingClients() {
     if (socket.destroyed || socket.writableEnded) continue;
     try { socket.write(frame); } catch { removeClient(id); }
   }
+}
+
+function getRequestOrigin(req) {
+  const host = (req.headers["x-forwarded-host"] || req.headers.host || `localhost:${PORT}`).split(",")[0].trim();
+  const proto = (req.headers["x-forwarded-proto"] || "http").split(",")[0].trim();
+  const wsProto = proto === "https" ? "wss" : "ws";
+  return { http: `${proto}://${host}`, ws: `${wsProto}://${host}` };
 }
 
 // ============================================================

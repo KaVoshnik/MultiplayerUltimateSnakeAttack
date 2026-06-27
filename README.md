@@ -1,8 +1,10 @@
 # THE ULTIMATE MULTIPLAYER SNAKE ATTACK INFINITE DARKNESS – THE LAST STAND OF THE PRIMEVAL SERPENT EMPIRE (2026 REMASTERED DIRECTOR'S CUT – COMPLETE EDITION WITH EXCLUSIVE BONUS ARENAS, UNLOCKABLE LEGENDARY SKINS, DYNAMIC WEATHER SYSTEM, AND EXPANDED CO-OP SURVIVAL CAMPAIGN)
 
-Мультиплеерная змейка для локальной сети.
+Мультиплеерная змейка — онлайн и LAN.
 
-## Запуск
+**Играть:** [https://dastogram.ru](https://dastogram.ru)
+
+## Локальный запуск
 
 ```bash
 npm start
@@ -20,7 +22,7 @@ npm start
 | Профиль | `/profile.html` |
 | Таблица рекордов | `/leaderboard.html` |
 
-Другие игроки в той же сети подключаются по LAN-адресу из консоли сервера.
+Другие игроки в той же сети подключаются по LAN-адресу из консоли сервера. Онлайн-версия: **https://dastogram.ru**
 
 ## Shortlist
 
