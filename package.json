@@ -4,9 +4,13 @@
   "private": true,
   "description": "THE ULTIMATE MULTIPLAYER SNAKE ATTACK — online multiplayer snake game",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "db:reset": "node scripts/db-reset.js"
   },
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
   }
 }
