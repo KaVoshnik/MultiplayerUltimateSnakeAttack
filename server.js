@@ -334,7 +334,7 @@ async function bootstrap() {
     food.length = 0;
     fillFood();
     tickInterval = setInterval(tick, DIFFICULTIES.normal.tickMs);
-    setInterval(broadcastState, 100);
+    setInterval(broadcastState, 250);
     setInterval(spawnBonuses, 8000);
     setInterval(pingClients, 25000);
     setInterval(() => db.cleanupAuthSessions().catch(() => { }), 60 * 60 * 1000);
