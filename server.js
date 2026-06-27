@@ -1001,7 +1001,12 @@ function buyItem(clientId, itemId, nameHint) {
   if (!item) return;
   const entry = getProfile(name);
   const player = players.get(clientId);
-  const coins = player?.coins ?? entry.coins ?? 0;
+
+  // Единственный источник истины для монет — entry (профиль).
+  // Если игрок сейчас в игре — синхронизируем player.coins → entry перед проверкой,
+  // чтобы монеты заработанные за сессию не терялись.
+  if (player) entry.coins = Math.max(entry.coins ?? 0, player.coins ?? 0);
+  const coins = entry.coins ?? 0;
 
   if (entry.inventory.includes(itemId)) {
     equipItem(clientId, itemId, name);
@@ -1018,8 +1023,9 @@ function buyItem(clientId, itemId, nameHint) {
     send(clientId, { type: "notice", text: "Недостаточно монет!" });
     return;
   }
-  if (player) player.coins = coins - item.price;
-  entry.coins = coins - item.price;
+  const newCoins = coins - item.price;
+  if (player) player.coins = newCoins;
+  entry.coins = newCoins;
   entry.inventory.push(itemId);
   shopData[name] = entry;
   persistProfile(name, entry);
