@@ -159,7 +159,8 @@ function syncSpawnFreeze(me) {
   if (!me) return;
   const wasFrozen = state.freezeEndsAt > Date.now();
   if ((me.spawnFrozenLeft || 0) > 0) {
-    state.freezeEndsAt = Date.now() + me.spawnFrozenLeft;
+    const proposed = Date.now() + me.spawnFrozenLeft;
+    if (proposed > state.freezeEndsAt) state.freezeEndsAt = proposed;
   } else {
     state.freezeEndsAt = 0;
     // Freeze только что снялся — отправляем буферизированное нажатие
