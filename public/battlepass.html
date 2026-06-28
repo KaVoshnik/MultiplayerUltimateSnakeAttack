@@ -3,18 +3,18 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Магазин — Ultimate Snake Attack</title>
+  <title>Боевой пропуск — Ultimate Snake Attack</title>
   <link rel="stylesheet" href="css/common.css" />
   <link rel="stylesheet" href="css/pages.css" />
   <link rel="stylesheet" href="css/shop.css" />
 </head>
-<body data-page="shop">
+<body data-page="battlepass">
   <nav class="siteNav">
     <a href="/" class="brand">← ЛОББИ</a>
     <div class="links">
       <a href="/" data-page="lobby">Лобби</a>
       <a href="/game.html" data-page="game">Игра</a>
-      <a href="/shop.html" data-page="shop" class="active">Магазин</a>
+      <a href="/shop.html" data-page="shop">Магазин</a>
       <a href="/profile.html" data-page="profile">Профиль</a>
       <a href="/leaderboard.html" data-page="leaderboard">Рекорды</a>
     </div>
@@ -23,25 +23,9 @@
 
   <main class="pageWrap shopPage">
     <header class="pageHeader">
-      <h1>🛒 МАГАЗИН</h1>
-      <p>20 скинов, 10 шляп + свои PNG — см. <a href="/custom-skins/guide.md">guide.md</a></p>
+      <h1>🎖 БОЕВОЙ ПРОПУСК</h1>
+      <p>Очки из всех игр суммируются. Каждые 1000 очков — награда.</p>
     </header>
-
-    <div class="shopToolbar glass">
-      <div class="shopTabs">
-        <button type="button" class="shopTab active" data-tab="skin">СНАРЯЖЕНИЕ</button>
-        <button type="button" class="shopTab" data-tab="snake_hat">ШЛЯПЫ ДЛЯ ЗМЕЙ</button>
-      </div>
-      <div class="shopSort">
-        <label>Сортировка</label>
-        <select id="sortBy">
-          <option value="price-asc">Цена ↑</option>
-          <option value="price-desc">Цена ↓</option>
-          <option value="rarity-asc">Редкость ↑</option>
-          <option value="rarity-desc">Редкость ↓</option>
-        </select>
-      </div>
-    </div>
 
     <div class="shopCoinsBar glass">
       Баланс: <strong id="shopCoins">0</strong> 🪙
@@ -52,7 +36,6 @@
 
   <div class="toastWrap"></div>
   <script src="js/common.js"></script>
-  <script src="js/custom-skins.js"></script>
-  <script src="js/shop.js"></script>
+  <script src="js/battlepass.js"></script>
 </body>
 </html>
