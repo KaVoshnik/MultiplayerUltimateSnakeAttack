@@ -246,18 +246,26 @@
 
 ## КОНТРИБЬЮТОРЫ
 
-<p align="center">
-  <a href="https://github.com/KaVoshnik" style="display: inline-block; margin: 0 20px; text-align: center; vertical-align: top; text-decoration: none;">
-    <img src="https://github.com/KaVoshnik.png" width="70" height="70" style="border-radius: 50% !important; display: block !important;" alt="@KaVoshnik" />
-    <br />
-    <span style="color: #00ff88; font-weight: bold;">KaVoshnik</span>
-  </a>
-  <a href="https://github.com/IWoki" style="display: inline-block; margin: 0 20px; text-align: center; vertical-align: top; text-decoration: none;">
-    <img src="https://github.com/IWoki.png" width="70" height="70" style="border-radius: 50% !important; display: block !important;" alt="@IWoki" />
-    <br />
-    <span style="color: #00ff88; font-weight: bold;">IWoki</span>
-  </a>
-</p>
+## КОНТРИБЬЮТОРЫ
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <a href="https://github.com/KaVoshnik">
+        <img src="https://github.com/KaVoshnik.png" width="70" height="70" style="border-radius: 50%;" alt="@KaVoshnik" />
+        <br />
+        <strong style="color: #00ff88;">KaVoshnik</strong>
+      </a>
+    </td>
+    <td align="center" style="padding: 0 40px;">
+      <a href="https://github.com/IWoki">
+        <img src="https://github.com/IWoki.png" width="70" height="70" style="border-radius: 50%;" alt="@IWoki" />
+        <br />
+        <strong style="color: #00ff88;">IWoki</strong>
+      </a>
+    </td>
+  </tr>
+</table>
 
 <p align="center" style="margin-top: 10px;">
   <strong>Мега крутые разрабы змеек</strong>
