@@ -83,6 +83,9 @@ const GameSyncClient = (() => {
     if (msg.fsync) {
       state.food = msg.fsync.map(expandFood);
     }
+    if (msg.bsync) {
+      state.bonuses = msg.bsync.map(expandBonus);
+    }
 
     if (msg.frm) {
       for (const [x, y] of msg.frm) {
