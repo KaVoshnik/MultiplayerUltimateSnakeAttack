@@ -748,7 +748,7 @@ function drawBackground(width, height, view) {
   // Пересоздаём градиенты только если изменился размер или режим босса
   const c = bgGradientCache;
   if (c.enraged !== enraged || c.width !== width || c.height !== height ||
-      c.mapL !== mapL || c.mapT !== mapT || c.mapW !== mapW || c.mapH !== mapH) {
+    c.mapL !== mapL || c.mapT !== mapT || c.mapW !== mapW || c.mapH !== mapH) {
     c.enraged = enraged;
     c.width = width; c.height = height;
     c.mapL = mapL; c.mapT = mapT; c.mapW = mapW; c.mapH = mapH;
@@ -895,7 +895,7 @@ function drawFoodShape(kind, cx, cy, r, cell) {
       ctx.fillStyle = "#e8453c";
       ctx.beginPath(); ctx.arc(cx, cy - r * 0.1, r * 0.75, Math.PI, 0); ctx.fill();
       break;
-  default:
+    default:
       ctx.fillStyle = "#d4cfc7";
       ctx.lineWidth = Math.max(2, cell * 0.08);
       ctx.strokeStyle = "#d4cfc7"; ctx.lineCap = "round";
@@ -1047,11 +1047,18 @@ function drawPlayers(view) {
       if (index === 0) {
         ctx.globalAlpha = player.alive ? 1 : 0.35;
         drawSnakeEyes(px, py, cell, dirXn, dirYn);
-        drawSnakeCosmetics(px, py, cell, player);
         drawPlayerNameLabel(px, py, cell, player);
       }
     });
     ctx.globalAlpha = 1;
+
+    // Шапка рисуется последней — поверх всех сегментов
+    if (player.snakeHatEmoji || (typeof CustomSkins !== "undefined" && player.snakeHatId && CustomSkins.isHat(player.snakeHatId))) {
+      const { px, py } = getSegmentPos(player.id, 0, player.snake[0], cell, offsetX, offsetY);
+      ctx.globalAlpha = player.alive ? 1 : 0.35;
+      drawSnakeCosmetics(px, py, cell, player);
+      ctx.globalAlpha = 1;
+    }
   }
 }
 
@@ -1104,26 +1111,15 @@ function drawSnakeCosmetics(x, y, cell, player) {
     ? CustomSkins.get(hatId)
     : null;
 
-  // Смещение шапки в направлении движения (от тела к голове)
-  const dir = player.direction || { x: 0, y: -1 };
-  const offsetX = dir.x * cell * 0.5;
-  const offsetY = dir.y * cell * 0.5;
-  // Перпендикуляр для подъёма шапки "над" головой
-  const perpX = -dir.y * cell * 0.45;
-  const perpY =  dir.x * cell * 0.45;
-  // Если едем вниз — шапка снизу головы, иначе сверху/сбоку
-  const hatX = cx + offsetX * 0.1 + perpX;
-  const hatY = cy + offsetY * 0.1 - perpY;
-
   if (customHat) {
     const size = cell * 0.9;
-    ctx.drawImage(customHat, hatX - size / 2, hatY - size / 2, size, size);
+    ctx.drawImage(customHat, cx - size / 2, cy - cell * 0.78, size, size);
     return;
   }
 
   if (player.snakeHatEmoji) {
     ctx.font = `${cell * 0.55}px sans-serif`;
-    ctx.fillText(player.snakeHatEmoji, hatX, hatY);
+    ctx.fillText(player.snakeHatEmoji, cx, cy - cell * 0.55);
   }
 }
 
