@@ -139,15 +139,20 @@ function renderBattlePass() {
   for (const tier of tiers) {
     const done   = claimed.includes(tier.tier);
     const locked = score < tier.scoreRequired;
-    const card   = document.createElement("div");
-    card.className = `bpTier${done ? " done" : ""}${locked ? " locked" : ""}`;
+    const hasColor = tier.nickColor !== null;
+    const rewardDesc = hasColor
+      ? `+${tier.coins} 🪙 · цвет ника «<span style="color:${tier.nickColor.color}">${escapeHtml(tier.nickColor.label)}</span>»`
+      : `+${tier.coins} 🪙`;
+    const card = document.createElement("div");
+    card.className = `bpTier${done ? " done" : ""}${locked ? " locked" : ""}${hasColor ? " hasColor" : ""}`;
     card.innerHTML = `
       <div class="bpTierNum">${tier.tier}</div>
       <div class="bpTierBody">
         <strong>${tier.scoreRequired.toLocaleString("ru")} очков</strong>
-        <span>+${tier.coins} 🪙 · цвет «${escapeHtml(tier.nickColor.label)}»</span>
+        <span>${rewardDesc}</span>
       </div>
-      <div class="bpTierStatus">${done ? "ПОЛУЧЕНО" : locked ? "ЗАКРЫТО" : "ГОТОВО"}</div>
+      ${hasColor ? `<div class="bpTierColorDot" style="background:${tier.nickColor.color}"></div>` : ""}
+      <div class="bpTierStatus">${done ? "✓" : locked ? "🔒" : "ЗАБРАТЬ"}</div>
     `;
     tiersEl.append(card);
   }

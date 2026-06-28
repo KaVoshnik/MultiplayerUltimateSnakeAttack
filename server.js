@@ -1,108 +1,108 @@
 "use strict";
 
-const http   = require("http");
-const fs     = require("fs");
-const path   = require("path");
+const http = require("http");
+const fs = require("fs");
+const path = require("path");
 const crypto = require("crypto");
-const os     = require("os");
+const os = require("os");
 
-const db       = require("./db");
-const auth     = require("./auth");
+const db = require("./db");
+const auth = require("./auth");
 const gameSync = require("./lib/game-sync");
-const bossMod  = require("./lib/bosses");
-const foodMod  = require("./lib/food");
+const bossMod = require("./lib/bosses");
+const foodMod = require("./lib/food");
 
 // ============================================================
 // CONSTANTS
 // ============================================================
 
-const PORT       = Number(process.env.PORT || 8080);
-const HOST       = process.env.HOST || "0.0.0.0";
+const PORT = Number(process.env.PORT || 8080);
+const HOST = process.env.HOST || "0.0.0.0";
 const PUBLIC_DIR = path.join(__dirname, "public");
 
-const GRID            = { width: 210, height: 140 };
-const MAX_LEADERS     = 20;
+const GRID = { width: 210, height: 140 };
+const MAX_LEADERS = 20;
 const SPAWN_FREEZE_MS = 3000;
-const KILL_REWARD_COINS    = 50;
+const KILL_REWARD_COINS = 50;
 const BATTLE_PASS_SCORE_STEP = 1000;
-const BATTLE_PASS_MAX_TIER   = 60;
+const BATTLE_PASS_MAX_TIER = 60;
 
 const { FOOD_TYPES, DIFFICULTIES } = foodMod;
 const { BOSS_SPAWN_BUFFER, BOSS_MOVE_EVERY } = bossMod;
 
 const MODES = {
-  classic:  { label: "Classic" },
+  classic: { label: "Classic" },
   tag_time: { label: "Tag Time" },
 };
 
 const BONUS_TYPES = {
-  shield:    { label: "SH", duration: 10000, color: "#62a0ea", desc: "защита от яда" },
-  speed_up:  { label: "SP", duration:  8000, color: "#f9f06b", desc: "оверклок +30% очков" },
+  shield: { label: "SH", duration: 10000, color: "#62a0ea", desc: "защита от яда" },
+  speed_up: { label: "SP", duration: 8000, color: "#f9f06b", desc: "оверклок +30% очков" },
   slow_down: { label: "SL", duration: 10000, color: "#dc8add", desc: "замедление" },
-  double:    { label: "x2", duration: 12000, color: "#33d17a", desc: "двойные очки" },
-  ghost:     { label: "GH", duration:  8000, color: "#8ff0a4", desc: "призрак" },
+  double: { label: "x2", duration: 12000, color: "#33d17a", desc: "двойные очки" },
+  ghost: { label: "GH", duration: 8000, color: "#8ff0a4", desc: "призрак" },
 };
 
 const BATTLE_PASS_NICK_COLORS = [
-  { id: "bp_gold",      label: "Золото",   color: "#ffd166", tier: 1  },
-  { id: "bp_cyan",      label: "Бирюза",   color: "#22d3ee", tier: 4  },
-  { id: "bp_magenta",   label: "Магента",  color: "#f472b6", tier: 7  },
-  { id: "bp_lime",      label: "Лайм",     color: "#a3e635", tier: 10 },
-  { id: "bp_crimson",   label: "Багряный", color: "#f87171", tier: 13 },
-  { id: "bp_violet",    label: "Фиолет",   color: "#a78bfa", tier: 16 },
-  { id: "bp_orange",    label: "Оранж",    color: "#fb923c", tier: 19 },
-  { id: "bp_ice",       label: "Лёд",      color: "#93c5fd", tier: 22 },
-  { id: "bp_neon",      label: "Неон",     color: "#3de88a", tier: 25 },
-  { id: "bp_royal",     label: "Корона",   color: "#fcd34d", tier: 28 },
-  { id: "bp_plasma",    label: "Плазма",   color: "#e879f9", tier: 31 },
-  { id: "bp_sunset",    label: "Закат",    color: "#fb7185", tier: 34 },
-  { id: "bp_mint",      label: "Мята",     color: "#2dd4bf", tier: 37 },
-  { id: "bp_ember",     label: "Угли",     color: "#ea580c", tier: 40 },
-  { id: "bp_azure",     label: "Лазурь",   color: "#0ea5e9", tier: 43 },
-  { id: "bp_sakura",    label: "Сакура",   color: "#f9a8d4", tier: 46 },
-  { id: "bp_poison",    label: "Яд",       color: "#84cc16", tier: 49 },
-  { id: "bp_shadow",    label: "Тень",     color: "#94a3b8", tier: 52 },
-  { id: "bp_aurora",    label: "Аврора",   color: "#34d399", tier: 55 },
-  { id: "bp_legendary", label: "Легенда",  color: "#f59e0b", tier: 60 },
+  { id: "bp_gold", label: "Золото", color: "#ffd166", tier: 1 },
+  { id: "bp_cyan", label: "Бирюза", color: "#22d3ee", tier: 4 },
+  { id: "bp_magenta", label: "Магента", color: "#f472b6", tier: 7 },
+  { id: "bp_lime", label: "Лайм", color: "#a3e635", tier: 10 },
+  { id: "bp_crimson", label: "Багряный", color: "#f87171", tier: 13 },
+  { id: "bp_violet", label: "Фиолет", color: "#a78bfa", tier: 16 },
+  { id: "bp_orange", label: "Оранж", color: "#fb923c", tier: 19 },
+  { id: "bp_ice", label: "Лёд", color: "#93c5fd", tier: 22 },
+  { id: "bp_neon", label: "Неон", color: "#3de88a", tier: 25 },
+  { id: "bp_royal", label: "Корона", color: "#fcd34d", tier: 28 },
+  { id: "bp_plasma", label: "Плазма", color: "#e879f9", tier: 31 },
+  { id: "bp_sunset", label: "Закат", color: "#fb7185", tier: 34 },
+  { id: "bp_mint", label: "Мята", color: "#2dd4bf", tier: 37 },
+  { id: "bp_ember", label: "Угли", color: "#ea580c", tier: 40 },
+  { id: "bp_azure", label: "Лазурь", color: "#0ea5e9", tier: 43 },
+  { id: "bp_sakura", label: "Сакура", color: "#f9a8d4", tier: 46 },
+  { id: "bp_poison", label: "Яд", color: "#84cc16", tier: 49 },
+  { id: "bp_shadow", label: "Тень", color: "#94a3b8", tier: 52 },
+  { id: "bp_aurora", label: "Аврора", color: "#34d399", tier: 55 },
+  { id: "bp_legendary", label: "Легенда", color: "#f59e0b", tier: 60 },
 ];
 
 const SHOP_CATALOG = [
-  { id: "default",    name: "Классик",           emoji: "🟢",  price: 0,    rarity: "common",    category: "skin",      color: "#33d17a", headColor: "#ffffff" },
-  { id: "fire",       name: "Огненная",           emoji: "🔥",  price: 150,  rarity: "common",    category: "skin",      color: "#f66151", headColor: "#ffbe6f" },
-  { id: "ocean",      name: "Океан",              emoji: "🌊",  price: 150,  rarity: "common",    category: "skin",      color: "#62a0ea", headColor: "#8ff0a4" },
-  { id: "toxic",      name: "Токсичная",          emoji: "☢️",  price: 120,  rarity: "common",    category: "skin",      color: "#84cc16", headColor: "#ecfccb" },
-  { id: "coral",      name: "Коралл",             emoji: "🪸",  price: 140,  rarity: "common",    category: "skin",      color: "#ff7f7f", headColor: "#ffe4e6" },
-  { id: "ice",        name: "Ледяная",            emoji: "❄️",  price: 240,  rarity: "rare",      category: "skin",      color: "#67e8f9", headColor: "#ecfeff" },
-  { id: "midnight",   name: "Полночь",            emoji: "🌑",  price: 260,  rarity: "rare",      category: "skin",      color: "#475569", headColor: "#cbd5e1" },
-  { id: "neon",       name: "Неон",               emoji: "💛",  price: 320,  rarity: "rare",      category: "skin",      color: "#f9f06b", headColor: "#dc8add" },
-  { id: "gold",       name: "Золото",             emoji: "✨",  price: 290,  rarity: "rare",      category: "skin",      color: "#ffd166", headColor: "#fff8e7" },
-  { id: "candy",      name: "Кэнди",              emoji: "🍬",  price: 390,  rarity: "epic",      category: "skin",      color: "#f9a8d4", headColor: "#fce7f3" },
-  { id: "void",       name: "Пустота",            emoji: "🕳️",  price: 480,  rarity: "epic",      category: "skin",      color: "#323a46", headColor: "#aab4c2" },
-  { id: "plasma",     name: "Плазма",             emoji: "⚡",  price: 560,  rarity: "epic",      category: "skin",      color: "#e879f9", headColor: "#fae8ff" },
-  { id: "shadow",     name: "Тень",               emoji: "🌚",  price: 500,  rarity: "epic",      category: "skin",      color: "#1e293b", headColor: "#94a3b8" },
-  { id: "rainbow",    name: "Радуга",             emoji: "🌈",  price: 1000, rarity: "legendary", category: "skin",      color: "rainbow", headColor: "#ffffff" },
-  { id: "royal",      name: "Королевская",        emoji: "💜",  price: 1300, rarity: "legendary", category: "skin",      color: "#7c3aed", headColor: "#ffd166" },
-  { id: "lime",       name: "Лайм",               emoji: "🍋",  price: 110,  rarity: "common",    category: "skin",      color: "#a3e635", headColor: "#f7fee7" },
-  { id: "crimson",    name: "Багровая",           emoji: "🩸",  price: 170,  rarity: "common",    category: "skin",      color: "#dc2626", headColor: "#fecaca" },
-  { id: "azure",      name: "Лазурь",             emoji: "💎",  price: 220,  rarity: "rare",      category: "skin",      color: "#0ea5e9", headColor: "#e0f2fe" },
-  { id: "ember",      name: "Угли",               emoji: "🌋",  price: 350,  rarity: "rare",      category: "skin",      color: "#ea580c", headColor: "#fdba74" },
-  { id: "mint",       name: "Мята",               emoji: "🌿",  price: 200,  rarity: "common",    category: "skin",      color: "#2dd4bf", headColor: "#ccfbf1" },
-  { id: "custom_1",   name: "Свой скин 1",        emoji: "🖼️",  price: 0,    rarity: "common",    category: "skin",      color: "#33d17a", headColor: "#ffffff", customTexture: "slot1.png" },
-  { id: "custom_2",   name: "Свой скин 2",        emoji: "🖼️",  price: 0,    rarity: "common",    category: "skin",      color: "#62a0ea", headColor: "#ffffff", customTexture: "slot2.png" },
-  { id: "custom_3",   name: "Свой скин 3",        emoji: "🖼️",  price: 0,    rarity: "common",    category: "skin",      color: "#f66151", headColor: "#ffffff", customTexture: "slot3.png" },
-  { id: "hat_top",      name: "Цилиндр змеи",     emoji: "🎩",  price: 390,  rarity: "epic",      category: "snake_hat" },
-  { id: "hat_cap",      name: "Кепка змеи",       emoji: "🧢",  price: 80,   rarity: "common",    category: "snake_hat" },
-  { id: "hat_beanie",   name: "Вязаная шапка",    emoji: "🧶",  price: 100,  rarity: "common",    category: "snake_hat" },
-  { id: "hat_straw",    name: "Соломенная шляпа", emoji: "👒",  price: 240,  rarity: "rare",      category: "snake_hat" },
-  { id: "hat_grad",     name: "Выпускная шапка",  emoji: "🎓",  price: 270,  rarity: "rare",      category: "snake_hat" },
-  { id: "hat_hard",     name: "Строительная каска",emoji: "⛑️", price: 140,  rarity: "common",    category: "snake_hat" },
-  { id: "hat_party",    name: "Праздничный колпак",emoji: "🎉", price: 420,  rarity: "epic",      category: "snake_hat" },
-  { id: "hat_mushroom", name: "Грибная шляпка",   emoji: "🍄",  price: 300,  rarity: "rare",      category: "snake_hat" },
-  { id: "hat_flame",    name: "Огненная корона",   emoji: "🔥",  price: 520,  rarity: "epic",      category: "snake_hat" },
-  { id: "hat_royal",    name: "Королевская корона",emoji: "👸", price: 1400, rarity: "legendary", category: "snake_hat" },
-  { id: "custom_hat_1", name: "Своя шляпа 1",     emoji: "🖼️",  price: 0,    rarity: "common",    category: "snake_hat", customTexture: "hat1.png" },
-  { id: "custom_hat_2", name: "Своя шляпа 2",     emoji: "🖼️",  price: 0,    rarity: "common",    category: "snake_hat", customTexture: "hat2.png" },
-  { id: "custom_hat_3", name: "Своя шляпа 3",     emoji: "🖼️",  price: 0,    rarity: "common",    category: "snake_hat", customTexture: "hat3.png" },
+  { id: "default", name: "Классик", emoji: "🟢", price: 0, rarity: "common", category: "skin", color: "#33d17a", headColor: "#ffffff" },
+  { id: "fire", name: "Огненная", emoji: "🔥", price: 150, rarity: "common", category: "skin", color: "#f66151", headColor: "#ffbe6f" },
+  { id: "ocean", name: "Океан", emoji: "🌊", price: 150, rarity: "common", category: "skin", color: "#62a0ea", headColor: "#8ff0a4" },
+  { id: "toxic", name: "Токсичная", emoji: "☢️", price: 120, rarity: "common", category: "skin", color: "#84cc16", headColor: "#ecfccb" },
+  { id: "coral", name: "Коралл", emoji: "🪸", price: 140, rarity: "common", category: "skin", color: "#ff7f7f", headColor: "#ffe4e6" },
+  { id: "ice", name: "Ледяная", emoji: "❄️", price: 240, rarity: "rare", category: "skin", color: "#67e8f9", headColor: "#ecfeff" },
+  { id: "midnight", name: "Полночь", emoji: "🌑", price: 260, rarity: "rare", category: "skin", color: "#475569", headColor: "#cbd5e1" },
+  { id: "neon", name: "Неон", emoji: "💛", price: 320, rarity: "rare", category: "skin", color: "#f9f06b", headColor: "#dc8add" },
+  { id: "gold", name: "Золото", emoji: "✨", price: 290, rarity: "rare", category: "skin", color: "#ffd166", headColor: "#fff8e7" },
+  { id: "candy", name: "Кэнди", emoji: "🍬", price: 390, rarity: "epic", category: "skin", color: "#f9a8d4", headColor: "#fce7f3" },
+  { id: "void", name: "Пустота", emoji: "🕳️", price: 480, rarity: "epic", category: "skin", color: "#323a46", headColor: "#aab4c2" },
+  { id: "plasma", name: "Плазма", emoji: "⚡", price: 560, rarity: "epic", category: "skin", color: "#e879f9", headColor: "#fae8ff" },
+  { id: "shadow", name: "Тень", emoji: "🌚", price: 500, rarity: "epic", category: "skin", color: "#1e293b", headColor: "#94a3b8" },
+  { id: "rainbow", name: "Радуга", emoji: "🌈", price: 1000, rarity: "legendary", category: "skin", color: "rainbow", headColor: "#ffffff" },
+  { id: "royal", name: "Королевская", emoji: "💜", price: 1300, rarity: "legendary", category: "skin", color: "#7c3aed", headColor: "#ffd166" },
+  { id: "lime", name: "Лайм", emoji: "🍋", price: 110, rarity: "common", category: "skin", color: "#a3e635", headColor: "#f7fee7" },
+  { id: "crimson", name: "Багровая", emoji: "🩸", price: 170, rarity: "common", category: "skin", color: "#dc2626", headColor: "#fecaca" },
+  { id: "azure", name: "Лазурь", emoji: "💎", price: 220, rarity: "rare", category: "skin", color: "#0ea5e9", headColor: "#e0f2fe" },
+  { id: "ember", name: "Угли", emoji: "🌋", price: 350, rarity: "rare", category: "skin", color: "#ea580c", headColor: "#fdba74" },
+  { id: "mint", name: "Мята", emoji: "🌿", price: 200, rarity: "common", category: "skin", color: "#2dd4bf", headColor: "#ccfbf1" },
+  { id: "custom_1", name: "Свой скин 1", emoji: "🖼️", price: 0, rarity: "common", category: "skin", color: "#33d17a", headColor: "#ffffff", customTexture: "slot1.png" },
+  { id: "custom_2", name: "Свой скин 2", emoji: "🖼️", price: 0, rarity: "common", category: "skin", color: "#62a0ea", headColor: "#ffffff", customTexture: "slot2.png" },
+  { id: "custom_3", name: "Свой скин 3", emoji: "🖼️", price: 0, rarity: "common", category: "skin", color: "#f66151", headColor: "#ffffff", customTexture: "slot3.png" },
+  { id: "hat_top", name: "Цилиндр змеи", emoji: "🎩", price: 390, rarity: "epic", category: "snake_hat" },
+  { id: "hat_cap", name: "Кепка змеи", emoji: "🧢", price: 80, rarity: "common", category: "snake_hat" },
+  { id: "hat_beanie", name: "Вязаная шапка", emoji: "🧶", price: 100, rarity: "common", category: "snake_hat" },
+  { id: "hat_straw", name: "Соломенная шляпа", emoji: "👒", price: 240, rarity: "rare", category: "snake_hat" },
+  { id: "hat_grad", name: "Выпускная шапка", emoji: "🎓", price: 270, rarity: "rare", category: "snake_hat" },
+  { id: "hat_hard", name: "Строительная каска", emoji: "⛑️", price: 140, rarity: "common", category: "snake_hat" },
+  { id: "hat_party", name: "Праздничный колпак", emoji: "🎉", price: 420, rarity: "epic", category: "snake_hat" },
+  { id: "hat_mushroom", name: "Грибная шляпка", emoji: "🍄", price: 300, rarity: "rare", category: "snake_hat" },
+  { id: "hat_flame", name: "Огненная корона", emoji: "🔥", price: 520, rarity: "epic", category: "snake_hat" },
+  { id: "hat_royal", name: "Королевская корона", emoji: "👸", price: 1400, rarity: "legendary", category: "snake_hat" },
+  { id: "custom_hat_1", name: "Своя шляпа 1", emoji: "🖼️", price: 0, rarity: "common", category: "snake_hat", customTexture: "hat1.png" },
+  { id: "custom_hat_2", name: "Своя шляпа 2", emoji: "🖼️", price: 0, rarity: "common", category: "snake_hat", customTexture: "hat2.png" },
+  { id: "custom_hat_3", name: "Своя шляпа 3", emoji: "🖼️", price: 0, rarity: "common", category: "snake_hat", customTexture: "hat3.png" },
 ];
 
 const AVATAR_PRESETS = [
@@ -110,18 +110,18 @@ const AVATAR_PRESETS = [
   "🦊", "🐺", "🦁", "🐯", "🐼", "🐸", "🐙", "🦄", "🎃", "💀",
 ];
 
-const COLORS   = ["#33d17a", "#62a0ea", "#ffbe6f", "#dc8add", "#f66151", "#8ff0a4", "#99c1f1", "#f9f06b"];
+const COLORS = ["#33d17a", "#62a0ea", "#ffbe6f", "#dc8add", "#f66151", "#8ff0a4", "#99c1f1", "#f9f06b"];
 const SHOP_SKINS = SHOP_CATALOG.filter((i) => i.category === "skin").map((s) => ({
   id: s.id, label: s.name, price: s.price, color: s.color, headColor: s.headColor, trailColor: s.color,
 }));
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
-  ".css":  "text/css; charset=utf-8",
-  ".js":   "application/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".js": "application/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
-  ".ico":  "image/x-icon",
-  ".png":  "image/png",
+  ".ico": "image/x-icon",
+  ".png": "image/png",
 };
 
 // ============================================================
@@ -155,30 +155,30 @@ function resolveNickColorHex(entry) {
 // ============================================================
 
 let nextClientId = 1;
-const sockets       = new Map(); // id -> socket
-const players       = new Map(); // id -> player
-const food          = [];
-const bonuses       = [];
-const bosses        = bossMod.createBosses(GRID);
+const sockets = new Map(); // id -> socket
+const players = new Map(); // id -> player
+const food = [];
+const bonuses = [];
+const bosses = bossMod.createBosses(GRID);
 
 // Map для O(1) поиска профилей по нижнему регистру имени
 // lowerName -> canonicalName
-const profileIndex  = new Map();
-let shopData        = {}; // canonicalName -> profile entry
+const profileIndex = new Map();
+let shopData = {}; // canonicalName -> profile entry
 
-const shopClients   = new Map(); // socket id -> player name
+const shopClients = new Map(); // socket id -> player name
 const socketSessions = new Map(); // socket id -> auth session
-let leaderboard     = [];
-let tickCount       = 0;
-let tickJournal     = gameSync.createJournal();
-const clientAoi     = new Map();
-let gameMode        = "classic";
-let taggedPlayerId  = null;
-const feedLog       = [];
-const feedDedupe    = new Map();
+let leaderboard = [];
+let tickCount = 0;
+let tickJournal = gameSync.createJournal();
+const clientAoi = new Map();
+let gameMode = "classic";
+let taggedPlayerId = null;
+const feedLog = [];
+const feedDedupe = new Map();
 let feedBroadcastTimer = null;
 
-const FEED_DEDUPE_MS    = 4000;
+const FEED_DEDUPE_MS = 4000;
 const FEED_BROADCAST_MS = 1200;
 
 // Occupancy set для O(1) проверки занятых клеток
@@ -189,14 +189,14 @@ function occupancyHas(point) { return occupancySet.has(`${point.x}:${point.y}`);
 function occupancyRebuild() {
   occupancySet.clear();
   for (const item of food) occupancyAdd(item);
-  for (const b of bonuses)  occupancyAdd(b);
+  for (const b of bonuses) occupancyAdd(b);
   for (const player of players.values()) {
     for (const part of player.snake) occupancyAdd(part);
   }
 }
 
 let currentTickMs = DIFFICULTIES.normal.tickMs;
-let tickInterval  = null;
+let tickInterval = null;
 
 function restartTickInterval() {
   if (tickInterval) clearInterval(tickInterval);
@@ -206,7 +206,7 @@ function restartTickInterval() {
     if (p.alive && diff.tickMs < minTick) minTick = diff.tickMs;
   }
   currentTickMs = minTick;
-  tickInterval  = setInterval(tick, currentTickMs);
+  tickInterval = setInterval(tick, currentTickMs);
 }
 
 // ============================================================
@@ -316,8 +316,8 @@ function handleHttpRequest(req, res, url) {
   }
 
   const requestPath = decodeURIComponent(url.pathname);
-  const safePath    = path.normalize(requestPath === "/" ? "/index.html" : requestPath).replace(/^(\.\.([/\\]|$))+/, "");
-  const filePath    = path.join(PUBLIC_DIR, safePath);
+  const safePath = path.normalize(requestPath === "/" ? "/index.html" : requestPath).replace(/^(\.\.([/\\]|$))+/, "");
+  const filePath = path.join(PUBLIC_DIR, safePath);
 
   if (!filePath.startsWith(PUBLIC_DIR)) { res.writeHead(403); res.end("Forbidden"); return; }
 
@@ -352,11 +352,11 @@ server.on("upgrade", (req, socket) => {
       socketSessions.set(id, session);
       send(id, { type: "auth_ready", name: session.player_name, googleId: session.google_id });
     }
-  }).catch(() => {});
+  }).catch(() => { });
 
-  socket.on("data",  (chunk) => readFrames(id, chunk));
-  socket.on("close", ()      => removeClient(id));
-  socket.on("error", ()      => removeClient(id));
+  socket.on("data", (chunk) => readFrames(id, chunk));
+  socket.on("close", () => removeClient(id));
+  socket.on("error", () => removeClient(id));
 
   send(id, {
     type: "hello", id, grid: GRID,
@@ -373,11 +373,11 @@ server.on("upgrade", (req, socket) => {
 function readFrames(id, buffer) {
   let offset = 0;
   while (offset + 2 <= buffer.length) {
-    const first  = buffer[offset++];
+    const first = buffer[offset++];
     const second = buffer[offset++];
     const opcode = first & 0x0f;
     const masked = Boolean(second & 0x80);
-    let length   = second & 0x7f;
+    let length = second & 0x7f;
 
     if (length === 126) {
       if (offset + 2 > buffer.length) return;
@@ -409,7 +409,7 @@ function readFrames(id, buffer) {
 
 function makeFrame(text) {
   const payload = Buffer.from(text);
-  const length  = payload.length;
+  const length = payload.length;
   if (length < 126) return Buffer.concat([Buffer.from([0x81, length]), payload]);
   if (length < 65536) {
     const h = Buffer.alloc(4); h[0] = 0x81; h[1] = 126; h.writeUInt16BE(length, 2);
@@ -450,18 +450,18 @@ function removeClient(id) {
 const asyncHandlers = {
   shop_connect: (id, msg) => handleShopConnect(id, msg),
   save_profile: (id, msg) => saveProfile(id, msg),
-  join:         (id, msg) => handleJoin(id, msg),
+  join: (id, msg) => handleJoin(id, msg),
 };
 
 // Синхронные хендлеры не требующие наличия player
 const prePlayerHandlers = {
-  ping:          () => {},
-  buy_item:      (id, msg) => buyItem(id, msg.itemId, msg.name),
-  equip_item:    (id, msg) => equipItem(id, msg.itemId, msg.name),
-  unequip_item:  (id, msg) => unequipItem(id, msg.itemId, msg.name),
+  ping: () => { },
+  buy_item: (id, msg) => buyItem(id, msg.itemId, msg.name),
+  equip_item: (id, msg) => equipItem(id, msg.itemId, msg.name),
+  unequip_item: (id, msg) => unequipItem(id, msg.itemId, msg.name),
   equip_nick_color: (id, msg) => equipNickColor(id, msg.colorId, msg.name),
-  buy_skin:      (id, msg) => buyItem(id, msg.skinId),
-  equip_skin:    (id, msg) => equipItem(id, msg.skinId),
+  buy_skin: (id, msg) => buyItem(id, msg.skinId),
+  equip_skin: (id, msg) => equipItem(id, msg.skinId),
 };
 
 // Хендлеры требующие наличия player
@@ -583,15 +583,15 @@ function extrasForPlayer(p) {
 
 function comboMultiplier(combo) {
   if (combo >= 10) return 2;
-  if (combo >= 6)  return 1.5;
-  if (combo >= 3)  return 1.25;
+  if (combo >= 6) return 1.5;
+  if (combo >= 3) return 1.25;
   return 1;
 }
 
 function tick() {
   if (players.size === 0) return;
   tickJournal = gameSync.createJournal();
-  tickCount  += 1;
+  tickCount += 1;
 
   const pathCells = foodMod.getMovementPathCells(players, { GRID, tickCount });
 
@@ -617,8 +617,8 @@ function tick() {
   tickBonusEffects();
   occupancyRebuild();
 
-  const occupied    = new Map();
-  const planned     = new Map();
+  const occupied = new Map();
+  const planned = new Map();
   const targetCounts = new Map();
 
   for (const player of players.values()) {
@@ -631,7 +631,7 @@ function tick() {
     if (player.frozenUntil && Date.now() < player.frozenUntil) continue;
     if (player.activeBonus === "slow_down" && tickCount % 2 === 0) continue;
     player.direction = player.nextDirection;
-    const head     = player.snake[0];
+    const head = player.snake[0];
     const nextHead = { x: head.x + player.direction.x, y: head.y + player.direction.y };
     planned.set(player.id, nextHead);
     const key = foodMod.pointKey(nextHead);
@@ -641,34 +641,24 @@ function tick() {
   for (const player of players.values()) {
     if (!player.alive || !planned.has(player.id)) continue;
     const nextHead = planned.get(player.id);
-    const key      = foodMod.pointKey(nextHead);
-    const diff     = DIFFICULTIES[player.difficulty] || DIFFICULTIES.normal;
+    const key = foodMod.pointKey(nextHead);
+    const diff = DIFFICULTIES[player.difficulty] || DIFFICULTIES.normal;
 
     if (!foodMod.insideGrid(nextHead, GRID)) {
       if (diff.wallDeath) { killPlayer(player, "Врезался в стену"); continue; }
-      nextHead.x = (nextHead.x + GRID.width)  % GRID.width;
+      nextHead.x = (nextHead.x + GRID.width) % GRID.width;
       nextHead.y = (nextHead.y + GRID.height) % GRID.height;
     }
+
+    // Пересчитываем key после возможного wall-wrap
+    const resolvedKey = foodMod.pointKey(nextHead);
 
     if (targetCounts.get(key) > 1) { killPlayer(player, "Столкновение лоб в лоб"); continue; }
 
     const killerBoss = bossMod.bossAt(bosses, nextHead);
     if (killerBoss) { killPlayer(player, `${killerBoss.name} поймал змейку`, { at: nextHead, boss: killerBoss }); continue; }
 
-    if (player.activeBonus !== "ghost" && occupied.has(key)) {
-      if (gameMode === "tag_time" && player.id === taggedPlayerId && occupied.get(key) !== player.id) {
-        const hitId = occupied.get(key);
-        taggedPlayerId = hitId;
-        send(player.id, { type: "tagged", tagger: true });
-        if (sockets.has(hitId)) send(hitId, { type: "tagged", tagger: false });
-      } else {
-        const killerId = occupied.get(key);
-        const killer   = killerId && killerId !== player.id ? players.get(killerId) : null;
-        killPlayer(player, killer ? `${killer.name} убил ${player.name}` : "Столкнулся со змейкой", { at: nextHead, killerPlayer: killer });
-        continue;
-      }
-    }
-
+    // Баффы проверяем ДО occupied — бафф важнее хвоста
     const eatenBonusIdx = bonuses.findIndex((b) => b.x === nextHead.x && b.y === nextHead.y);
     if (eatenBonusIdx >= 0) {
       const bonus = bonuses[eatenBonusIdx];
@@ -677,8 +667,22 @@ function tick() {
       activateBonus(player, bonus.bonusType);
     }
 
+    if (player.activeBonus !== "ghost" && occupied.has(resolvedKey)) {
+      if (gameMode === "tag_time" && player.id === taggedPlayerId && occupied.get(key) !== player.id) {
+        const hitId = occupied.get(key);
+        taggedPlayerId = hitId;
+        send(player.id, { type: "tagged", tagger: true });
+        if (sockets.has(hitId)) send(hitId, { type: "tagged", tagger: false });
+      } else {
+        const killerId = occupied.get(key);
+        const killer = killerId && killerId !== player.id ? players.get(killerId) : null;
+        killPlayer(player, killer ? `${killer.name} убил ${player.name}` : "Столкнулся со змейкой", { at: nextHead, killerPlayer: killer });
+        continue;
+      }
+    }
+
     const eatenIdx = food.findIndex((item) => item.x === nextHead.x && item.y === nextHead.y);
-    const eaten    = eatenIdx >= 0 ? food[eatenIdx] : null;
+    const eaten = eatenIdx >= 0 ? food[eatenIdx] : null;
     player._grewTick = Boolean(eaten);
     player.snake.unshift(nextHead);
 
@@ -686,14 +690,14 @@ function tick() {
       tickJournal.foodRemoved.push([eaten.x, eaten.y]);
       food.splice(eatenIdx, 1);
       if (eaten.good) {
-        player.combo    = (player.combo || 0) + 1;
+        player.combo = (player.combo || 0) + 1;
         player.maxCombo = Math.max(player.maxCombo || 0, player.combo);
         let mult = comboMultiplier(player.combo);
-        if (player.activeBonus === "double")   mult *= 2;
+        if (player.activeBonus === "double") mult *= 2;
         if (player.activeBonus === "speed_up") mult *= 1.3;
         const pts = Math.round(eaten.points * mult);
         player.score += pts;
-        player.best   = Math.max(player.best, player.score);
+        player.best = Math.max(player.best, player.score);
         if (player.combo === 5 || player.combo === 10) {
           pushFeed("combo", `🔥 ${player.name}: COMBO ×${player.combo}!`, player.name);
         }
@@ -717,8 +721,8 @@ function tick() {
 function activateBonus(player, bonusType) {
   const def = BONUS_TYPES[bonusType];
   if (!def) return;
-  player.activeBonus   = bonusType;
-  player.bonusExpires  = Date.now() + def.duration;
+  player.activeBonus = bonusType;
+  player.bonusExpires = Date.now() + def.duration;
   pushFeed("bonus", `⚡ ${player.name} → ${def.label}`, player.name);
   broadcast({ type: "notice", text: `${player.name} получил бонус ${def.label} ${def.desc}!` });
 }
@@ -727,7 +731,7 @@ function tickBonusEffects() {
   const now = Date.now();
   for (const player of players.values()) {
     if (player.activeBonus && player.bonusExpires && now > player.bonusExpires) {
-      player.activeBonus  = null;
+      player.activeBonus = null;
       player.bonusExpires = null;
     }
   }
@@ -740,7 +744,7 @@ function spawnBonuses() {
     occupancySet, GRID, avoidNearHeads: true, players,
   });
   if (!point) return;
-  const types     = Object.keys(BONUS_TYPES);
+  const types = Object.keys(BONUS_TYPES);
   const bonusType = types[Math.floor(Math.random() * types.length)];
   bonuses.push({ ...point, bonusType, spawnedAt: Date.now() });
 
@@ -764,14 +768,14 @@ function killPlayer(player, reason, opts = {}) {
   if (!player.alive) return;
   tickJournal.deaths.push(player.id);
   trackDeathStats(player);
-  player.alive        = false;
-  player.deaths      += 1;
-  player.reason       = opts.killerPlayer ? `${opts.killerPlayer.name} убил тебя` : reason;
-  player.activeBonus  = null;
+  player.alive = false;
+  player.deaths += 1;
+  player.reason = opts.killerPlayer ? `${opts.killerPlayer.name} убил тебя` : reason;
+  player.activeBonus = null;
   player.bonusExpires = null;
-  player.combo        = 0;
+  player.combo = 0;
   const reward = awardSessionCoins(player);
-  player.coinsEarned  = reward;
+  player.coinsEarned = reward;
   if (reward > 0) {
     player.coins = (player.coins || 0) + reward;
     savePlayerCoins(player);
@@ -785,7 +789,7 @@ function killPlayer(player, reason, opts = {}) {
   } else {
     pushFeed("death", `💀 ${player.name}: ${reason}`, player.name);
   }
-  const hitCell    = opts.at || player.snake[0];
+  const hitCell = opts.at || player.snake[0];
   const killerBoss = opts.boss || bossMod.bossAt(bosses, hitCell) || bosses.find((b) => reason.includes(b.name));
   if (killerBoss) bossMod.enrageBoss(killerBoss, bosses, pushFeed, broadcast);
 }
@@ -808,25 +812,25 @@ function recordScore(player) {
 // ============================================================
 
 function createPlayer(id, name, difficulty, skin) {
-  const layout    = foodMod.findSpawnLayout({
+  const layout = foodMod.findSpawnLayout({
     players, food, bonuses, GRID,
     anyBossOccupies: (pt) => bossMod.anyBossOccupies(bosses, pt),
     distanceToNearestBoss: (pt) => bossMod.distanceToNearestBoss(bosses, pt),
     BOSS_SPAWN_BUFFER,
   });
   const direction = layout?.direction || { x: 1, y: 0 };
-  const snake     = layout?.snake    || [{ x: Math.floor(GRID.width / 2), y: Math.floor(GRID.height / 2) }];
+  const snake = layout?.snake || [{ x: Math.floor(GRID.width / 2), y: Math.floor(GRID.height / 2) }];
 
   foodMod.clearBoardAroundSpawn(snake[0], { food, bonuses });
   const shopEntry = getProfile(name);
-  const cos       = getPlayerCosmetics(name);
+  const cos = getPlayerCosmetics(name);
 
   const player = {
     id, name, difficulty,
-    color:     skin.color !== "rainbow" ? skin.color : COLORS[(Number(id) - 1) % COLORS.length],
+    color: skin.color !== "rainbow" ? skin.color : COLORS[(Number(id) - 1) % COLORS.length],
     headColor: skin.headColor || "#ffffff",
-    skin:      skin.id,
-    rainbow:   skin.color === "rainbow",
+    skin: skin.id,
+    rainbow: skin.color === "rainbow",
     snake, direction, nextDirection: direction,
     alive: true, score: 0, coins: shopEntry.coins || 0,
     best: bestForName(name), deaths: 0, reason: "",
@@ -843,10 +847,10 @@ function createPlayer(id, name, difficulty, skin) {
 }
 
 function applySkinToPlayer(player, skin) {
-  player.skin      = skin.id;
-  player.color     = skin.color !== "rainbow" ? skin.color : COLORS[(Number(player.id) - 1) % COLORS.length];
+  player.skin = skin.id;
+  player.color = skin.color !== "rainbow" ? skin.color : COLORS[(Number(player.id) - 1) % COLORS.length];
   player.headColor = skin.headColor || "#ffffff";
-  player.rainbow   = skin.color === "rainbow";
+  player.rainbow = skin.color === "rainbow";
 }
 
 // ============================================================
@@ -883,26 +887,26 @@ function defaultShopEntry() {
 
 function normalizeProfile(raw) {
   const entry = {
-    id:           raw.id || null,
-    googleId:     raw.googleId || raw.google_id || null,
-    coins:        Number(raw.coins) || 0,
+    id: raw.id || null,
+    googleId: raw.googleId || raw.google_id || null,
+    coins: Number(raw.coins) || 0,
     unlockedSkins: raw.unlockedSkins || ["default"],
-    activeSkin:   raw.activeSkin || "default",
-    avatar:       AVATAR_PRESETS.includes(raw.avatar) ? raw.avatar : "😎",
-    inventory:    Array.isArray(raw.inventory) ? [...raw.inventory] : [],
-    equipped:     { snakeHat: raw.equipped?.snakeHat || null },
+    activeSkin: raw.activeSkin || "default",
+    avatar: AVATAR_PRESETS.includes(raw.avatar) ? raw.avatar : "😎",
+    inventory: Array.isArray(raw.inventory) ? [...raw.inventory] : [],
+    equipped: { snakeHat: raw.equipped?.snakeHat || null },
     stats: {
-      games:              raw.stats?.games || 0,
-      deaths:             raw.stats?.deaths ?? raw.stats?.losses ?? 0,
-      kills:              raw.stats?.kills || 0,
-      best:               raw.stats?.best || 0,
-      playTimeMs:         raw.stats?.playTimeMs || 0,
-      sessionStart:       raw.stats?.sessionStart || null,
-      googlePicture:      raw.stats?.googlePicture || null,
-      battlePassScore:    raw.stats?.battlePassScore || 0,
-      battlePassClaimed:  Array.isArray(raw.stats?.battlePassClaimed)  ? [...raw.stats.battlePassClaimed]  : [],
+      games: raw.stats?.games || 0,
+      deaths: raw.stats?.deaths ?? raw.stats?.losses ?? 0,
+      kills: raw.stats?.kills || 0,
+      best: raw.stats?.best || 0,
+      playTimeMs: raw.stats?.playTimeMs || 0,
+      sessionStart: raw.stats?.sessionStart || null,
+      googlePicture: raw.stats?.googlePicture || null,
+      battlePassScore: raw.stats?.battlePassScore || 0,
+      battlePassClaimed: Array.isArray(raw.stats?.battlePassClaimed) ? [...raw.stats.battlePassClaimed] : [],
       battlePassUnlocked: Array.isArray(raw.stats?.battlePassUnlocked) ? [...raw.stats.battlePassUnlocked] : [],
-      activeNickColor:    raw.stats?.activeNickColor || null,
+      activeNickColor: raw.stats?.activeNickColor || null,
     },
   };
   for (const id of entry.unlockedSkins) {
@@ -933,7 +937,7 @@ function persistLeaderboardEntry(name, score, difficulty) {
 
 function startNewLife(name) {
   const entry = getProfile(name);
-  entry.stats.games        = (entry.stats.games || 0) + 1;
+  entry.stats.games = (entry.stats.games || 0) + 1;
   entry.stats.sessionStart = Date.now();
   shopData[name] = entry;
   profileIndexSet(name);
@@ -992,9 +996,9 @@ async function handleShopConnect(id, message) {
 async function handleJoin(id, message) {
   const resolved = await resolvePlayName(id, message.name);
   if (!resolved.ok) { send(id, { type: "notice", text: resolved.text }); return; }
-  const name       = resolved.name;
+  const name = resolved.name;
   const difficulty = DIFFICULTIES[message.difficulty] ? message.difficulty : "normal";
-  const mode       = MODES[message.mode] ? message.mode : "classic";
+  const mode = MODES[message.mode] ? message.mode : "classic";
   gameMode = mode;
   const prof = getProfile(name);
   const skin = getSkinDef(prof.activeSkin);
@@ -1015,9 +1019,9 @@ async function saveProfile(clientId, message) {
   if (!session) { send(clientId, { type: "notice", text: "Войди через Google, чтобы редактировать профиль." }); return; }
 
   const oldName = session.player_name;
-  const avatar  = AVATAR_PRESETS.includes(message.avatar) ? message.avatar : "😎";
-  let entry     = getProfile(oldName);
-  entry.avatar  = avatar;
+  const avatar = AVATAR_PRESETS.includes(message.avatar) ? message.avatar : "😎";
+  let entry = getProfile(oldName);
+  entry.avatar = avatar;
   syncProfileCoins(oldName, entry);
   if (session.google_id) entry.googleId = session.google_id;
   if (!entry.id) await persistProfile(oldName, entry);
@@ -1048,15 +1052,15 @@ async function saveProfile(clientId, message) {
 }
 
 function buyItem(clientId, itemId, nameHint) {
-  const name  = resolveName(clientId, nameHint);
+  const name = resolveName(clientId, nameHint);
   if (!name) return;
-  const item  = SHOP_CATALOG.find((i) => i.id === itemId);
+  const item = SHOP_CATALOG.find((i) => i.id === itemId);
   if (!item) return;
-  const entry  = getProfile(name);
+  const entry = getProfile(name);
   const player = players.get(clientId);
   syncProfileCoins(name, entry);
   const coins = Number(entry.coins) || 0;
-  const price = Number(item.price)  || 0;
+  const price = Number(item.price) || 0;
 
   if (entry.inventory.includes(itemId)) { equipItem(clientId, itemId, name); return; }
   if (price === 0) {
@@ -1079,11 +1083,11 @@ function buyItem(clientId, itemId, nameHint) {
 }
 
 function equipItem(clientId, itemId, nameHint) {
-  const name  = resolveName(clientId, nameHint);
+  const name = resolveName(clientId, nameHint);
   if (!name) return;
-  const item  = SHOP_CATALOG.find((i) => i.id === itemId);
+  const item = SHOP_CATALOG.find((i) => i.id === itemId);
   if (!item) return;
-  const entry  = getProfile(name);
+  const entry = getProfile(name);
   if (!ownsItem(entry, itemId)) { send(clientId, { type: "notice", text: "Сначала купи предмет!" }); return; }
   const player = players.get(clientId);
 
@@ -1104,11 +1108,11 @@ function equipItem(clientId, itemId, nameHint) {
 }
 
 function unequipItem(clientId, itemId, nameHint) {
-  const name  = resolveName(clientId, nameHint);
+  const name = resolveName(clientId, nameHint);
   if (!name) return;
-  const item  = SHOP_CATALOG.find((i) => i.id === itemId);
+  const item = SHOP_CATALOG.find((i) => i.id === itemId);
   if (!item) return;
-  const entry  = getProfile(name);
+  const entry = getProfile(name);
   const player = players.get(clientId);
 
   if (item.category === "skin") {
@@ -1127,7 +1131,7 @@ function unequipItem(clientId, itemId, nameHint) {
 }
 
 function equipNickColor(clientId, colorId, nameHint) {
-  const name  = resolveName(clientId, nameHint);
+  const name = resolveName(clientId, nameHint);
   if (!name) return;
   const entry = getProfile(name);
 
@@ -1147,21 +1151,21 @@ function equipNickColor(clientId, colorId, nameHint) {
 }
 
 function getPlayerCosmetics(name) {
-  const entry    = getProfile(name);
-  const hatId    = entry.equipped.snakeHat || null;
-  const hatItem  = hatId ? SHOP_CATALOG.find((i) => i.id === hatId) : null;
+  const entry = getProfile(name);
+  const hatId = entry.equipped.snakeHat || null;
+  const hatItem = hatId ? SHOP_CATALOG.find((i) => i.id === hatId) : null;
   const isCustom = hatId?.startsWith("custom_hat_");
   return { avatar: entry.avatar, snakeHatId: hatId, snakeHatEmoji: hatItem && !isCustom ? hatItem.emoji : null };
 }
 
 function applyCosmeticsToPlayer(player, name) {
   if (!player) return;
-  const cos   = getPlayerCosmetics(name);
+  const cos = getPlayerCosmetics(name);
   const entry = getProfile(name);
-  player.avatar        = cos.avatar;
+  player.avatar = cos.avatar;
   player.snakeHatEmoji = cos.snakeHatEmoji;
-  player.snakeHatId    = cos.snakeHatId;
-  player.nickColor     = resolveNickColorHex(entry);
+  player.snakeHatId = cos.snakeHatId;
+  player.nickColor = resolveNickColorHex(entry);
 }
 
 function savePlayerCoins(player) {
@@ -1186,7 +1190,7 @@ function trackDeathStats(player) {
     entry.stats.sessionStart = null;
   }
   const rivalScores = [...players.values()].filter((p) => p.id !== player.id).map((p) => p.score);
-  const sessionTop  = Math.max(player.score, ...rivalScores, 0);
+  const sessionTop = Math.max(player.score, ...rivalScores, 0);
   player.sessionMvp = player.score > 0 && player.score >= sessionTop;
   entry.stats.battlePassScore = (entry.stats.battlePassScore || 0) + (player.score || 0);
   shopData[player.name] = entry;
@@ -1218,8 +1222,8 @@ function awardSessionCoins(player) {
   // score=3000 → ~1643 монет (без кэпа)
   let coins = Math.floor(10 * Math.pow(score / 100, 1.5));
   // Бонусы сверху (небольшие, не ломают кривую)
-  if (player.beatPersonalBest)       coins += 20;
-  if (player.sessionMvp)             coins += 15;
+  if (player.beatPersonalBest) coins += 20;
+  if (player.sessionMvp) coins += 15;
   coins += Math.floor((player.maxCombo || 0) * 1.5);
   return Math.max(1, coins);
 }
@@ -1236,7 +1240,7 @@ function awardKillCoins(killer, victim) {
 }
 
 function processBattlePassRewards(name, entry) {
-  entry.stats.battlePassClaimed  = entry.stats.battlePassClaimed  || [];
+  entry.stats.battlePassClaimed = entry.stats.battlePassClaimed || [];
   entry.stats.battlePassUnlocked = entry.stats.battlePassUnlocked || [];
   const granted = [];
 
@@ -1299,7 +1303,7 @@ function getWealthLeaderboard() {
 async function bootstrap() {
   try {
     await db.init();
-    shopData   = await db.loadAllPlayers();
+    shopData = await db.loadAllPlayers();
     leaderboard = await db.loadLeaderboard(MAX_LEADERS);
     rebuildProfileIndex();
     console.log(`PostgreSQL: ${Object.keys(shopData).length} игроков, ${leaderboard.length} рекордов`);
@@ -1316,10 +1320,10 @@ async function bootstrap() {
       anyBossOccupies: (pt) => bossMod.anyBossOccupies(bosses, pt),
     });
     tickInterval = setInterval(tick, DIFFICULTIES.normal.tickMs);
-    setInterval(spawnBonuses,    8000);
+    setInterval(spawnBonuses, 8000);
     setInterval(broadcastPresence, 5000);
-    setInterval(pingClients,    25000);
-    setInterval(() => db.cleanupAuthSessions().catch(() => {}), 60 * 60 * 1000);
+    setInterval(pingClients, 25000);
+    setInterval(() => db.cleanupAuthSessions().catch(() => { }), 60 * 60 * 1000);
 
     if (auth.isGoogleAuthEnabled()) {
       const sampleRedirect = process.env.GOOGLE_REDIRECT_URI
@@ -1348,7 +1352,7 @@ function shutdown(signal) {
   for (const socket of sockets.values()) { try { socket.destroy(); } catch { /* ignore */ } }
   server.close(() => { db.close().finally(() => process.exit(0)); });
 }
-process.on("SIGINT",  () => shutdown("SIGINT"));
+process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 
 // ============================================================
@@ -1364,8 +1368,8 @@ function pingClients() {
 }
 
 function getRequestOrigin(req) {
-  const host    = (req.headers["x-forwarded-host"] || req.headers.host || `localhost:${PORT}`).split(",")[0].trim();
-  const proto   = (req.headers["x-forwarded-proto"] || "http").split(",")[0].trim();
+  const host = (req.headers["x-forwarded-host"] || req.headers.host || `localhost:${PORT}`).split(",")[0].trim();
+  const proto = (req.headers["x-forwarded-proto"] || "http").split(",")[0].trim();
   const wsProto = proto === "https" ? "wss" : "ws";
   return { http: `${proto}://${host}`, ws: `${wsProto}://${host}` };
 }
@@ -1383,7 +1387,7 @@ function directionFromKey(d) {
 }
 
 function isOpposite(a, b) { return a.x + b.x === 0 && a.y + b.y === 0; }
-function cleanName(name)   { const v = String(name || "").trim().replace(/\s+/g, " ").slice(0, 18); return v || `Игрок ${nextClientId - 1}`; }
+function cleanName(name) { const v = String(name || "").trim().replace(/\s+/g, " ").slice(0, 18); return v || `Игрок ${nextClientId - 1}`; }
 
 function corsHeaders() {
   return { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, OPTIONS", "Access-Control-Allow-Headers": "Content-Type" };
