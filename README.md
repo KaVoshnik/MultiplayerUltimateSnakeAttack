@@ -246,11 +246,11 @@
 ## КОНТРИБЬЮТОРЫ
 
 <p align="center">
-  <a href="https://github.com/KaVoshnik" style="display: inline-block; margin: 0 15px; text-align: center; text-decoration: none;">
+  <a href="https://github.com/KaVoshnik" style="display: inline-flex; flex-direction: column; align-items: center; margin: 0 30px; text-decoration: none;">
     <img src="https://github.com/KaVoshnik.png" width="70" height="70" style="border-radius: 50%; display: block;" alt="@KaVoshnik" />
     <span style="color: #00ff88; margin-top: 8px; display: block; font-weight: bold;">KaVoshnik</span>
   </a>
-  <a href="https://github.com/IWoki" style="display: inline-block; margin: 0 15px; text-align: center; text-decoration: none;">
+  <a href="https://github.com/IWoki" style="display: inline-flex; flex-direction: column; align-items: center; margin: 0 30px; text-decoration: none;">
     <img src="https://github.com/IWoki.png" width="70" height="70" style="border-radius: 50%; display: block;" alt="@IWoki" />
     <span style="color: #00ff88; margin-top: 8px; display: block; font-weight: bold;">IWoki</span>
   </a>
@@ -260,7 +260,7 @@
   <strong style="color: #fff;">Мега крутые разрабы змеек</strong>
 </p>
 
-<p align="center">
+<p align="center" style="margin-top: 30px;">
   <a href="https://github.com/KaVoshnik/MultiplayerUltimateSnakeAttack">
     <img src="https://img.shields.io/github/stars/KaVoshnik/MultiplayerUltimateSnakeAttack?style=social" alt="GitHub stars" />
   </a>
@@ -271,5 +271,3 @@
     <img src="https://img.shields.io/github/watchers/KaVoshnik/MultiplayerUltimateSnakeAttack?style=social" alt="GitHub watchers" />
   </a>
 </p>
-
-
