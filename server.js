@@ -1,60 +1,40 @@
+"use strict";
+
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const os = require("os");
+
 const db = require("./db");
 const auth = require("./auth");
 const gameSync = require("./lib/game-sync");
+const bossMod = require("./lib/bosses");
+const foodMod = require("./lib/food");
+
+// ============================================================
+// CONSTANTS
+// ============================================================
 
 const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || "0.0.0.0";
 const PUBLIC_DIR = path.join(__dirname, "public");
 
 const GRID = { width: 210, height: 140 };
-const FOOD_TARGET = 200;
-const MIN_GOOD_FOOD = 70;
-const SNAKE_SPAWN_LEN = 4;
-const SPAWN_MARGIN = 18;
-const SPAWN_CLEAR_RADIUS = 5;
-const BAD_FOOD_HEAD_BUFFER = 6;
-const FOOD_PATH_AVOID_CELLS = 7;
-const BOSS_MOVE_EVERY = 6;
-const BOSS_CHASE_RANGE = 22;
-const BOSS_RANDOM_MOVE_CHANCE = 0.24;
-const BOSS_HUNT_RANGE = 7;
-const BOSS_SPAWN_BUFFER = 14;
 const MAX_LEADERS = 20;
+const SPAWN_FREEZE_MS = 3000;
+const KILL_REWARD_COINS = 50;
+const BATTLE_PASS_SCORE_STEP = 1000;
+const BATTLE_PASS_MAX_TIER = 12;
 
-const FOOD_TYPES = {
-  apple: { good: true, points: 6, label: "яблоко" },
-  cherry: { good: true, points: 7, label: "вишню" },
-  grape: { good: true, points: 6, label: "виноград" },
-  rotten: { good: false, label: "гниль" },
-  spider: { good: false, label: "паука" },
-  mushroom: { good: false, label: "ядовитый гриб" },
-  bone: { good: false, label: "кость" },
-};
+const { FOOD_TYPES, DIFFICULTIES } = foodMod;
+const { BOSS_SPAWN_BUFFER, BOSS_MOVE_EVERY } = bossMod;
 
-const GOOD_FOOD_KINDS = ["apple", "cherry", "grape"];
-const BAD_FOOD_KINDS = ["rotten", "spider", "mushroom", "bone"];
-
-// --- DIFFICULTIES ---
-const DIFFICULTIES = {
-  easy: { label: "Easy", tickMs: 160, wallDeath: false, badFoodRatio: 0.22 },
-  normal: { label: "Normal", tickMs: 115, wallDeath: true, badFoodRatio: 0.32 },
-  hard: { label: "Hard", tickMs: 80, wallDeath: true, badFoodRatio: 0.45 },
-  insane: { label: "Insane", tickMs: 50, wallDeath: true, badFoodRatio: 0.58 },
-};
-
-// --- GAME MODES ---
 const MODES = {
   classic: { label: "Classic" },
-  tag_time: { label: "Tag Time" }, // один игрок - "тэгер", другие убегают
+  tag_time: { label: "Tag Time" },
 };
 
-// --- BONUSES ---
-// Бонусы появляются на поле как особые клетки
 const BONUS_TYPES = {
   shield: { label: "SH", duration: 10000, color: "#62a0ea", desc: "защита от яда" },
   speed_up: { label: "SP", duration: 8000, color: "#f9f06b", desc: "оверклок +30% очков" },
@@ -62,11 +42,6 @@ const BONUS_TYPES = {
   double: { label: "x2", duration: 12000, color: "#33d17a", desc: "двойные очки" },
   ghost: { label: "GH", duration: 8000, color: "#8ff0a4", desc: "призрак" },
 };
-
-const SPAWN_FREEZE_MS = 3000;
-const KILL_REWARD_COINS = 50;
-const BATTLE_PASS_SCORE_STEP = 1000;
-const BATTLE_PASS_MAX_TIER = 12;
 
 const BATTLE_PASS_NICK_COLORS = [
   { id: "bp_gold", label: "Золото", color: "#ffd166" },
@@ -83,32 +58,6 @@ const BATTLE_PASS_NICK_COLORS = [
   { id: "bp_sunset", label: "Закат", color: "#fb7185" },
 ];
 
-function getBattlePassTierDef(tier) {
-  const nickColor = BATTLE_PASS_NICK_COLORS[Math.min(tier - 1, BATTLE_PASS_NICK_COLORS.length - 1)];
-  return {
-    tier,
-    scoreRequired: tier * BATTLE_PASS_SCORE_STEP,
-    coins: 50 + (tier - 1) * 30,
-    nickColor,
-  };
-}
-
-function getBattlePassConfig() {
-  return {
-    scoreStep: BATTLE_PASS_SCORE_STEP,
-    maxTier: BATTLE_PASS_MAX_TIER,
-    tiers: Array.from({ length: BATTLE_PASS_MAX_TIER }, (_, i) => getBattlePassTierDef(i + 1)),
-    nickColors: [{ id: "default", label: "Стандарт", color: null }, ...BATTLE_PASS_NICK_COLORS],
-  };
-}
-
-function resolveNickColorHex(entry) {
-  const id = entry.stats?.activeNickColor;
-  if (!id || id === "default") return null;
-  return BATTLE_PASS_NICK_COLORS.find((c) => c.id === id)?.color || null;
-}
-
-// --- СКИНЫ (цвет тела) + ШЛЯПЫ в едином каталоге ---
 const SHOP_CATALOG = [
   { id: "default", name: "Классик", emoji: "🟢", price: 0, rarity: "common", category: "skin", color: "#33d17a", headColor: "#ffffff" },
   { id: "fire", name: "Огненная", emoji: "🔥", price: 150, rarity: "common", category: "skin", color: "#f66151", headColor: "#ffbe6f" },
@@ -153,26 +102,10 @@ const AVATAR_PRESETS = [
   "🦊", "🐺", "🦁", "🐯", "🐼", "🐸", "🐙", "🦄", "🎃", "💀",
 ];
 
-const RARITY_ORDER = { common: 0, rare: 1, epic: 2, legendary: 3 };
-
-function getSkinDef(id) {
-  const item = SHOP_CATALOG.find((i) => i.id === id && i.category === "skin");
-  if (!item) return getSkinDef("default");
-  return { id: item.id, label: item.name, price: item.price, color: item.color, headColor: item.headColor, trailColor: item.color };
-}
-
-function ownsItem(entry, itemId) {
-  const item = SHOP_CATALOG.find((i) => i.id === itemId);
-  if (!item) return false;
-  if (Number(item.price) === 0) return true;
-  return entry.inventory.includes(itemId);
-}
-
+const COLORS = ["#33d17a", "#62a0ea", "#ffbe6f", "#dc8add", "#f66151", "#8ff0a4", "#99c1f1", "#f9f06b"];
 const SHOP_SKINS = SHOP_CATALOG.filter((i) => i.category === "skin").map((s) => ({
   id: s.id, label: s.name, price: s.price, color: s.color, headColor: s.headColor, trailColor: s.color,
 }));
-
-const COLORS = ["#33d17a", "#62a0ea", "#ffbe6f", "#dc8add", "#f66151", "#8ff0a4", "#99c1f1", "#f9f06b"];
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -183,21 +116,66 @@ const MIME = {
   ".png": "image/png",
 };
 
+// ============================================================
+// BATTLE PASS
+// ============================================================
+
+function getBattlePassTierDef(tier) {
+  const nickColor = BATTLE_PASS_NICK_COLORS[Math.min(tier - 1, BATTLE_PASS_NICK_COLORS.length - 1)];
+  return { tier, scoreRequired: tier * BATTLE_PASS_SCORE_STEP, coins: 50 + (tier - 1) * 30, nickColor };
+}
+
+function getBattlePassConfig() {
+  return {
+    scoreStep: BATTLE_PASS_SCORE_STEP,
+    maxTier: BATTLE_PASS_MAX_TIER,
+    tiers: Array.from({ length: BATTLE_PASS_MAX_TIER }, (_, i) => getBattlePassTierDef(i + 1)),
+    nickColors: [{ id: "default", label: "Стандарт", color: null }, ...BATTLE_PASS_NICK_COLORS],
+  };
+}
+
+function resolveNickColorHex(entry) {
+  const id = entry.stats?.activeNickColor;
+  if (!id || id === "default") return null;
+  return BATTLE_PASS_NICK_COLORS.find((c) => c.id === id)?.color || null;
+}
+
+// ============================================================
+// GAME STATE
+// ============================================================
+
 let nextClientId = 1;
-const sockets = new Map();
-const players = new Map();
+const sockets = new Map(); // id -> socket
+const players = new Map(); // id -> player
 const food = [];
-const bonuses = []; // активные бонус-клетки на поле
-const bosses = createBosses();
+const bonuses = [];
+const bosses = bossMod.createBosses(GRID);
 
-// --- OCCUPANCY SET ---
-// Быстрый O(1) поиск занятых клеток вместо O(n) .some()
+// Map для O(1) поиска профилей по нижнему регистру имени
+// lowerName -> canonicalName
+const profileIndex = new Map();
+let shopData = {}; // canonicalName -> profile entry
+
+const shopClients = new Map(); // socket id -> player name
+const socketSessions = new Map(); // socket id -> auth session
+let leaderboard = [];
+let tickCount = 0;
+let tickJournal = gameSync.createJournal();
+const clientAoi = new Map();
+let gameMode = "classic";
+let taggedPlayerId = null;
+const feedLog = [];
+const feedDedupe = new Map();
+let feedBroadcastTimer = null;
+
+const FEED_DEDUPE_MS = 4000;
+const FEED_BROADCAST_MS = 1200;
+
+// Occupancy set для O(1) проверки занятых клеток
 const occupancySet = new Set();
-
 function occupancyAdd(point) { occupancySet.add(`${point.x}:${point.y}`); }
 function occupancyDel(point) { occupancySet.delete(`${point.x}:${point.y}`); }
 function occupancyHas(point) { return occupancySet.has(`${point.x}:${point.y}`); }
-
 function occupancyRebuild() {
   occupancySet.clear();
   for (const item of food) occupancyAdd(item);
@@ -206,28 +184,12 @@ function occupancyRebuild() {
     for (const part of player.snake) occupancyAdd(part);
   }
 }
-let leaderboard = [];
-let shopData = {};
-const shopClients = new Map(); // socket id -> player name (shop-only sessions)
-const socketSessions = new Map(); // socket id -> auth session row
-let tickCount = 0;
-let tickJournal = gameSync.createJournal();
-const clientAoi = new Map();
-let gameMode = "classic";
-let taggedPlayerId = null; // для Tag Time
-const feedLog = [];
-const feedDedupe = new Map();
-let feedBroadcastTimer = null;
-const FEED_DEDUPE_MS = 4000;
-const FEED_BROADCAST_MS = 1200;
 
-// Тик-интервалы по сложности (отдельный тик для каждого игрока не делаем — берём минимальный)
 let currentTickMs = DIFFICULTIES.normal.tickMs;
 let tickInterval = null;
 
 function restartTickInterval() {
   if (tickInterval) clearInterval(tickInterval);
-  // Найти минимальный тик среди живых игроков
   let minTick = DIFFICULTIES.normal.tickMs;
   for (const p of players.values()) {
     const diff = DIFFICULTIES[p.difficulty] || DIFFICULTIES.normal;
@@ -236,6 +198,34 @@ function restartTickInterval() {
   currentTickMs = minTick;
   tickInterval = setInterval(tick, currentTickMs);
 }
+
+// ============================================================
+// PROFILE INDEX (O(1) lookup)
+// ============================================================
+
+function rebuildProfileIndex() {
+  profileIndex.clear();
+  for (const name of Object.keys(shopData)) {
+    profileIndex.set(name.toLowerCase(), name);
+  }
+}
+
+function profileIndexSet(name) {
+  profileIndex.set(name.toLowerCase(), name);
+}
+
+function profileIndexDelete(name) {
+  profileIndex.delete(name.toLowerCase());
+}
+
+function findCanonicalName(name) {
+  if (!name) return null;
+  return profileIndex.get(name.toLowerCase()) || null;
+}
+
+// ============================================================
+// HTTP SERVER
+// ============================================================
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
@@ -247,50 +237,39 @@ const server = http.createServer((req, res) => {
   }
 
   const authCtx = {
-    db,
-    shopData,
-    getProfile,
-    persistProfile,
-    cleanName,
-    defaultShopEntry,
-    getRequestOrigin,
-    sendJson,
+    db, shopData, getProfile, persistProfile,
+    cleanName, defaultShopEntry, getRequestOrigin, sendJson,
   };
 
   auth.handleRequest(req, res, url, authCtx).then((handled) => {
     if (handled) return;
     handleHttpRequest(req, res, url);
-  }).catch((error) => {
-    console.error("HTTP:", error.message);
+  }).catch((err) => {
+    console.error("HTTP:", err.message);
     res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
     res.end("Server error");
   });
 });
 
 function handleHttpRequest(req, res, url) {
-
   if (url.pathname === "/health") {
     sendJson(res, { ok: true, uptime: process.uptime(), players: players.size, sockets: sockets.size });
     return;
   }
-
   if (url.pathname === "/info") {
     const base = getRequestOrigin(req);
-    sendJson(res, {
-      name: "THE ULTIMATE MULTIPLAYER SNAKE ATTACK",
-      publicUrl: base.http,
-      wsUrl: base.ws,
-      playersOnline: players.size,
-    });
+    sendJson(res, { name: "THE ULTIMATE MULTIPLAYER SNAKE ATTACK", publicUrl: base.http, wsUrl: base.ws, playersOnline: players.size });
     return;
   }
-
   if (url.pathname === "/leaderboard") {
     const sort = url.searchParams.get("sort");
     sendJson(res, sort === "coins" ? getWealthLeaderboard() : getEnrichedLeaderboard());
     return;
   }
-  if (url.pathname === "/shop") { sendJson(res, { skins: SHOP_SKINS, catalog: SHOP_CATALOG, playerData: shopData }); return; }
+  if (url.pathname === "/shop") {
+    sendJson(res, { skins: SHOP_SKINS, catalog: SHOP_CATALOG, playerData: shopData });
+    return;
+  }
   if (url.pathname === "/catalog") {
     sendJson(res, { catalog: SHOP_CATALOG, skins: SHOP_SKINS, avatars: AVATAR_PRESETS, battlePass: getBattlePassConfig() });
     return;
@@ -298,22 +277,13 @@ function handleHttpRequest(req, res, url) {
   if (url.pathname === "/profile") {
     const name = profileName(url.searchParams.get("name") || "");
     if (!name) { sendJson(res, { error: "no name" }); return; }
-    const key = Object.keys(shopData).find((k) => k.toLowerCase() === name.toLowerCase());
+    const key = findCanonicalName(name);
     if (!key) { sendJson(res, { error: "not_found" }); return; }
     const prof = getProfile(key);
     sendJson(res, {
-      id: prof.id || null,
-      name: key,
-      coins: prof.coins,
-      activeSkin: prof.activeSkin,
-      avatar: prof.avatar,
-      googlePicture: prof.stats?.googlePicture || null,
-      stats: {
-        games: prof.stats?.games || 0,
-        deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0,
-        best: prof.stats?.best || 0,
-        playTimeMs: prof.stats?.playTimeMs || 0,
-      },
+      id: prof.id || null, name: key, coins: prof.coins, activeSkin: prof.activeSkin,
+      avatar: prof.avatar, googlePicture: prof.stats?.googlePicture || null,
+      stats: { games: prof.stats?.games || 0, deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0, best: prof.stats?.best || 0, playTimeMs: prof.stats?.playTimeMs || 0 },
     });
     return;
   }
@@ -323,40 +293,34 @@ function handleHttpRequest(req, res, url) {
       .filter(([name]) => !q || name.toLowerCase().includes(q))
       .map(([name, prof]) => {
         const p = normalizeProfile(prof);
-        return {
-          name,
-          avatar: p.avatar,
-          googlePicture: p.stats?.googlePicture || null,
-          games: p.stats.games || 0,
-          deaths: p.stats.deaths || 0,
-          best: p.stats.best || 0,
-          coins: p.coins || 0,
-          playTimeMs: p.stats.playTimeMs || 0,
-        };
+        return { name, avatar: p.avatar, googlePicture: p.stats?.googlePicture || null, games: p.stats.games || 0, deaths: p.stats.deaths || 0, best: p.stats.best || 0, coins: p.coins || 0, playTimeMs: p.stats.playTimeMs || 0 };
       })
       .sort((a, b) => a.name.localeCompare(b.name, "ru"))
       .slice(0, 50);
     sendJson(res, list);
     return;
   }
-  if (url.pathname === "/modes") { sendJson(res, { modes: MODES, difficulties: DIFFICULTIES }); return; }
+  if (url.pathname === "/modes") {
+    sendJson(res, { modes: MODES, difficulties: DIFFICULTIES });
+    return;
+  }
 
   const requestPath = decodeURIComponent(url.pathname);
-  const safePath = path.normalize(requestPath === "/" ? "/index.html" : requestPath).replace(/^(\.\.[/\\])+/, "");
+  const safePath = path.normalize(requestPath === "/" ? "/index.html" : requestPath).replace(/^(\.\.([/\\]|$))+/, "");
   const filePath = path.join(PUBLIC_DIR, safePath);
 
   if (!filePath.startsWith(PUBLIC_DIR)) { res.writeHead(403); res.end("Forbidden"); return; }
 
-  fs.readFile(filePath, (error, content) => {
-    if (error) { res.writeHead(404); res.end("Not found"); return; }
-    res.writeHead(200, {
-      "Content-Type": MIME[path.extname(filePath)] || "application/octet-stream",
-      "Cache-Control": "no-store",
-      ...corsHeaders(),
-    });
+  fs.readFile(filePath, (err, content) => {
+    if (err) { res.writeHead(404); res.end("Not found"); return; }
+    res.writeHead(200, { "Content-Type": MIME[path.extname(filePath)] || "application/octet-stream", "Cache-Control": "no-store", ...corsHeaders() });
     res.end(content);
   });
 }
+
+// ============================================================
+// WEBSOCKET
+// ============================================================
 
 server.on("upgrade", (req, socket) => {
   if (req.headers.upgrade?.toLowerCase() !== "websocket") { socket.destroy(); return; }
@@ -366,25 +330,27 @@ server.on("upgrade", (req, socket) => {
     .digest("base64");
 
   socket.write(
-    "HTTP/1.1 101 Switching Protocols\r\n" +
-    "Upgrade: websocket\r\n" +
-    "Connection: Upgrade\r\n" +
+    "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
     `Sec-WebSocket-Accept: ${accept}\r\n\r\n`
   );
 
   const id = String(nextClientId++);
   sockets.set(id, socket);
+
   auth.getSession(req, db).then((session) => {
     if (session) {
       socketSessions.set(id, session);
       send(id, { type: "auth_ready", name: session.player_name, googleId: session.google_id });
     }
   }).catch(() => { });
+
   socket.on("data", (chunk) => readFrames(id, chunk));
   socket.on("close", () => removeClient(id));
   socket.on("error", () => removeClient(id));
+
   send(id, {
-    type: "hello", id, grid: GRID, leaderboard: getEnrichedLeaderboard(),
+    type: "hello", id, grid: GRID,
+    leaderboard: getEnrichedLeaderboard(),
     skins: SHOP_SKINS, catalog: SHOP_CATALOG, avatars: AVATAR_PRESETS,
     modes: MODES, difficulties: DIFFICULTIES,
     shopData: defaultShopEntry(),
@@ -394,82 +360,185 @@ server.on("upgrade", (req, socket) => {
   });
 });
 
-async function bootstrap() {
-  try {
-    await db.init();
-    shopData = await db.loadAllPlayers();
-    leaderboard = await db.loadLeaderboard(MAX_LEADERS);
-    console.log(`PostgreSQL: ${Object.keys(shopData).length} игроков, ${leaderboard.length} рекордов`);
-  } catch (error) {
-    console.error("PostgreSQL недоступен:", error.message);
-    console.error("Проверь DATABASE_URL и что база запущена. Пример: npm run db:reset");
-    process.exit(1);
-  }
+function readFrames(id, buffer) {
+  let offset = 0;
+  while (offset + 2 <= buffer.length) {
+    const first = buffer[offset++];
+    const second = buffer[offset++];
+    const opcode = first & 0x0f;
+    const masked = Boolean(second & 0x80);
+    let length = second & 0x7f;
 
-  server.listen(PORT, HOST, () => {
-    food.length = 0;
-    fillFood();
-    tickInterval = setInterval(tick, DIFFICULTIES.normal.tickMs);
-    // setInterval(broadcastState, 250) убран — broadcastState вызывается в конце каждого tick()
-    // чтобы клиент получал обновления строго синхронно с игровой логикой
-    setInterval(spawnBonuses, 8000);
-    setInterval(broadcastPresence, 5000);
-    setInterval(pingClients, 25000);
-    setInterval(() => db.cleanupAuthSessions().catch(() => { }), 60 * 60 * 1000);
-    if (auth.isGoogleAuthEnabled()) {
-      const sampleRedirect = process.env.GOOGLE_REDIRECT_URI
-        || (process.env.PUBLIC_URL ? `${process.env.PUBLIC_URL.replace(/\/$/, "")}/auth/google/callback` : "(из запроса)");
-      console.log("Google OAuth: включён");
-      console.log(`Google OAuth redirect: ${sampleRedirect}`);
-    } else console.log("Google OAuth: выключен (заполни GOOGLE_CLIENT_ID/SECRET в .env)");
-    console.log(`Snake Attack → http://localhost:${PORT}`);
-    for (const address of getLanAddresses()) console.log(`LAN → http://${address}:${PORT}`);
-  });
-}
+    if (length === 126) {
+      if (offset + 2 > buffer.length) return;
+      length = buffer.readUInt16BE(offset); offset += 2;
+    } else if (length === 127) {
+      if (offset + 8 > buffer.length) return;
+      const h = buffer.readUInt32BE(offset); const l = buffer.readUInt32BE(offset + 4);
+      length = h * 2 ** 32 + l; offset += 8;
+    }
 
-bootstrap().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+    let mask;
+    if (masked) {
+      if (offset + 4 > buffer.length) return;
+      mask = buffer.subarray(offset, offset + 4); offset += 4;
+    }
+    if (offset + length > buffer.length) return;
 
-server.on("error", (error) => {
-  if (error.code === "EADDRINUSE") console.error(`Порт ${PORT} занят.`);
-  else console.error("Ошибка сервера:", error.message);
-  process.exit(1);
-});
+    const payload = Buffer.from(buffer.subarray(offset, offset + length));
+    offset += length;
+    if (masked) for (let i = 0; i < payload.length; i++) payload[i] ^= mask[i % 4];
 
-function shutdown(signal) {
-  console.log(`${signal}: остановка…`);
-  if (tickInterval) clearInterval(tickInterval);
-  for (const socket of sockets.values()) {
-    try { socket.destroy(); } catch { /* ignore */ }
-  }
-  server.close(() => {
-    db.close().finally(() => process.exit(0));
-  });
-}
-
-process.on("SIGINT", () => shutdown("SIGINT"));
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-
-function pingClients() {
-  const frame = makeFrame(JSON.stringify({ type: "ping", t: Date.now() }));
-  for (const [id, socket] of sockets) {
-    if (socket.destroyed || socket.writableEnded) continue;
-    try { socket.write(frame); } catch { removeClient(id); }
+    if (opcode === 8) { removeClient(id); return; }
+    if (opcode === 1) {
+      try { handleMessage(id, JSON.parse(payload.toString("utf8"))); }
+      catch { send(id, { type: "notice", text: "Ошибка чтения сообщения." }); }
+    }
   }
 }
 
-function getRequestOrigin(req) {
-  const host = (req.headers["x-forwarded-host"] || req.headers.host || `localhost:${PORT}`).split(",")[0].trim();
-  const proto = (req.headers["x-forwarded-proto"] || "http").split(",")[0].trim();
-  const wsProto = proto === "https" ? "wss" : "ws";
-  return { http: `${proto}://${host}`, ws: `${wsProto}://${host}` };
+function makeFrame(text) {
+  const payload = Buffer.from(text);
+  const length = payload.length;
+  if (length < 126) return Buffer.concat([Buffer.from([0x81, length]), payload]);
+  if (length < 65536) {
+    const h = Buffer.alloc(4); h[0] = 0x81; h[1] = 126; h.writeUInt16BE(length, 2);
+    return Buffer.concat([h, payload]);
+  }
+  const h = Buffer.alloc(10); h[0] = 0x81; h[1] = 127; h.writeUInt32BE(0, 2); h.writeUInt32BE(length, 6);
+  return Buffer.concat([h, payload]);
+}
+
+function send(id, payload) {
+  const socket = sockets.get(id);
+  if (!socket || socket.destroyed) return;
+  try { socket.write(makeFrame(JSON.stringify(payload))); } catch { removeClient(id); }
+}
+
+function broadcast(payload) { for (const id of sockets.keys()) send(id, payload); }
+
+function removeClient(id) {
+  sockets.delete(id);
+  shopClients.delete(id);
+  socketSessions.delete(id);
+  clientAoi.delete(id);
+  const player = players.get(id);
+  if (player) {
+    trackDisconnectStats(player);
+    recordScore(player);
+    players.delete(id);
+    broadcastGameSync();
+    broadcastPresence();
+  }
+}
+
+// ============================================================
+// MESSAGE DISPATCHER
+// ============================================================
+
+// Асинхронные хендлеры — вызываются с catch
+const asyncHandlers = {
+  shop_connect: (id, msg) => handleShopConnect(id, msg),
+  save_profile: (id, msg) => saveProfile(id, msg),
+  join: (id, msg) => handleJoin(id, msg),
+};
+
+// Синхронные хендлеры не требующие наличия player
+const prePlayerHandlers = {
+  ping: () => { },
+  buy_item: (id, msg) => buyItem(id, msg.itemId, msg.name),
+  equip_item: (id, msg) => equipItem(id, msg.itemId, msg.name),
+  unequip_item: (id, msg) => unequipItem(id, msg.itemId, msg.name),
+  equip_nick_color: (id, msg) => equipNickColor(id, msg.colorId, msg.name),
+  buy_skin: (id, msg) => buyItem(id, msg.skinId),
+  equip_skin: (id, msg) => equipItem(id, msg.skinId),
+};
+
+// Хендлеры требующие наличия player
+const playerHandlers = {
+  turn: (id, msg, player) => {
+    if (player.frozenUntil && Date.now() < player.frozenUntil) return;
+    const next = directionFromKey(msg.direction);
+    if (next && !isOpposite(player.direction, next)) player.nextDirection = next;
+  },
+  restart: (id, msg, player) => {
+    recordScore(player);
+    startNewLife(player.name);
+    const skin = getSkinDef(getProfile(player.name).activeSkin);
+    players.set(id, createPlayer(id, player.name, player.difficulty, skin));
+    sendSnapshot(id);
+    broadcastGameSync();
+    broadcastPresence();
+  },
+  change_difficulty: (id, msg, player) => {
+    if (DIFFICULTIES[msg.difficulty]) {
+      player.difficulty = msg.difficulty;
+      restartTickInterval();
+    }
+  },
+};
+
+function handleMessage(id, message) {
+  const { type } = message;
+
+  if (asyncHandlers[type]) {
+    asyncHandlers[type](id, message).catch((err) => console.error(`${type}:`, err.message));
+    return;
+  }
+
+  if (prePlayerHandlers[type]) {
+    prePlayerHandlers[type](id, message);
+    return;
+  }
+
+  const player = players.get(id);
+  if (!player) return;
+
+  if (playerHandlers[type]) {
+    playerHandlers[type](id, message, player);
+  }
 }
 
 // ============================================================
 // GAME LOGIC
 // ============================================================
+
+function buildSyncCtx() {
+  return {
+    grid: GRID, players, food, bonuses, bosses, bonusTypes: BONUS_TYPES,
+    tickCount, tickMs: currentTickMs, gameMode, taggedPlayerId,
+    clientAoi, extrasFor: extrasForPlayer,
+  };
+}
+
+function sendSnapshot(clientId) {
+  const snap = gameSync.buildSnapshot(buildSyncCtx(), clientId);
+  if (snap) send(clientId, snap);
+}
+
+function broadcastGameSync() {
+  const ctx = buildSyncCtx();
+  for (const clientId of players.keys()) {
+    const delta = gameSync.buildDelta(ctx, clientId, tickJournal);
+    if (delta) send(clientId, delta);
+  }
+}
+
+function broadcastGameDelta(journal) {
+  const ctx = buildSyncCtx();
+  for (const clientId of players.keys()) {
+    const delta = gameSync.buildDelta(ctx, clientId, journal);
+    if (delta) send(clientId, delta);
+  }
+}
+
+function broadcastPresence() {
+  broadcast(gameSync.buildPresence(buildSyncCtx()));
+}
+
+function resyncPlayer(clientId) {
+  sendSnapshot(clientId);
+}
 
 function pushFeed(kind, text, playerName = "") {
   const dedupeKey = `${kind}:${text}`;
@@ -477,7 +546,6 @@ function pushFeed(kind, text, playerName = "") {
   const lastAt = feedDedupe.get(dedupeKey);
   if (lastAt && now - lastAt < FEED_DEDUPE_MS) return;
   feedDedupe.set(dedupeKey, now);
-
   feedLog.unshift({ id: `${now}-${feedLog.length}`, kind, text, playerName, at: now });
   if (feedLog.length > 12) feedLog.length = 12;
   scheduleFeedBroadcast();
@@ -491,13 +559,6 @@ function scheduleFeedBroadcast() {
   }, FEED_BROADCAST_MS);
 }
 
-function comboMultiplier(combo) {
-  if (combo >= 10) return 2;
-  if (combo >= 6) return 1.5;
-  if (combo >= 3) return 1.25;
-  return 1;
-}
-
 function extrasForPlayer(p) {
   const cos = getPlayerCosmetics(p.name);
   return {
@@ -505,147 +566,85 @@ function extrasForPlayer(p) {
     spawnFrozenLeft: Math.max(0, (p.frozenUntil || 0) - Date.now()),
     heat: Math.min(100, Math.round((p.score || 0) * 0.4 + (p.combo || 0) * 9)),
     isTagged: gameMode === "tag_time" && p.id === taggedPlayerId,
-    avatar: cos.avatar,
-    snakeHatEmoji: cos.snakeHatEmoji,
-    snakeHatId: cos.snakeHatId,
+    avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji, snakeHatId: cos.snakeHatId,
     nickColor: resolveNickColorHex(getProfile(p.name)),
   };
 }
 
-function buildSyncCtx() {
-  return {
-    grid: GRID,
-    players,
-    food,
-    bonuses,
-    bosses,
-    bonusTypes: BONUS_TYPES,
-    tickCount,
-    tickMs: currentTickMs,
-    gameMode,
-    taggedPlayerId,
-    clientAoi,
-    extrasFor: extrasForPlayer,
-  };
-}
-
-function sendSnapshot(clientId) {
-  const snap = gameSync.buildSnapshot(buildSyncCtx(), clientId);
-  if (snap) send(clientId, snap);
-}
-
-function broadcastGameDelta(journal) {
-  const ctx = buildSyncCtx();
-  for (const clientId of players.keys()) {
-    const delta = gameSync.buildDelta(ctx, clientId, journal);
-    if (delta) send(clientId, delta);
-  }
-}
-
-function broadcastGameSync() {
-  const ctx = buildSyncCtx();
-  for (const clientId of players.keys()) {
-    const delta = gameSync.buildDelta(ctx, clientId, tickJournal);
-    if (delta) send(clientId, delta);
-  }
-}
-
-function broadcastPresence() {
-  broadcast(gameSync.buildPresence(buildSyncCtx()));
-}
-
-function pushFoodItem(item) {
-  food.push(item);
-  tickJournal.foodAdded.push(gameSync.compactFood(item));
-}
-
-function getMovementPathCells(steps = FOOD_PATH_AVOID_CELLS) {
-  const cells = new Set();
-  for (const player of players.values()) {
-    if (!player.alive) continue;
-    if (player.frozenUntil && Date.now() < player.frozenUntil) continue;
-    if (player.activeBonus === "slow_down" && tickCount % 2 === 0) continue;
-    const dir = player.nextDirection || player.direction;
-    if (!dir) continue;
-    const diff = DIFFICULTIES[player.difficulty] || DIFFICULTIES.normal;
-    let x = player.snake[0].x;
-    let y = player.snake[0].y;
-    for (let i = 0; i < steps; i += 1) {
-      x += dir.x;
-      y += dir.y;
-      if (!insideGrid({ x, y })) {
-        if (diff.wallDeath) break;
-        x = (x + GRID.width) % GRID.width;
-        y = (y + GRID.height) % GRID.height;
-      }
-      cells.add(pointKey({ x, y }));
-    }
-  }
-  return cells;
+function comboMultiplier(combo) {
+  if (combo >= 10) return 2;
+  if (combo >= 6) return 1.5;
+  if (combo >= 3) return 1.25;
+  return 1;
 }
 
 function tick() {
   if (players.size === 0) return;
   tickJournal = gameSync.createJournal();
   tickCount += 1;
-  const pathCells = getMovementPathCells();
-  fillFood({ avoidCells: pathCells });
+
+  const pathCells = foodMod.getMovementPathCells(players, { GRID, tickCount });
+
+  foodMod.fillFood({
+    food, players, occupancySet, tickJournal, GRID,
+    avoidCells: pathCells,
+    anyBossOccupies: (pt) => bossMod.anyBossOccupies(bosses, pt),
+  });
+
   if (tickCount % (bosses.some((b) => b.enragedTicks > 0) ? 3 : BOSS_MOVE_EVERY) === 0) {
-    moveBosses(pathCells);
+    bossMod.moveBosses({
+      bosses, players, food, tickCount, GRID,
+      avoidCells: pathCells,
+      pushFeed, broadcast, killPlayer,
+      pushFoodItem: (item) => { food.push(item); tickJournal.foodAdded.push(foodMod.compactFood(item)); },
+      createBadFood: foodMod.createBadFood,
+      insideGrid: (pt) => foodMod.insideGrid(pt, GRID),
+      pointKey: foodMod.pointKey,
+    });
     tickJournal.bossesChanged = true;
   }
+
   tickBonusEffects();
-  // Перестраиваем occupancySet один раз за тик вместо O(n) .some() в каждой проверке
   occupancyRebuild();
 
   const occupied = new Map();
-  for (const player of players.values()) {
-    if (!player.alive) continue;
-    for (const part of player.snake) occupied.set(pointKey(part), player.id);
-  }
-
   const planned = new Map();
   const targetCounts = new Map();
+
+  for (const player of players.values()) {
+    if (!player.alive) continue;
+    for (const part of player.snake) occupied.set(foodMod.pointKey(part), player.id);
+  }
+
   for (const player of players.values()) {
     if (!player.alive) continue;
     if (player.frozenUntil && Date.now() < player.frozenUntil) continue;
-    // Speed up / slow down bonus
     if (player.activeBonus === "slow_down" && tickCount % 2 === 0) continue;
     player.direction = player.nextDirection;
     const head = player.snake[0];
     const nextHead = { x: head.x + player.direction.x, y: head.y + player.direction.y };
     planned.set(player.id, nextHead);
-    const key = pointKey(nextHead);
+    const key = foodMod.pointKey(nextHead);
     targetCounts.set(key, (targetCounts.get(key) || 0) + 1);
   }
 
   for (const player of players.values()) {
     if (!player.alive || !planned.has(player.id)) continue;
     const nextHead = planned.get(player.id);
-    const key = pointKey(nextHead);
+    const key = foodMod.pointKey(nextHead);
     const diff = DIFFICULTIES[player.difficulty] || DIFFICULTIES.normal;
 
-    // Стена
-    if (!insideGrid(nextHead)) {
+    if (!foodMod.insideGrid(nextHead, GRID)) {
       if (diff.wallDeath) { killPlayer(player, "Врезался в стену"); continue; }
-      else {
-        // Easy: проходит сквозь стену
-        nextHead.x = (nextHead.x + GRID.width) % GRID.width;
-        nextHead.y = (nextHead.y + GRID.height) % GRID.height;
-      }
+      nextHead.x = (nextHead.x + GRID.width) % GRID.width;
+      nextHead.y = (nextHead.y + GRID.height) % GRID.height;
     }
 
-    // Лоб в лоб
     if (targetCounts.get(key) > 1) { killPlayer(player, "Столкновение лоб в лоб"); continue; }
 
-    // Босс
-    const killer = bossAt(nextHead);
-    if (killer) {
-      killPlayer(player, `${killer.name} поймал змейку`, { at: nextHead, boss: killer });
-      continue;
-    }
+    const killerBoss = bossMod.bossAt(bosses, nextHead);
+    if (killerBoss) { killPlayer(player, `${killerBoss.name} поймал змейку`, { at: nextHead, boss: killerBoss }); continue; }
 
-    // Другая змейка (ghost бонус позволяет проходить сквозь)
     if (player.activeBonus !== "ghost" && occupied.has(key)) {
       if (gameMode === "tag_time" && player.id === taggedPlayerId && occupied.get(key) !== player.id) {
         const hitId = occupied.get(key);
@@ -655,20 +654,17 @@ function tick() {
       } else {
         const killerId = occupied.get(key);
         const killer = killerId && killerId !== player.id ? players.get(killerId) : null;
-        killPlayer(player, killer ? `${killer.name} убил ${player.name}` : "Столкнулся со змейкой", {
-          at: nextHead,
-          killerPlayer: killer,
-        });
+        killPlayer(player, killer ? `${killer.name} убил ${player.name}` : "Столкнулся со змейкой", { at: nextHead, killerPlayer: killer });
         continue;
       }
     }
 
     const eatenBonusIdx = bonuses.findIndex((b) => b.x === nextHead.x && b.y === nextHead.y);
-    const eatenBonus = eatenBonusIdx >= 0 ? bonuses[eatenBonusIdx] : null;
-    if (eatenBonus) {
-      tickJournal.bonusRemoved.push([eatenBonus.x, eatenBonus.y]);
+    if (eatenBonusIdx >= 0) {
+      const bonus = bonuses[eatenBonusIdx];
+      tickJournal.bonusRemoved.push([bonus.x, bonus.y]);
       bonuses.splice(eatenBonusIdx, 1);
-      activateBonus(player, eatenBonus.bonusType);
+      activateBonus(player, bonus.bonusType);
     }
 
     const eatenIdx = food.findIndex((item) => item.x === nextHead.x && item.y === nextHead.y);
@@ -728,20 +724,20 @@ function tickBonusEffects() {
 }
 
 function spawnBonuses() {
-  if (players.size === 0) return;
-  if (bonuses.length >= 3) return;
-  const point = randomEmptyPoint({ avoidNearHeads: true });
+  if (players.size === 0 || bonuses.length >= 3) return;
+  const point = foodMod.randomEmptyPoint(food, {
+    avoidCells: null, anyBossOccupies: (pt) => bossMod.anyBossOccupies(bosses, pt),
+    occupancySet, GRID, avoidNearHeads: true, players,
+  });
   if (!point) return;
   const types = Object.keys(BONUS_TYPES);
   const bonusType = types[Math.floor(Math.random() * types.length)];
   bonuses.push({ ...point, bonusType, spawnedAt: Date.now() });
+
   const journal = gameSync.createJournal();
-  journal.bonusAdded.push(gameSync.compactBonus(
-    { x: point.x, y: point.y, bonusType },
-    BONUS_TYPES,
-  ));
+  journal.bonusAdded.push(gameSync.compactBonus({ x: point.x, y: point.y, bonusType }, BONUS_TYPES));
   broadcastGameDelta(journal);
-  // Бонус исчезает через 15 сек если никто не взял
+
   setTimeout(() => {
     const idx = bonuses.findIndex((b) => b.x === point.x && b.y === point.y);
     if (idx >= 0) {
@@ -780,8 +776,8 @@ function killPlayer(player, reason, opts = {}) {
     pushFeed("death", `💀 ${player.name}: ${reason}`, player.name);
   }
   const hitCell = opts.at || player.snake[0];
-  const killerBoss = opts.boss || bossAt(hitCell) || bosses.find((b) => reason.includes(b.name));
-  if (killerBoss) enrageBoss(killerBoss);
+  const killerBoss = opts.boss || bossMod.bossAt(bosses, hitCell) || bosses.find((b) => reason.includes(b.name));
+  if (killerBoss) bossMod.enrageBoss(killerBoss, bosses, pushFeed, broadcast);
 }
 
 function recordScore(player) {
@@ -797,367 +793,141 @@ function recordScore(player) {
   }
 }
 
-function broadcastState() {
-  broadcastGameSync();
-}
-
-function resyncPlayer(clientId) {
-  sendSnapshot(clientId);
-}
-
 // ============================================================
-// BOSSES
+// PLAYER CREATION
 // ============================================================
 
-function createBosses() {
-  const defs = [
-    { id: "void", name: "VØIDR", color: "#f66151", trait: "dash", x: 20, y: 20 },
-    { id: "nyx", name: "NYX-7", color: "#7c3aed", trait: "blink", x: GRID.width - 24, y: 20 },
-    { id: "scrap", name: "SCR4P", color: "#ea580c", trait: "poison", x: Math.floor(GRID.width / 2) - 2, y: GRID.height - 24 },
-  ];
-  return defs.map((def) => ({
-    ...def,
-    size: 1,
-    pulse: 0,
-    angry: false,
-    phase: "idle",
-    enragedTicks: 0,
-    agitatedTicks: 0,
-    kills: 0,
-    moveCooldown: 0,
-  }));
-}
+function createPlayer(id, name, difficulty, skin) {
+  const layout = foodMod.findSpawnLayout({
+    players, food, bonuses, GRID,
+    anyBossOccupies: (pt) => bossMod.anyBossOccupies(bosses, pt),
+    distanceToNearestBoss: (pt) => bossMod.distanceToNearestBoss(bosses, pt),
+    BOSS_SPAWN_BUFFER,
+  });
+  const direction = layout?.direction || { x: 1, y: 0 };
+  const snake = layout?.snake || [{ x: Math.floor(GRID.width / 2), y: Math.floor(GRID.height / 2) }];
 
-function clampBossInGrid(boss) {
-  boss.x = Math.max(0, Math.min(boss.x, GRID.width - boss.size));
-  boss.y = Math.max(0, Math.min(boss.y, GRID.height - boss.size));
-}
+  foodMod.clearBoardAroundSpawn(snake[0], { food, bonuses });
+  const shopEntry = getProfile(name);
+  const cos = getPlayerCosmetics(name);
 
-function enrageBoss(boss) {
-  boss.kills = (boss.kills || 0) + 1;
-  const wasEnraged = boss.enragedTicks > 0;
-  boss.enragedTicks = Math.max(boss.enragedTicks || 0, 90);
-  boss.size = 2;
-  boss.phase = "enraged";
-  boss.angry = true;
-  clampBossInGrid(boss);
-  if (!wasEnraged) {
-    pushFeed("boss", `👹 ${boss.name} в ЯРОСТИ!`, "");
-    broadcast({ type: "notice", text: `⚠ ${boss.name} вошёл в ярость!` });
-    for (const other of bosses) {
-      if (other.id !== boss.id) other.agitatedTicks = Math.max(other.agitatedTicks || 0, 50);
-    }
-  }
-}
-
-function updateBossPhase(boss, dist) {
-  if (boss.enragedTicks > 0) {
-    boss.enragedTicks -= 1;
-    boss.phase = "enraged";
-    boss.size = 2;
-    if (boss.enragedTicks <= 0) {
-      boss.size = 1;
-      boss.phase = dist <= BOSS_HUNT_RANGE ? "hunt" : "idle";
-    }
-    return;
-  }
-  boss.size = 1;
-  boss.phase = dist <= BOSS_HUNT_RANGE ? "hunt" : dist <= BOSS_CHASE_RANGE ? "stalk" : "idle";
-}
-
-function moveBosses(avoidCells) {
-  const alive = [...players.values()].filter((p) => p.alive);
-  removeFoodUnderBosses();
-
-  for (const boss of bosses) {
-    if (boss.agitatedTicks > 0) boss.agitatedTicks -= 1;
-
-    if (boss.moveCooldown > 0) {
-      boss.moveCooldown -= 1;
-      boss.pulse = (boss.pulse + 1) % 1000;
-      continue;
-    }
-
-    const target = alive.length
-      ? alive.reduce((best, p) => {
-        const d = distanceToBoss(p.snake[0], boss);
-        return !best || d < best.dist ? { player: p, dist: d } : best;
-      }, null)?.player
-      : null;
-    const dist = target ? distanceToBoss(target.snake[0], boss) : 999;
-    boss.angry = dist <= BOSS_HUNT_RANGE || boss.phase === "enraged";
-    updateBossPhase(boss, dist);
-
-    const head = target?.snake?.[0];
-    let move = pickBossMove(boss, head, dist);
-    if (move) applyBossStep(boss, move, avoidCells);
-
-    if (boss.trait === "dash" && boss.phase === "enraged" && head && Math.random() < 0.38) {
-      move = pickBossMove(boss, head, distanceToBoss(head, boss));
-      if (move) applyBossStep(boss, move, avoidCells);
-    }
-    if (boss.trait === "blink" && (boss.phase === "stalk" || boss.agitatedTicks > 0) && head && dist <= BOSS_CHASE_RANGE && Math.random() < 0.22) {
-      move = pickBossMove(boss, head, distanceToBoss(head, boss));
-      if (move) applyBossStep(boss, move, avoidCells);
-    }
-
-    boss.pulse = (boss.pulse + 1) % 1000;
-  }
-
-  for (const player of alive) {
-    const head = player.snake[0];
-    const killer = bossAt(head);
-    if (killer) {
-      killPlayer(player, `${killer.name} схватил за голову`, { at: head, boss: killer });
-      killer.moveCooldown = killer.phase === "enraged" ? 2 : 4;
-    }
-  }
-}
-
-function applyBossStep(boss, move, avoidCells) {
-  const prevX = boss.x;
-  const prevY = boss.y;
-  boss.x += move.x;
-  boss.y += move.y;
-  clampBossInGrid(boss);
-
-  if (boss.trait === "poison" && boss.phase === "enraged") {
-    leavePoisonCell(boss, prevX, prevY, avoidCells);
-  }
-}
-
-function leavePoisonCell(boss, x, y, avoidCells) {
-  if (Math.random() > 0.45) return;
-  if (!insideGrid({ x, y }) || anyBossOccupies({ x, y })) return;
-  if (avoidCells?.has(pointKey({ x, y }))) return;
-  if (food.some((item) => item.x === x && item.y === y)) return;
-  if (food.length >= FOOD_TARGET + 24) return;
-  pushFoodItem(createBadFood({ x, y }));
-}
-
-function pickBossMove(boss, target, dist) {
-  const legal = shuffledDirs().filter((m) => bossCanMove(boss, m));
-  if (!legal.length) return null;
-
-  const chaseRange = boss.phase === "enraged"
-    ? BOSS_CHASE_RANGE + 12
-    : boss.agitatedTicks > 0
-      ? BOSS_CHASE_RANGE + 8
-      : boss.trait === "blink"
-        ? BOSS_CHASE_RANGE + 6
-        : BOSS_CHASE_RANGE;
-  const randomChance = boss.phase === "enraged" ? 0.03 : boss.agitatedTicks > 0 ? 0.1 : BOSS_RANDOM_MOVE_CHANCE;
-  const shouldChase = target && dist <= chaseRange && Math.random() > randomChance;
-
-  const scoreMove = (m) => {
-    const nx = boss.x + m.x;
-    const ny = boss.y + m.y;
-    let score = Math.min(nx, ny, GRID.width - nx - boss.size, GRID.height - ny - boss.size) * 2;
-    if (shouldChase) score -= Math.abs(target.x - nx) + Math.abs(target.y - ny);
-    return score;
+  const player = {
+    id, name, difficulty,
+    color: skin.color !== "rainbow" ? skin.color : COLORS[(Number(id) - 1) % COLORS.length],
+    headColor: skin.headColor || "#ffffff",
+    skin: skin.id,
+    rainbow: skin.color === "rainbow",
+    snake, direction, nextDirection: direction,
+    alive: true, score: 0, coins: shopEntry.coins || 0,
+    best: bestForName(name), deaths: 0, reason: "",
+    coinsEarned: 0, beatPersonalBest: false, sessionMvp: false,
+    activeBonus: null, bonusExpires: null,
+    combo: 0, maxCombo: 0,
+    avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji, snakeHatId: cos.snakeHatId,
+    nickColor: resolveNickColorHex(shopEntry),
+    frozenUntil: Date.now() + SPAWN_FREEZE_MS,
   };
 
-  if (shouldChase) {
-    const preferred = bossMovesToward(boss, target);
-    const direct = preferred.find((m) => bossCanMove(boss, m));
-    if (direct) return direct;
-  }
-
-  legal.sort((a, b) => scoreMove(b) - scoreMove(a));
-  return legal[0];
+  foodMod.removeEntitiesUnderSnake(player, { food, bonuses });
+  return player;
 }
 
-function bossMovesToward(boss, point) {
-  const dx = point.x - boss.x;
-  const dy = point.y - boss.y;
-  const h = dx === 0 ? [] : [{ x: Math.sign(dx), y: 0 }];
-  const v = dy === 0 ? [] : [{ x: 0, y: Math.sign(dy) }];
-  return Math.abs(dx) > Math.abs(dy) ? [...h, ...v, ...shuffledDirs()] : [...v, ...h, ...shuffledDirs()];
-}
-
-function bossCanMove(boss, move) {
-  const next = { x: boss.x + move.x, y: boss.y + move.y };
-  if (next.x < 0 || next.y < 0 || next.x + boss.size > GRID.width || next.y + boss.size > GRID.height) return false;
-  for (const other of bosses) {
-    if (other.id === boss.id) continue;
-    if (rectsOverlap(next.x, next.y, boss.size, boss.size, other.x, other.y, other.size)) return false;
-  }
-  return true;
-}
-
-function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
-  return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
-}
-
-function distanceToBoss(point, boss) {
-  return Math.abs(point.x - boss.x) + Math.abs(point.y - boss.y);
-}
-
-function distanceToNearestBoss(point) {
-  if (!bosses.length) return 999;
-  return Math.min(...bosses.map((boss) => distanceToBoss(point, boss)));
-}
-
-function bossOccupies(boss, point) {
-  return point.x >= boss.x && point.x < boss.x + boss.size && point.y >= boss.y && point.y < boss.y + boss.size;
-}
-
-function bossAt(point) {
-  return bosses.find((boss) => bossOccupies(boss, point)) || null;
-}
-
-function anyBossOccupies(point) {
-  return bosses.some((boss) => bossOccupies(boss, point));
-}
-
-function removeFoodUnderBosses() {
-  for (let i = food.length - 1; i >= 0; i--) {
-    if (anyBossOccupies(food[i])) food.splice(i, 1);
-  }
+function applySkinToPlayer(player, skin) {
+  player.skin = skin.id;
+  player.color = skin.color !== "rainbow" ? skin.color : COLORS[(Number(player.id) - 1) % COLORS.length];
+  player.headColor = skin.headColor || "#ffffff";
+  player.rainbow = skin.color === "rainbow";
 }
 
 // ============================================================
-// FOOD
+// SHOP / PROFILE
 // ============================================================
 
-function fillFood(opts = {}) {
-  for (let i = food.length - 1; i >= 0; i--) {
-    if (!food[i].kind) {
-      const pt = { x: food[i].x, y: food[i].y };
-      if (food[i].good === true || food[i].value === 6 || food[i].value === 7) {
-        food[i] = createGoodFood(pt);
-      } else if (food[i].good === false || (food[i].value !== undefined && food[i].value !== 6 && food[i].value !== 7)) {
-        food[i] = createBadFood(pt);
-      } else {
-        tickJournal.foodRemoved.push([food[i].x, food[i].y]);
-        food.splice(i, 1);
-      }
-    }
-  }
-
-  const spawnOpts = { avoidCells: opts.avoidCells };
-  const diff = getAverageBadFoodRatio();
-  while (food.filter((i) => i.good).length < MIN_GOOD_FOOD) {
-    const point = randomEmptyPoint(spawnOpts);
-    if (!point) return;
-    pushFoodItem(createGoodFood(point));
-  }
-  while (food.length < FOOD_TARGET) {
-    const wantBad = Math.random() < diff;
-    const point = randomEmptyPoint({ ...spawnOpts, avoidNearHeads: wantBad });
-    if (!point) return;
-    pushFoodItem(wantBad ? createBadFood(point) : createGoodFood(point));
-  }
+function getSkinDef(id) {
+  const item = SHOP_CATALOG.find((i) => i.id === id && i.category === "skin");
+  if (!item) return getSkinDef("default");
+  return { id: item.id, label: item.name, price: item.price, color: item.color, headColor: item.headColor, trailColor: item.color };
 }
 
-function createGoodFood(point) {
-  const kind = GOOD_FOOD_KINDS[Math.floor(Math.random() * GOOD_FOOD_KINDS.length)];
-  return { ...point, kind, good: true, points: FOOD_TYPES[kind].points };
+function ownsItem(entry, itemId) {
+  const item = SHOP_CATALOG.find((i) => i.id === itemId);
+  if (!item) return false;
+  if (Number(item.price) === 0) return true;
+  return entry.inventory.includes(itemId);
 }
 
-function createBadFood(point) {
-  const kind = BAD_FOOD_KINDS[Math.floor(Math.random() * BAD_FOOD_KINDS.length)];
-  return { ...point, kind, good: false, points: 0 };
+function getProfile(name) {
+  if (!name) return defaultShopEntry();
+  const canonical = findCanonicalName(name) || name;
+  return normalizeProfile(shopData[canonical] || defaultShopEntry());
 }
 
-function getAverageBadFoodRatio() {
-  const alive = [...players.values()].filter((p) => p.alive);
-  if (alive.length === 0) return DIFFICULTIES.normal.badFoodRatio;
-  const ratios = alive.map((p) => (DIFFICULTIES[p.difficulty] || DIFFICULTIES.normal).badFoodRatio);
-  return ratios.reduce((a, b) => a + b, 0) / ratios.length;
+function profileName(name) {
+  const v = String(name || "").trim().replace(/\s+/g, " ").slice(0, 16);
+  return v || null;
 }
 
-// ============================================================
-// PLAYER / MESSAGE HANDLING
-// ============================================================
-
-function handleMessage(id, message) {
-  if (message.type === "ping") return;
-
-  if (message.type === "shop_connect") {
-    handleShopConnect(id, message).catch((err) => console.error("shop_connect:", err.message));
-    return;
-  }
-
-  if (message.type === "save_profile") {
-    saveProfile(id, message).catch((err) => console.error("save_profile:", err.message));
-    return;
-  }
-
-  if (message.type === "buy_item") {
-    buyItem(id, message.itemId, message.name);
-    return;
-  }
-
-  if (message.type === "equip_item") {
-    equipItem(id, message.itemId, message.name);
-    return;
-  }
-
-  if (message.type === "unequip_item") {
-    unequipItem(id, message.itemId, message.name);
-    return;
-  }
-
-  if (message.type === "equip_nick_color") {
-    equipNickColor(id, message.colorId, message.name);
-    return;
-  }
-
-  if (message.type === "join") {
-    handleJoin(id, message).catch((err) => console.error("join:", err.message));
-    return;
-  }
-
-  if (message.type === "buy_skin") {
-    buySkin(id, message.skinId);
-    return;
-  }
-
-  if (message.type === "equip_skin") {
-    equipSkin(id, message.skinId);
-    return;
-  }
-
-  const player = players.get(id);
-  if (!player) return;
-
-  if (message.type === "turn") {
-    if (player.frozenUntil && Date.now() < player.frozenUntil) return;
-    const next = directionFromKey(message.direction);
-    if (next && !isOpposite(player.direction, next)) player.nextDirection = next;
-  }
-
-  if (message.type === "restart") {
-    recordScore(player);
-    startNewLife(player.name);
-    const skin = getSkinDef(getProfile(player.name).activeSkin);
-    players.set(id, createPlayer(id, player.name, player.difficulty, skin));
-    sendSnapshot(id);
-    broadcastGameSync();
-    broadcastPresence();
-  }
-
-  if (message.type === "change_difficulty") {
-    if (DIFFICULTIES[message.difficulty]) {
-      player.difficulty = message.difficulty;
-      restartTickInterval();
-    }
-  }
+function defaultShopEntry() {
+  return normalizeProfile({ coins: 0, unlockedSkins: ["default"], activeSkin: "default" });
 }
 
-function sendShopPayload(clientId, name) {
-  const entry = getProfile(name);
-  syncProfileCoins(name, entry);
+function normalizeProfile(raw) {
+  const entry = {
+    id: raw.id || null,
+    googleId: raw.googleId || raw.google_id || null,
+    coins: Number(raw.coins) || 0,
+    unlockedSkins: raw.unlockedSkins || ["default"],
+    activeSkin: raw.activeSkin || "default",
+    avatar: AVATAR_PRESETS.includes(raw.avatar) ? raw.avatar : "😎",
+    inventory: Array.isArray(raw.inventory) ? [...raw.inventory] : [],
+    equipped: { snakeHat: raw.equipped?.snakeHat || null },
+    stats: {
+      games: raw.stats?.games || 0,
+      deaths: raw.stats?.deaths ?? raw.stats?.losses ?? 0,
+      kills: raw.stats?.kills || 0,
+      best: raw.stats?.best || 0,
+      playTimeMs: raw.stats?.playTimeMs || 0,
+      sessionStart: raw.stats?.sessionStart || null,
+      googlePicture: raw.stats?.googlePicture || null,
+      battlePassScore: raw.stats?.battlePassScore || 0,
+      battlePassClaimed: Array.isArray(raw.stats?.battlePassClaimed) ? [...raw.stats.battlePassClaimed] : [],
+      battlePassUnlocked: Array.isArray(raw.stats?.battlePassUnlocked) ? [...raw.stats.battlePassUnlocked] : [],
+      activeNickColor: raw.stats?.activeNickColor || null,
+    },
+  };
+  for (const id of entry.unlockedSkins) {
+    if (!entry.inventory.includes(id)) entry.inventory.push(id);
+  }
+  if (!entry.inventory.includes("default")) entry.inventory.unshift("default");
+  for (const custom of SHOP_CATALOG.filter((i) => i.customTexture)) {
+    if (!entry.inventory.includes(custom.id)) entry.inventory.push(custom.id);
+  }
+  const skinValid = SHOP_CATALOG.find((i) => i.id === entry.activeSkin && i.category === "skin");
+  if (!skinValid) entry.activeSkin = "default";
+  return entry;
+}
+
+function persistProfile(name, entry) {
   shopData[name] = entry;
-  send(clientId, {
-    type: "shop_update",
-    shopData: entry,
-    skins: SHOP_SKINS,
-    catalog: SHOP_CATALOG,
-    avatars: AVATAR_PRESETS,
-    battlePass: getBattlePassConfig(),
-  });
+  profileIndexSet(name);
+  return db.upsertPlayer(name, entry).then((id) => {
+    if (id) entry.id = id;
+    shopData[name] = entry;
+    return entry;
+  }).catch((err) => { console.error("DB player:", err.message); return entry; });
+}
+
+function persistLeaderboardEntry(name, score, difficulty) {
+  db.upsertLeaderboard(name, score, difficulty).catch((err) => console.error("DB leaderboard:", err.message));
+}
+
+function startNewLife(name) {
+  const entry = getProfile(name);
+  entry.stats.games = (entry.stats.games || 0) + 1;
+  entry.stats.sessionStart = Date.now();
+  shopData[name] = entry;
+  profileIndexSet(name);
+  persistProfile(name, entry);
 }
 
 function syncProfileCoins(name, entry) {
@@ -1165,12 +935,106 @@ function syncProfileCoins(name, entry) {
   let coins = Number(entry.coins) || 0;
   const lower = name.toLowerCase();
   for (const p of players.values()) {
-    if (p.name.toLowerCase() === lower) {
-      coins = Math.max(coins, Number(p.coins) || 0);
-    }
+    if (p.name.toLowerCase() === lower) coins = Math.max(coins, Number(p.coins) || 0);
   }
   entry.coins = coins;
   return coins;
+}
+
+function sendShopPayload(clientId, name) {
+  const entry = getProfile(name);
+  syncProfileCoins(name, entry);
+  shopData[name] = entry;
+  send(clientId, { type: "shop_update", shopData: entry, skins: SHOP_SKINS, catalog: SHOP_CATALOG, avatars: AVATAR_PRESETS, battlePass: getBattlePassConfig() });
+}
+
+function resolveName(clientId, hint) {
+  const session = socketSessions.get(clientId);
+  if (session?.player_name) return session.player_name;
+  return profileName(hint) || players.get(clientId)?.name || shopClients.get(clientId) || null;
+}
+
+async function isNameTaken(name, exceptName = null) {
+  const n = profileName(name);
+  if (!n) return true;
+  const lower = n.toLowerCase();
+  if (exceptName && exceptName.toLowerCase() === lower) return false;
+  if (profileIndex.has(lower)) return true;
+  return db.isPlayerNameTaken(n, exceptName);
+}
+
+async function resolvePlayName(id, requestedName) {
+  const session = socketSessions.get(id);
+  if (session) return { ok: true, name: session.player_name };
+  const name = profileName(requestedName);
+  if (!name) return { ok: false, text: "Укажи никнейм в профиле!" };
+  if (await isNameTaken(name)) return { ok: false, text: "Это имя уже занято! Войди через Google в профиле." };
+  return { ok: true, name };
+}
+
+async function handleShopConnect(id, message) {
+  const resolved = await resolvePlayName(id, message.name);
+  if (!resolved.ok) { send(id, { type: "notice", text: resolved.text }); return; }
+  shopClients.set(id, resolved.name);
+  sendShopPayload(id, resolved.name);
+}
+
+async function handleJoin(id, message) {
+  const resolved = await resolvePlayName(id, message.name);
+  if (!resolved.ok) { send(id, { type: "notice", text: resolved.text }); return; }
+  const name = resolved.name;
+  const difficulty = DIFFICULTIES[message.difficulty] ? message.difficulty : "normal";
+  const mode = MODES[message.mode] ? message.mode : "classic";
+  gameMode = mode;
+  const prof = getProfile(name);
+  const skin = getSkinDef(prof.activeSkin);
+  startNewLife(name);
+  shopClients.set(id, name);
+  players.set(id, createPlayer(id, name, difficulty, skin));
+  if (mode === "tag_time" && !taggedPlayerId) taggedPlayerId = id;
+  restartTickInterval();
+  sendSnapshot(id);
+  broadcastGameSync();
+  broadcastPresence();
+}
+
+async function saveProfile(clientId, message) {
+  const session = socketSessions.get(clientId);
+  const newName = profileName(message.name);
+  if (!newName) { send(clientId, { type: "notice", text: "Никнейм не может быть пустым!" }); return; }
+  if (!session) { send(clientId, { type: "notice", text: "Войди через Google, чтобы редактировать профиль." }); return; }
+
+  const oldName = session.player_name;
+  const avatar = AVATAR_PRESETS.includes(message.avatar) ? message.avatar : "😎";
+  let entry = getProfile(oldName);
+  entry.avatar = avatar;
+  syncProfileCoins(oldName, entry);
+  if (session.google_id) entry.googleId = session.google_id;
+  if (!entry.id) await persistProfile(oldName, entry);
+
+  if (oldName.toLowerCase() !== newName.toLowerCase()) {
+    if (await isNameTaken(newName, oldName)) { send(clientId, { type: "notice", text: "Это имя уже занято!" }); return; }
+    syncProfileCoins(oldName, entry);
+    delete shopData[oldName];
+    profileIndexDelete(oldName);
+    shopClients.set(clientId, newName);
+    const player = players.get(clientId);
+    if (player) player.name = newName;
+    shopData[newName] = entry;
+    profileIndexSet(newName);
+    session.player_name = newName;
+    socketSessions.set(clientId, session);
+    await db.updateGoogleUserPlayerName(session.google_id, newName);
+    await db.renamePlayer(oldName, newName, entry);
+  } else {
+    syncProfileCoins(newName, entry);
+    if (session.google_id) entry.googleId = session.google_id;
+    shopData[newName] = entry;
+    await persistProfile(newName, entry);
+  }
+
+  send(clientId, { type: "profile_saved", shopData: entry, name: newName, playerId: entry.id || null });
+  sendShopPayload(clientId, newName);
 }
 
 function buyItem(clientId, itemId, nameHint) {
@@ -1180,15 +1044,11 @@ function buyItem(clientId, itemId, nameHint) {
   if (!item) return;
   const entry = getProfile(name);
   const player = players.get(clientId);
-
   syncProfileCoins(name, entry);
   const coins = Number(entry.coins) || 0;
   const price = Number(item.price) || 0;
 
-  if (entry.inventory.includes(itemId)) {
-    equipItem(clientId, itemId, name);
-    return;
-  }
+  if (entry.inventory.includes(itemId)) { equipItem(clientId, itemId, name); return; }
   if (price === 0) {
     if (!entry.inventory.includes(itemId)) entry.inventory.push(itemId);
     shopData[name] = entry;
@@ -1196,11 +1056,8 @@ function buyItem(clientId, itemId, nameHint) {
     equipItem(clientId, itemId, name);
     return;
   }
-  if (coins < price) {
-    send(clientId, { type: "notice", text: "Недостаточно монет!" });
-    sendShopPayload(clientId, name);
-    return;
-  }
+  if (coins < price) { send(clientId, { type: "notice", text: "Недостаточно монет!" }); sendShopPayload(clientId, name); return; }
+
   const newCoins = coins - price;
   if (player) player.coins = newCoins;
   entry.coins = newCoins;
@@ -1217,11 +1074,7 @@ function equipItem(clientId, itemId, nameHint) {
   const item = SHOP_CATALOG.find((i) => i.id === itemId);
   if (!item) return;
   const entry = getProfile(name);
-  if (!ownsItem(entry, itemId)) {
-    send(clientId, { type: "notice", text: "Сначала купи предмет!" });
-    return;
-  }
-
+  if (!ownsItem(entry, itemId)) { send(clientId, { type: "notice", text: "Сначала купи предмет!" }); return; }
   const player = players.get(clientId);
 
   if (item.category === "skin") {
@@ -1263,179 +1116,32 @@ function unequipItem(clientId, itemId, nameHint) {
   broadcastGameSync();
 }
 
-async function isNameTaken(name, exceptName = null) {
-  const n = profileName(name);
-  if (!n) return true;
-  const lower = n.toLowerCase();
-  if (exceptName && exceptName.toLowerCase() === lower) return false;
-  const inShop = Object.keys(shopData).some((k) => k.toLowerCase() === lower);
-  if (inShop) return true;
-  return db.isPlayerNameTaken(n, exceptName);
-}
-
-async function resolvePlayName(id, requestedName) {
-  const session = socketSessions.get(id);
-  if (session) return { ok: true, name: session.player_name };
-
-  const name = profileName(requestedName);
-  if (!name) return { ok: false, text: "Укажи никнейм в профиле!" };
-  if (await isNameTaken(name)) {
-    return { ok: false, text: "Это имя уже занято! Войди через Google в профиле." };
-  }
-  return { ok: true, name };
-}
-
-async function handleShopConnect(id, message) {
-  const resolved = await resolvePlayName(id, message.name);
-  if (!resolved.ok) {
-    send(id, { type: "notice", text: resolved.text });
-    return;
-  }
-  shopClients.set(id, resolved.name);
-  sendShopPayload(id, resolved.name);
-}
-
-async function handleJoin(id, message) {
-  const resolved = await resolvePlayName(id, message.name);
-  if (!resolved.ok) {
-    send(id, { type: "notice", text: resolved.text });
-    return;
-  }
-  const name = resolved.name;
-  const difficulty = DIFFICULTIES[message.difficulty] ? message.difficulty : "normal";
-  const mode = MODES[message.mode] ? message.mode : "classic";
-  gameMode = mode;
-  const prof = getProfile(name);
-  const skin = getSkinDef(prof.activeSkin);
-  startNewLife(name);
-  shopClients.set(id, name);
-  players.set(id, createPlayer(id, name, difficulty, skin));
-  if (mode === "tag_time" && !taggedPlayerId) taggedPlayerId = id;
-  restartTickInterval();
-  sendSnapshot(id);
-  broadcastGameSync();
-  broadcastPresence();
-}
-
-async function saveProfile(clientId, message) {
-  const session = socketSessions.get(clientId);
-  const newName = profileName(message.name);
-  if (!newName) {
-    send(clientId, { type: "notice", text: "Никнейм не может быть пустым!" });
-    return;
-  }
-
-  if (!session) {
-    send(clientId, { type: "notice", text: "Войди через Google, чтобы редактировать профиль." });
-    return;
-  }
-
-  const oldName = session.player_name;
-  const avatar = AVATAR_PRESETS.includes(message.avatar) ? message.avatar : "😎";
-
-  let entry = getProfile(oldName);
-  entry.avatar = avatar;
-  syncProfileCoins(oldName, entry);
-  if (session.google_id) entry.googleId = session.google_id;
-  if (!entry.id) await persistProfile(oldName, entry);
-
-  if (oldName.toLowerCase() !== newName.toLowerCase()) {
-    if (await isNameTaken(newName, oldName)) {
-      send(clientId, { type: "notice", text: "Это имя уже занято!" });
-      return;
-    }
-    syncProfileCoins(oldName, entry);
-    delete shopData[oldName];
-    shopClients.set(clientId, newName);
-    const player = players.get(clientId);
-    if (player) player.name = newName;
-    shopData[newName] = entry;
-    session.player_name = newName;
-    socketSessions.set(clientId, session);
-    await db.updateGoogleUserPlayerName(session.google_id, newName);
-    await db.renamePlayer(oldName, newName, entry);
-  } else {
-    syncProfileCoins(newName, entry);
-    if (session.google_id) entry.googleId = session.google_id;
-    shopData[newName] = entry;
-    await persistProfile(newName, entry);
-  }
-
-  send(clientId, { type: "profile_saved", shopData: entry, name: newName, playerId: entry.id || null });
-  sendShopPayload(clientId, newName);
-}
-
-function resolveName(clientId, hint) {
-  const session = socketSessions.get(clientId);
-  if (session?.player_name) return session.player_name;
-  return profileName(hint) || players.get(clientId)?.name || shopClients.get(clientId) || null;
-}
-
-function profileName(name) {
-  const v = String(name || "").trim().replace(/\s+/g, " ").slice(0, 16);
-  return v || null;
-}
-
-function getProfile(name) {
-  if (!name) return defaultShopEntry();
-  const key = Object.keys(shopData).find((k) => k.toLowerCase() === name.toLowerCase()) || name;
-  return normalizeProfile(shopData[key] || defaultShopEntry());
-}
-
-function startNewLife(name) {
+function equipNickColor(clientId, colorId, nameHint) {
+  const name = resolveName(clientId, nameHint);
+  if (!name) return;
   const entry = getProfile(name);
-  entry.stats.games = (entry.stats.games || 0) + 1;
-  entry.stats.sessionStart = Date.now();
+
+  if (!colorId || colorId === "default") {
+    entry.stats.activeNickColor = null;
+  } else if (!entry.stats.battlePassUnlocked?.includes(colorId)) {
+    send(clientId, { type: "notice", text: "Сначала открой цвет в боевом пропуске!" }); return;
+  } else {
+    entry.stats.activeNickColor = colorId;
+  }
+
   shopData[name] = entry;
   persistProfile(name, entry);
-}
-
-function normalizeProfile(raw) {
-  const entry = {
-    id: raw.id || null,
-    googleId: raw.googleId || raw.google_id || null,
-    coins: Number(raw.coins) || 0,
-    unlockedSkins: raw.unlockedSkins || ["default"],
-    activeSkin: raw.activeSkin || "default",
-    avatar: AVATAR_PRESETS.includes(raw.avatar) ? raw.avatar : "😎",
-    inventory: Array.isArray(raw.inventory) ? [...raw.inventory] : [],
-    equipped: { snakeHat: raw.equipped?.snakeHat || null },
-    stats: {
-      games: raw.stats?.games || 0,
-      deaths: raw.stats?.deaths ?? raw.stats?.losses ?? 0,
-      kills: raw.stats?.kills || 0,
-      best: raw.stats?.best || 0,
-      playTimeMs: raw.stats?.playTimeMs || 0,
-      sessionStart: raw.stats?.sessionStart || null,
-      googlePicture: raw.stats?.googlePicture || null,
-      battlePassScore: raw.stats?.battlePassScore || 0,
-      battlePassClaimed: Array.isArray(raw.stats?.battlePassClaimed) ? [...raw.stats.battlePassClaimed] : [],
-      battlePassUnlocked: Array.isArray(raw.stats?.battlePassUnlocked) ? [...raw.stats.battlePassUnlocked] : [],
-      activeNickColor: raw.stats?.activeNickColor || null,
-    },
-  };
-  for (const id of entry.unlockedSkins) {
-    if (!entry.inventory.includes(id)) entry.inventory.push(id);
-  }
-  if (!entry.inventory.includes("default")) entry.inventory.unshift("default");
-  for (const custom of SHOP_CATALOG.filter((i) => i.customTexture)) {
-    if (!entry.inventory.includes(custom.id)) entry.inventory.push(custom.id);
-  }
-  const skinValid = SHOP_CATALOG.find((i) => i.id === entry.activeSkin && i.category === "skin");
-  if (!skinValid) entry.activeSkin = "default";
-  return entry;
+  const player = players.get(clientId);
+  if (player) { applyCosmeticsToPlayer(player, name); resyncPlayer(clientId); broadcastGameSync(); }
+  sendShopPayload(clientId, name);
 }
 
 function getPlayerCosmetics(name) {
   const entry = getProfile(name);
   const hatId = entry.equipped.snakeHat || null;
   const hatItem = hatId ? SHOP_CATALOG.find((i) => i.id === hatId) : null;
-  const isCustomHat = hatId && hatId.startsWith("custom_hat_");
-  return {
-    avatar: entry.avatar,
-    snakeHatId: hatId,
-    snakeHatEmoji: hatItem && !isCustomHat ? hatItem.emoji : null,
-  };
+  const isCustom = hatId?.startsWith("custom_hat_");
+  return { avatar: entry.avatar, snakeHatId: hatId, snakeHatEmoji: hatItem && !isCustom ? hatItem.emoji : null };
 }
 
 function applyCosmeticsToPlayer(player, name) {
@@ -1448,84 +1154,16 @@ function applyCosmeticsToPlayer(player, name) {
   player.nickColor = resolveNickColorHex(entry);
 }
 
-function processBattlePassRewards(name, entry) {
-  entry.stats.battlePassClaimed = entry.stats.battlePassClaimed || [];
-  entry.stats.battlePassUnlocked = entry.stats.battlePassUnlocked || [];
-  const granted = [];
-
-  for (let tier = 1; tier <= BATTLE_PASS_MAX_TIER; tier += 1) {
-    const required = tier * BATTLE_PASS_SCORE_STEP;
-    if ((entry.stats.battlePassScore || 0) < required) break;
-    if (entry.stats.battlePassClaimed.includes(tier)) continue;
-
-    const def = getBattlePassTierDef(tier);
-    entry.stats.battlePassClaimed.push(tier);
-    entry.coins = (Number(entry.coins) || 0) + def.coins;
-    if (def.nickColor?.id && !entry.stats.battlePassUnlocked.includes(def.nickColor.id)) {
-      entry.stats.battlePassUnlocked.push(def.nickColor.id);
-    }
-    granted.push(def);
-    pushFeed("bonus", `🎖 ${name}: боевой пропуск ур.${tier} — +${def.coins}🪙, цвет «${def.nickColor.label}»`, name);
-  }
-
-  if (!granted.length) return granted;
-
-  shopData[name] = entry;
-  persistProfile(name, entry);
-
-  for (const p of players.values()) {
-    if (p.name.toLowerCase() !== name.toLowerCase()) continue;
-    p.coins = entry.coins;
-    send(p.id, { type: "notice", text: `Боевой пропуск: +${granted.reduce((s, r) => s + r.coins, 0)} монет!` });
-    sendShopPayload(p.id, name);
-    resyncPlayer(p.id);
-  }
-
-  for (const [clientId, clientName] of shopClients) {
-    if (clientName.toLowerCase() === name.toLowerCase() && !players.has(clientId)) {
-      sendShopPayload(clientId, name);
-    }
-  }
-
-  return granted;
+function savePlayerCoins(player) {
+  const entry = getProfile(player.name);
+  entry.coins = player.coins;
+  shopData[player.name] = entry;
+  persistProfile(player.name, entry);
 }
 
-function awardKillCoins(killer, victim) {
-  const reward = KILL_REWARD_COINS;
-  killer.coins = (killer.coins || 0) + reward;
-  const entry = getProfile(killer.name);
-  entry.stats.kills = (entry.stats.kills || 0) + 1;
-  entry.coins = killer.coins;
-  shopData[killer.name] = entry;
-  persistProfile(killer.name, entry);
-  pushFeed("kill", `💰 ${killer.name}: +${reward} за убийство ${victim.name}`, killer.name);
-  send(killer.id, { type: "notice", text: `+${reward} монет за убийство!` });
-}
-
-function equipNickColor(clientId, colorId, nameHint) {
-  const name = resolveName(clientId, nameHint);
-  if (!name) return;
-  const entry = getProfile(name);
-
-  if (!colorId || colorId === "default") {
-    entry.stats.activeNickColor = null;
-  } else if (!entry.stats.battlePassUnlocked?.includes(colorId)) {
-    send(clientId, { type: "notice", text: "Сначала открой цвет в боевом пропуске!" });
-    return;
-  } else {
-    entry.stats.activeNickColor = colorId;
-  }
-
-  shopData[name] = entry;
-  persistProfile(name, entry);
-  const player = players.get(clientId);
-  if (player) {
-    applyCosmeticsToPlayer(player, name);
-    resyncPlayer(clientId);
-    broadcastGameSync();
-  }
-  sendShopPayload(clientId, name);
-}
+// ============================================================
+// STATS & REWARDS
+// ============================================================
 
 function trackDeathStats(player) {
   const entry = getProfile(player.name);
@@ -1546,21 +1184,6 @@ function trackDeathStats(player) {
   processBattlePassRewards(player.name, entry);
 }
 
-function awardSessionCoins(player) {
-  const score = player.score || 0;
-  if (score <= 0) return 0;
-
-  let coins = Math.floor(Math.sqrt(score) * 4);
-  coins += Math.floor((player.maxCombo || 0) * 2);
-  if (player.beatPersonalBest) coins += 30;
-  if (player.sessionMvp) coins += 25;
-  if (score >= 200) coins += 15;
-  if (score >= 500) coins += 35;
-  if (score >= 1000) coins += 60;
-
-  return Math.max(3, Math.min(coins, 220));
-}
-
 function trackDisconnectStats(player) {
   const entry = getProfile(player.name);
   if (entry.stats.sessionStart) {
@@ -1575,292 +1198,182 @@ function trackDisconnectStats(player) {
   persistProfile(player.name, entry);
 }
 
+function awardSessionCoins(player) {
+  const score = player.score || 0;
+  if (score <= 0) return 0;
+  let coins = Math.floor(Math.sqrt(score) * 4);
+  coins += Math.floor((player.maxCombo || 0) * 2);
+  if (player.beatPersonalBest) coins += 30;
+  if (player.sessionMvp) coins += 25;
+  if (score >= 200) coins += 15;
+  if (score >= 500) coins += 35;
+  if (score >= 1000) coins += 60;
+  return Math.max(3, Math.min(coins, 220));
+}
+
+function awardKillCoins(killer, victim) {
+  killer.coins = (killer.coins || 0) + KILL_REWARD_COINS;
+  const entry = getProfile(killer.name);
+  entry.stats.kills = (entry.stats.kills || 0) + 1;
+  entry.coins = killer.coins;
+  shopData[killer.name] = entry;
+  persistProfile(killer.name, entry);
+  pushFeed("kill", `💰 ${killer.name}: +${KILL_REWARD_COINS} за убийство ${victim.name}`, killer.name);
+  send(killer.id, { type: "notice", text: `+${KILL_REWARD_COINS} монет за убийство!` });
+}
+
+function processBattlePassRewards(name, entry) {
+  entry.stats.battlePassClaimed = entry.stats.battlePassClaimed || [];
+  entry.stats.battlePassUnlocked = entry.stats.battlePassUnlocked || [];
+  const granted = [];
+
+  for (let tier = 1; tier <= BATTLE_PASS_MAX_TIER; tier++) {
+    if ((entry.stats.battlePassScore || 0) < tier * BATTLE_PASS_SCORE_STEP) break;
+    if (entry.stats.battlePassClaimed.includes(tier)) continue;
+    const def = getBattlePassTierDef(tier);
+    entry.stats.battlePassClaimed.push(tier);
+    entry.coins = (Number(entry.coins) || 0) + def.coins;
+    if (def.nickColor?.id && !entry.stats.battlePassUnlocked.includes(def.nickColor.id)) {
+      entry.stats.battlePassUnlocked.push(def.nickColor.id);
+    }
+    granted.push(def);
+    pushFeed("bonus", `🎖 ${name}: боевой пропуск ур.${tier} — +${def.coins}🪙, цвет «${def.nickColor.label}»`, name);
+  }
+
+  if (!granted.length) return granted;
+  shopData[name] = entry;
+  persistProfile(name, entry);
+
+  for (const p of players.values()) {
+    if (p.name.toLowerCase() !== name.toLowerCase()) continue;
+    p.coins = entry.coins;
+    send(p.id, { type: "notice", text: `Боевой пропуск: +${granted.reduce((s, r) => s + r.coins, 0)} монет!` });
+    sendShopPayload(p.id, name);
+    resyncPlayer(p.id);
+  }
+  for (const [clientId, clientName] of shopClients) {
+    if (clientName.toLowerCase() === name.toLowerCase() && !players.has(clientId)) {
+      sendShopPayload(clientId, name);
+    }
+  }
+  return granted;
+}
+
+// ============================================================
+// LEADERBOARD
+// ============================================================
+
 function getEnrichedLeaderboard() {
   return leaderboard.map((e, index) => {
     const prof = getProfile(e.name);
-    return {
-      ...e,
-      rank: index + 1,
-      avatar: prof.avatar,
-      googlePicture: prof.stats?.googlePicture || null,
-      deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0,
-      games: prof.stats?.games || 0,
-      best: Math.max(e.score, prof.stats?.best || 0),
-      coins: prof.coins || 0,
-    };
+    return { ...e, rank: index + 1, avatar: prof.avatar, googlePicture: prof.stats?.googlePicture || null, deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0, games: prof.stats?.games || 0, best: Math.max(e.score, prof.stats?.best || 0), coins: prof.coins || 0 };
   });
 }
 
 function getWealthLeaderboard() {
   return Object.entries(shopData)
-    .map(([name, prof]) => ({
-      name,
-      coins: prof.coins || 0,
-      score: prof.coins || 0,
-      avatar: prof.avatar || "😎",
-      googlePicture: prof.stats?.googlePicture || null,
-      deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0,
-      games: prof.stats?.games || 0,
-      best: prof.stats?.best || 0,
-    }))
+    .map(([name, prof]) => ({ name, coins: prof.coins || 0, score: prof.coins || 0, avatar: prof.avatar || "😎", googlePicture: prof.stats?.googlePicture || null, deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0, games: prof.stats?.games || 0, best: prof.stats?.best || 0 }))
     .filter((e) => e.coins > 0)
     .sort((a, b) => b.coins - a.coins || a.name.localeCompare(b.name, "ru"))
     .slice(0, MAX_LEADERS)
     .map((e, index) => ({ ...e, rank: index + 1 }));
 }
 
-function buySkin(playerId, skinId) {
-  buyItem(playerId, skinId);
-}
-
-function equipSkin(playerId, skinId) {
-  equipItem(playerId, skinId);
-}
-
-function applySkinToPlayer(player, skin) {
-  player.skin = skin.id;
-  player.color = skin.color !== "rainbow" ? skin.color : COLORS[(Number(player.id) - 1) % COLORS.length];
-  player.headColor = skin.headColor || "#ffffff";
-  player.rainbow = skin.color === "rainbow";
-}
-
-function savePlayerCoins(player) {
-  const entry = getProfile(player.name);
-  entry.coins = player.coins;
-  shopData[player.name] = entry;
-  persistProfile(player.name, entry);
-}
-
-function createPlayer(id, name, difficulty, skin) {
-  const layout = findSpawnLayout();
-  const direction = layout?.direction || { x: 1, y: 0 };
-  const snake = layout?.snake || [{ x: Math.floor(GRID.width / 2), y: Math.floor(GRID.height / 2) }];
-  clearBoardAroundSpawn(snake[0]);
-  const shopEntry = getProfile(name);
-  const cos = getPlayerCosmetics(name);
-  const player = {
-    id, name, difficulty,
-    color: skin.color !== "rainbow" ? skin.color : COLORS[(Number(id) - 1) % COLORS.length],
-    headColor: skin.headColor || "#ffffff",
-    skin: skin.id,
-    rainbow: skin.color === "rainbow",
-    snake, direction, nextDirection: direction,
-    alive: true, score: 0, coins: shopEntry.coins || 0,
-    best: bestForName(name), deaths: 0, reason: "",
-    coinsEarned: 0, beatPersonalBest: false, sessionMvp: false,
-    activeBonus: null, bonusExpires: null,
-    combo: 0, maxCombo: 0,
-    avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji, snakeHatId: cos.snakeHatId,
-    nickColor: resolveNickColorHex(shopEntry),
-    frozenUntil: Date.now() + SPAWN_FREEZE_MS,
-  };
-  removeEntitiesUnderSnake(player);
-  return player;
-}
-
 // ============================================================
-// WEBSOCKET
+// BOOTSTRAP & SHUTDOWN
 // ============================================================
 
-function readFrames(id, buffer) {
-  let offset = 0;
-  while (offset + 2 <= buffer.length) {
-    const first = buffer[offset++];
-    const second = buffer[offset++];
-    const opcode = first & 0x0f;
-    const masked = Boolean(second & 0x80);
-    let length = second & 0x7f;
-    if (length === 126) { if (offset + 2 > buffer.length) return; length = buffer.readUInt16BE(offset); offset += 2; }
-    else if (length === 127) { if (offset + 8 > buffer.length) return; const h = buffer.readUInt32BE(offset); const l = buffer.readUInt32BE(offset + 4); length = h * 2 ** 32 + l; offset += 8; }
-    let mask;
-    if (masked) { if (offset + 4 > buffer.length) return; mask = buffer.subarray(offset, offset + 4); offset += 4; }
-    if (offset + length > buffer.length) return;
-    const payload = Buffer.from(buffer.subarray(offset, offset + length));
-    offset += length;
-    if (masked) for (let i = 0; i < payload.length; i++) payload[i] ^= mask[i % 4];
-    if (opcode === 8) { removeClient(id); return; }
-    if (opcode === 1) {
-      try { handleMessage(id, JSON.parse(payload.toString("utf8"))); }
-      catch { send(id, { type: "notice", text: "Ошибка чтения сообщения." }); }
+async function bootstrap() {
+  try {
+    await db.init();
+    shopData = await db.loadAllPlayers();
+    leaderboard = await db.loadLeaderboard(MAX_LEADERS);
+    rebuildProfileIndex();
+    console.log(`PostgreSQL: ${Object.keys(shopData).length} игроков, ${leaderboard.length} рекордов`);
+  } catch (err) {
+    console.error("PostgreSQL недоступен:", err.message);
+    console.error("Проверь DATABASE_URL и что база запущена. Пример: npm run db:reset");
+    process.exit(1);
+  }
+
+  server.listen(PORT, HOST, () => {
+    food.length = 0;
+    foodMod.fillFood({
+      food, players, occupancySet, tickJournal: gameSync.createJournal(), GRID,
+      anyBossOccupies: (pt) => bossMod.anyBossOccupies(bosses, pt),
+    });
+    tickInterval = setInterval(tick, DIFFICULTIES.normal.tickMs);
+    setInterval(spawnBonuses, 8000);
+    setInterval(broadcastPresence, 5000);
+    setInterval(pingClients, 25000);
+    setInterval(() => db.cleanupAuthSessions().catch(() => { }), 60 * 60 * 1000);
+
+    if (auth.isGoogleAuthEnabled()) {
+      const sampleRedirect = process.env.GOOGLE_REDIRECT_URI
+        || (process.env.PUBLIC_URL ? `${process.env.PUBLIC_URL.replace(/\/$/, "")}/auth/google/callback` : "(из запроса)");
+      console.log("Google OAuth: включён");
+      console.log(`Google OAuth redirect: ${sampleRedirect}`);
+    } else {
+      console.log("Google OAuth: выключен (заполни GOOGLE_CLIENT_ID/SECRET в .env)");
     }
-  }
-}
-
-function makeFrame(text) {
-  const payload = Buffer.from(text);
-  const length = payload.length;
-  if (length < 126) return Buffer.concat([Buffer.from([0x81, length]), payload]);
-  if (length < 65536) { const h = Buffer.alloc(4); h[0] = 0x81; h[1] = 126; h.writeUInt16BE(length, 2); return Buffer.concat([h, payload]); }
-  const h = Buffer.alloc(10); h[0] = 0x81; h[1] = 127; h.writeUInt32BE(0, 2); h.writeUInt32BE(length, 6); return Buffer.concat([h, payload]);
-}
-
-function send(id, payload) {
-  const socket = sockets.get(id);
-  if (!socket || socket.destroyed) return;
-  try { socket.write(makeFrame(JSON.stringify(payload))); } catch { removeClient(id); }
-}
-
-function broadcast(payload) { for (const id of sockets.keys()) send(id, payload); }
-
-function removeClient(id) {
-  sockets.delete(id);
-  shopClients.delete(id);
-  socketSessions.delete(id);
-  clientAoi.delete(id);
-  const player = players.get(id);
-  if (player) {
-    trackDisconnectStats(player);
-    recordScore(player);
-    players.delete(id);
-    broadcastGameSync();
-    broadcastPresence();
-  }
-}
-
-// ============================================================
-// PERSISTENCE (PostgreSQL)
-// ============================================================
-
-function persistProfile(name, entry) {
-  shopData[name] = entry;
-  return db.upsertPlayer(name, entry).then((id) => {
-    if (id) entry.id = id;
-    shopData[name] = entry;
-    return entry;
-  }).catch((err) => {
-    console.error("DB player:", err.message);
-    return entry;
+    console.log(`Snake Attack → http://localhost:${PORT}`);
+    for (const address of getLanAddresses()) console.log(`LAN → http://${address}:${PORT}`);
   });
 }
 
-function persistLeaderboardEntry(name, score, difficulty) {
-  db.upsertLeaderboard(name, score, difficulty).catch((err) => console.error("DB leaderboard:", err.message));
-}
+bootstrap().catch((err) => { console.error(err); process.exit(1); });
 
-function defaultShopEntry() {
-  return normalizeProfile({ coins: 0, unlockedSkins: ["default"], activeSkin: "default" });
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE") console.error(`Порт ${PORT} занят.`);
+  else console.error("Ошибка сервера:", err.message);
+  process.exit(1);
+});
+
+function shutdown(signal) {
+  console.log(`${signal}: остановка…`);
+  if (tickInterval) clearInterval(tickInterval);
+  for (const socket of sockets.values()) { try { socket.destroy(); } catch { /* ignore */ } }
+  server.close(() => { db.close().finally(() => process.exit(0)); });
 }
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
 
 // ============================================================
 // UTILS
 // ============================================================
 
-function randomEmptyPoint(opts = {}) {
-  for (let attempt = 0; attempt < 800; attempt++) {
-    const point = { x: Math.floor(Math.random() * GRID.width), y: Math.floor(Math.random() * GRID.height) };
-    if (isEmpty(point, opts)) return point;
-  }
-  return null;
-}
-
-const SPAWN_DIRECTIONS = [{ x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 }];
-
-function snakeSegmentsFromHead(head, direction, length = SNAKE_SPAWN_LEN) {
-  const tailDir = { x: -direction.x, y: -direction.y };
-  const segments = [head];
-  for (let i = 1; i < length; i++) {
-    segments.push({ x: head.x + tailDir.x * i, y: head.y + tailDir.y * i });
-  }
-  return segments;
-}
-
-function allSegmentsInsideGrid(segments) {
-  return segments.every(insideGrid);
-}
-
-function segmentsConflict(segments, ignorePlayerId = null) {
-  for (const part of segments) {
-    if (anyBossOccupies(part)) return true;
-    if (food.some((item) => item.x === part.x && item.y === part.y)) return true;
-    if (bonuses.some((bonus) => bonus.x === part.x && bonus.y === part.y)) return true;
-  }
-  for (const player of players.values()) {
-    if (ignorePlayerId && player.id === ignorePlayerId) continue;
-    for (const part of player.snake) {
-      if (segments.some((seg) => seg.x === part.x && seg.y === part.y)) return true;
-    }
-  }
-  return false;
-}
-
-function findSpawnLayout(ignorePlayerId = null) {
-  for (let attempt = 0; attempt < 500; attempt++) {
-    const head = {
-      x: SPAWN_MARGIN + Math.floor(Math.random() * (GRID.width - SPAWN_MARGIN * 2)),
-      y: SPAWN_MARGIN + Math.floor(Math.random() * (GRID.height - SPAWN_MARGIN * 2)),
-    };
-    const direction = SPAWN_DIRECTIONS[Math.floor(Math.random() * SPAWN_DIRECTIONS.length)];
-    const snake = snakeSegmentsFromHead(head, direction);
-    if (!allSegmentsInsideGrid(snake)) continue;
-    if (segmentsConflict(snake, ignorePlayerId)) continue;
-    if (distanceToNearestBoss(head) < BOSS_SPAWN_BUFFER) continue;
-    return { direction, snake };
-  }
-
-  for (const direction of SPAWN_DIRECTIONS) {
-    for (let y = SPAWN_MARGIN; y < GRID.height - SPAWN_MARGIN; y++) {
-      for (let x = SPAWN_MARGIN; x < GRID.width - SPAWN_MARGIN; x++) {
-        const snake = snakeSegmentsFromHead({ x, y }, direction);
-        if (!allSegmentsInsideGrid(snake)) continue;
-        if (segmentsConflict(snake, ignorePlayerId)) continue;
-        return { direction, snake };
-      }
-    }
-  }
-  return null;
-}
-
-function clearBoardAroundSpawn(head, radius = SPAWN_CLEAR_RADIUS) {
-  for (let i = food.length - 1; i >= 0; i--) {
-    const item = food[i];
-    if (Math.abs(item.x - head.x) + Math.abs(item.y - head.y) <= radius) food.splice(i, 1);
-  }
-  for (let i = bonuses.length - 1; i >= 0; i--) {
-    const bonus = bonuses[i];
-    if (Math.abs(bonus.x - head.x) + Math.abs(bonus.y - head.y) <= radius) bonuses.splice(i, 1);
+function pingClients() {
+  const frame = makeFrame(JSON.stringify({ type: "ping", t: Date.now() }));
+  for (const [id, socket] of sockets) {
+    if (socket.destroyed || socket.writableEnded) continue;
+    try { socket.write(frame); } catch { removeClient(id); }
   }
 }
 
-function removeEntitiesUnderSnake(player) {
-  const occupied = new Set(player.snake.map(pointKey));
-  for (let i = food.length - 1; i >= 0; i--) {
-    if (occupied.has(pointKey(food[i]))) food.splice(i, 1);
-  }
-  for (let i = bonuses.length - 1; i >= 0; i--) {
-    if (occupied.has(pointKey(bonuses[i]))) bonuses.splice(i, 1);
-  }
+function getRequestOrigin(req) {
+  const host = (req.headers["x-forwarded-host"] || req.headers.host || `localhost:${PORT}`).split(",")[0].trim();
+  const proto = (req.headers["x-forwarded-proto"] || "http").split(",")[0].trim();
+  const wsProto = proto === "https" ? "wss" : "ws";
+  return { http: `${proto}://${host}`, ws: `${wsProto}://${host}` };
 }
 
-function isEmpty(point, opts = {}) {
-  if (anyBossOccupies(point)) return false;
-  if (occupancyHas(point)) return false;
-  if (opts.avoidCells?.has(pointKey(point))) return false;
-  if (opts.avoidNearHeads) {
-    for (const player of players.values()) {
-      if (!player.alive) continue;
-      const head = player.snake[0];
-      if (Math.abs(point.x - head.x) + Math.abs(point.y - head.y) <= BAD_FOOD_HEAD_BUFFER) return false;
-    }
-  }
-  return true;
+function bestForName(name) {
+  return leaderboard.find((e) => e.name.toLowerCase() === name.toLowerCase())?.score || 0;
 }
 
-function insideGrid(point) { return point.x >= 0 && point.x < GRID.width && point.y >= 0 && point.y < GRID.height; }
-function wrapPoint(point) { return { x: (point.x + GRID.width) % GRID.width, y: (point.y + GRID.height) % GRID.height }; }
-function pointKey(point) { return `${point.x}:${point.y}`; }
-function cleanName(name) { const v = String(name || "").trim().replace(/\s+/g, " ").slice(0, 18); return v || `Игрок ${nextClientId - 1}`; }
-function directionFromKey(d) { return ({ up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } })[d] || null; }
+function getLanAddresses() {
+  return Object.values(os.networkInterfaces()).flat().filter((i) => i && i.family === "IPv4" && !i.internal).map((i) => i.address);
+}
+
+function directionFromKey(d) {
+  return ({ up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } })[d] || null;
+}
+
 function isOpposite(a, b) { return a.x + b.x === 0 && a.y + b.y === 0; }
-function shuffledDirs() { return [{ x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 }].sort(() => Math.random() - 0.5); }
-function bestForName(name) { return leaderboard.find((e) => e.name.toLowerCase() === name.toLowerCase())?.score || 0; }
-function getLanAddresses() { return Object.values(os.networkInterfaces()).flat().filter((i) => i && i.family === "IPv4" && !i.internal).map((i) => i.address); }
+function cleanName(name) { const v = String(name || "").trim().replace(/\s+/g, " ").slice(0, 18); return v || `Игрок ${nextClientId - 1}`; }
 
 function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-  };
+  return { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, OPTIONS", "Access-Control-Allow-Headers": "Content-Type" };
 }
 
 function sendJson(res, payload) {
