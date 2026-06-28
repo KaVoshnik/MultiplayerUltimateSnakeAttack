@@ -1254,7 +1254,7 @@ function processBattlePassRewards(name, entry) {
       entry.stats.battlePassUnlocked.push(def.nickColor.id);
     }
     granted.push(def);
-    pushFeed("bonus", `🎖 ${name}: боевой пропуск ур.${tier} — +${def.coins}🪙, цвет «${def.nickColor.label}»`, name);
+    pushFeed("bonus", `🎖 ${name}: боевой пропуск ур.${tier} — +${def.coins}🪙${def.nickColor ? `, цвет «${def.nickColor.label}»` : ""}`, name);
   }
 
   if (!granted.length) return granted;
