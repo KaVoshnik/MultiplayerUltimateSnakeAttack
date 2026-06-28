@@ -28,7 +28,7 @@
   <a href="https://github.com/KaVoshnik/MultiplayerUltimateSnakeAttack">
     <img src="https://img.shields.io/badge/GitHub-Repository-181717?style=for-the-badge&logo=github" alt="GitHub" />
   </a>
-  <img src="https://img.shields.io/github/v/release/KaVoshnik/MultiplayerUltimateSnakeAttack?style=for-the-badge&label=VERSION" alt="Версия" />
+  <img src="https://img.shields.io/github/v/release/KaVoshnik/MultiplayerUltimateSnakeAttack?style=for-the-badge&label=VERSION&include_prereleases" alt="Версия" />
   <img src="https://img.shields.io/badge/LICENSE-MIT-blue?style=for-the-badge" alt="Лицензия" />
 </p>
 
@@ -36,7 +36,7 @@
   <img src="https://img.shields.io/badge/Node.js-Express-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js" />
   <img src="https://img.shields.io/badge/PostgreSQL-Database-336791?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL" />
   <img src="https://img.shields.io/badge/WebSocket-Realtime-orange?style=flat-square" alt="WebSocket" />
-  <img src="https://img.shields.io/badge/HTML5-CSS3-JavaScript-E34F26?style=flat-square&logo=html5&logoColor=white" alt="Frontend" />
+  <img src="https://img.shields.io/badge/Frontend-HTML5%20%7C%20CSS3%20%7C%20JavaScript-E34F26?style=flat-square&logo=html5&logoColor=white" alt="Frontend" />
 </p>
 
 <p align="center" style="font-size: 1.2em; margin: 30px 0;">
@@ -246,15 +246,18 @@
 ## КОНТРИБЬЮТОРЫ
 
 <p align="center">
-  <a href="https://github.com/KaVoshnik/MultiplayerUltimateSnakeAttack/graphs/contributors">
-    <img src="https://contrib.rocks/image?repo=KaVoshnik/MultiplayerUltimateSnakeAttack" alt="Contributors" />
+  <a href="https://github.com/KaVoshnik" style="display: inline-block; margin: 0 15px; text-align: center; text-decoration: none;">
+    <img src="https://github.com/KaVoshnik.png" width="70" height="70" style="border-radius: 50%; display: block;" alt="@KaVoshnik" />
+    <span style="color: #00ff88; margin-top: 8px; display: block; font-weight: bold;">KaVoshnik</span>
+  </a>
+  <a href="https://github.com/IWoki" style="display: inline-block; margin: 0 15px; text-align: center; text-decoration: none;">
+    <img src="https://github.com/IWoki.png" width="70" height="70" style="border-radius: 50%; display: block;" alt="@IWoki" />
+    <span style="color: #00ff88; margin-top: 8px; display: block; font-weight: bold;">IWoki</span>
   </a>
 </p>
 
-<br>
-
-<p align="center">
-  <strong>Мега крутые разрабы змеек</strong>
+<p align="center" style="margin-top: 10px;">
+  <strong style="color: #fff;">Мега крутые разрабы змеек</strong>
 </p>
 
 <p align="center">
