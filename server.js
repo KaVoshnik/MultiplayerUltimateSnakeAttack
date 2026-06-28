@@ -25,7 +25,7 @@ const MAX_LEADERS     = 20;
 const SPAWN_FREEZE_MS = 3000;
 const KILL_REWARD_COINS    = 50;
 const BATTLE_PASS_SCORE_STEP = 1000;
-const BATTLE_PASS_MAX_TIER   = 12;
+const BATTLE_PASS_MAX_TIER   = 60;
 
 const { FOOD_TYPES, DIFFICULTIES } = foodMod;
 const { BOSS_SPAWN_BUFFER, BOSS_MOVE_EVERY } = bossMod;
@@ -44,18 +44,26 @@ const BONUS_TYPES = {
 };
 
 const BATTLE_PASS_NICK_COLORS = [
-  { id: "bp_gold",    label: "Золото",   color: "#ffd166" },
-  { id: "bp_cyan",    label: "Бирюза",   color: "#22d3ee" },
-  { id: "bp_magenta", label: "Магента",  color: "#f472b6" },
-  { id: "bp_lime",    label: "Лайм",     color: "#a3e635" },
-  { id: "bp_crimson", label: "Багряный", color: "#f87171" },
-  { id: "bp_violet",  label: "Фиолет",   color: "#a78bfa" },
-  { id: "bp_orange",  label: "Оранж",    color: "#fb923c" },
-  { id: "bp_ice",     label: "Лёд",      color: "#93c5fd" },
-  { id: "bp_neon",    label: "Неон",     color: "#3de88a" },
-  { id: "bp_royal",   label: "Корона",   color: "#fcd34d" },
-  { id: "bp_plasma",  label: "Плазма",   color: "#e879f9" },
-  { id: "bp_sunset",  label: "Закат",    color: "#fb7185" },
+  { id: "bp_gold",      label: "Золото",   color: "#ffd166", tier: 1  },
+  { id: "bp_cyan",      label: "Бирюза",   color: "#22d3ee", tier: 4  },
+  { id: "bp_magenta",   label: "Магента",  color: "#f472b6", tier: 7  },
+  { id: "bp_lime",      label: "Лайм",     color: "#a3e635", tier: 10 },
+  { id: "bp_crimson",   label: "Багряный", color: "#f87171", tier: 13 },
+  { id: "bp_violet",    label: "Фиолет",   color: "#a78bfa", tier: 16 },
+  { id: "bp_orange",    label: "Оранж",    color: "#fb923c", tier: 19 },
+  { id: "bp_ice",       label: "Лёд",      color: "#93c5fd", tier: 22 },
+  { id: "bp_neon",      label: "Неон",     color: "#3de88a", tier: 25 },
+  { id: "bp_royal",     label: "Корона",   color: "#fcd34d", tier: 28 },
+  { id: "bp_plasma",    label: "Плазма",   color: "#e879f9", tier: 31 },
+  { id: "bp_sunset",    label: "Закат",    color: "#fb7185", tier: 34 },
+  { id: "bp_mint",      label: "Мята",     color: "#2dd4bf", tier: 37 },
+  { id: "bp_ember",     label: "Угли",     color: "#ea580c", tier: 40 },
+  { id: "bp_azure",     label: "Лазурь",   color: "#0ea5e9", tier: 43 },
+  { id: "bp_sakura",    label: "Сакура",   color: "#f9a8d4", tier: 46 },
+  { id: "bp_poison",    label: "Яд",       color: "#84cc16", tier: 49 },
+  { id: "bp_shadow",    label: "Тень",     color: "#94a3b8", tier: 52 },
+  { id: "bp_aurora",    label: "Аврора",   color: "#34d399", tier: 55 },
+  { id: "bp_legendary", label: "Легенда",  color: "#f59e0b", tier: 60 },
 ];
 
 const SHOP_CATALOG = [
@@ -121,8 +129,10 @@ const MIME = {
 // ============================================================
 
 function getBattlePassTierDef(tier) {
-  const nickColor = BATTLE_PASS_NICK_COLORS[Math.min(tier - 1, BATTLE_PASS_NICK_COLORS.length - 1)];
-  return { tier, scoreRequired: tier * BATTLE_PASS_SCORE_STEP, coins: 50 + (tier - 1) * 30, nickColor };
+  const nickColor = BATTLE_PASS_NICK_COLORS.find((c) => c.tier === tier) || null;
+  // Монеты: 30 за первые уровни, плавно растёт к 60-му (~120 на уровне 60)
+  const coins = Math.round(30 + (tier - 1) * 1.5);
+  return { tier, scoreRequired: tier * BATTLE_PASS_SCORE_STEP, coins, nickColor };
 }
 
 function getBattlePassConfig() {
@@ -563,7 +573,7 @@ function extrasForPlayer(p) {
   const cos = getPlayerCosmetics(p.name);
   return {
     best: Math.max(p.best, bestForName(p.name)),
-    spawnFrozenLeft: Math.max(0, (p.frozenUntil || 0) - Date.now()),
+    spawnFrozenLeft: p.frozenUntil || 0,
     heat: Math.min(100, Math.round((p.score || 0) * 0.4 + (p.combo || 0) * 9)),
     isTagged: gameMode === "tag_time" && p.id === taggedPlayerId,
     avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji, snakeHatId: cos.snakeHatId,
@@ -1201,14 +1211,17 @@ function trackDisconnectStats(player) {
 function awardSessionCoins(player) {
   const score = player.score || 0;
   if (score <= 0) return 0;
-  let coins = Math.floor(Math.sqrt(score) * 4);
-  coins += Math.floor((player.maxCombo || 0) * 2);
-  if (player.beatPersonalBest) coins += 30;
-  if (player.sessionMvp)       coins += 25;
-  if (score >= 200)  coins += 15;
-  if (score >= 500)  coins += 35;
-  if (score >= 1000) coins += 60;
-  return Math.max(3, Math.min(coins, 220));
+  // Базовая формула: 10 * (score/100)^1.5
+  // score=100  → 10 монет
+  // score=500  → ~111 монет
+  // score=1000 → ~316 монет
+  // score=3000 → ~1643 монет (без кэпа)
+  let coins = Math.floor(10 * Math.pow(score / 100, 1.5));
+  // Бонусы сверху (небольшие, не ломают кривую)
+  if (player.beatPersonalBest)       coins += 20;
+  if (player.sessionMvp)             coins += 15;
+  coins += Math.floor((player.maxCombo || 0) * 1.5);
+  return Math.max(1, coins);
 }
 
 function awardKillCoins(killer, victim) {

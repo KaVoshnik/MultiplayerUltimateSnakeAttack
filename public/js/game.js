@@ -158,9 +158,10 @@ function isSpawnFrozen() {
 function syncSpawnFreeze(me) {
   if (!me) return;
   const wasFrozen = state.freezeEndsAt > Date.now();
-  if ((me.spawnFrozenLeft || 0) > 0) {
-    const proposed = Date.now() + me.spawnFrozenLeft;
-    if (proposed > state.freezeEndsAt) state.freezeEndsAt = proposed;
+  const frozenUntil = me.spawnFrozenLeft || 0; // сервер шлёт абсолютный timestamp
+  if (frozenUntil > Date.now()) {
+    // Устанавливаем только если ещё не установлен (не сбрасываем каждый тик)
+    if (state.freezeEndsAt === 0) state.freezeEndsAt = frozenUntil;
   } else {
     state.freezeEndsAt = 0;
     // Freeze только что снялся — отправляем буферизированное нажатие
