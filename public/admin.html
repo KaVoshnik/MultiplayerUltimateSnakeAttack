@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="ru">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Админ — Snake Attack</title>
+  <link rel="stylesheet" href="css/common.css" />
+  <link rel="stylesheet" href="css/pages.css" />
+  <style>
+    .adminWrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 2rem 1rem;
+    }
+
+    .adminHeader {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 2rem;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .adminHeader h1 {
+      font-size: 1.4rem;
+      margin: 0;
+    }
+
+    .adminBadge {
+      background: #dc2626;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 6px;
+      letter-spacing: .04em;
+    }
+
+    .adminSearch {
+      padding: 0 0 1rem;
+    }
+
+    .adminSearch input {
+      width: 100%;
+      max-width: 360px;
+      padding: 8px 12px;
+      border: 1px solid var(--border, #333);
+      border-radius: 8px;
+      background: var(--surface-1, #1a1a1a);
+      color: var(--text-primary, #fff);
+      font-size: 14px;
+    }
+
+    .adminStats {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 1.5rem;
+    }
+
+    .statCard {
+      background: var(--surface-1, #1a1a1a);
+      border: 1px solid var(--border, #333);
+      border-radius: 10px;
+      padding: 12px 20px;
+      min-width: 120px;
+    }
+
+    .statCard .label {
+      font-size: 12px;
+      color: var(--text-secondary, #aaa);
+      margin-bottom: 4px;
+    }
+
+    .statCard .value {
+      font-size: 22px;
+      font-weight: 600;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    thead th {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border, #333);
+      color: var(--text-secondary, #aaa);
+      font-weight: 500;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    tbody tr {
+      border-bottom: 1px solid var(--border, #222);
+      transition: background .1s;
+    }
+
+    tbody tr:hover {
+      background: var(--surface-1, #1a1a1a);
+    }
+
+    td {
+      padding: 10px 12px;
+      vertical-align: middle;
+    }
+
+    .adminBadgeRow {
+      background: #dc2626;
+      color: #fff;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .actionBtn {
+      padding: 4px 10px;
+      border: 1px solid var(--border, #444);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text-primary, #eee);
+      font-size: 12px;
+      cursor: pointer;
+      transition: background .1s;
+    }
+
+    .actionBtn:hover {
+      background: var(--surface-1, #222);
+    }
+
+    .actionBtn.danger {
+      border-color: #dc2626;
+      color: #f87171;
+    }
+
+    .actionBtn.danger:hover {
+      background: #1a0000;
+    }
+
+    .actionBtn.success {
+      border-color: #22c55e;
+      color: #4ade80;
+    }
+
+    .coinsInput {
+      width: 80px;
+      padding: 4px 8px;
+      border: 1px solid var(--border, #444);
+      border-radius: 6px;
+      background: var(--surface-1, #1a1a1a);
+      color: var(--text-primary, #fff);
+      font-size: 12px;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #1a1a1a;
+      border: 1px solid #444;
+      border-radius: 8px;
+      padding: 10px 18px;
+      font-size: 14px;
+      color: #fff;
+      z-index: 999;
+      opacity: 0;
+      transition: opacity .2s;
+      pointer-events: none;
+    }
+
+    .toast.show {
+      opacity: 1;
+    }
+
+    .forbidden {
+      text-align: center;
+      padding: 4rem 1rem;
+    }
+
+    .forbidden h2 {
+      color: #f87171;
+      margin-bottom: 8px;
+    }
+
+    .tableWrap {
+      overflow-x: auto;
+    }
+  </style>
+</head>
+
+<body>
+  <nav class="siteNav">
+    <a href="/" class="brand">← ЛОББИ</a>
+    <span class="coinPill">👑 Админ-панель</span>
+  </nav>
+
+  <div class="adminWrap">
+    <div id="forbidden" class="forbidden" style="display:none">
+      <h2>⛔ Нет доступа</h2>
+      <p>Войди через Google как администратор.</p>
+      <a href="/" style="color:#62a0ea">← На главную</a>
+    </div>
+
+    <div id="adminContent" style="display:none">
+      <div class="adminHeader">
+        <h1>Панель администратора <span class="adminBadge">ADMIN</span></h1>
+        <span id="adminName" style="font-size:13px;color:#aaa"></span>
+      </div>
+
+      <div class="adminStats" id="adminStats">
+        <div class="statCard">
+          <div class="label">Игроков</div>
+          <div class="value" id="statPlayers">—</div>
+        </div>
+        <div class="statCard">
+          <div class="label">Онлайн</div>
+          <div class="value" id="statOnline">—</div>
+        </div>
+        <div class="statCard">
+          <div class="label">Администраторов</div>
+          <div class="value" id="statAdmins">—</div>
+        </div>
+      </div>
+
+      <div class="adminSearch">
+        <input type="text" id="searchInput" placeholder="Поиск по нику…" />
+      </div>
+
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Ник</th>
+              <th>Монеты</th>
+              <th>Лучший счёт</th>
+              <th>Игр</th>
+              <th>Смертей</th>
+              <th>Обновлён</th>
+              <th>Роль</th>
+              <th>Действия</th>
+            </tr>
+          </thead>
+          <tbody id="playerTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    let allPlayers = [];
+    let myName = "";
+
+    async function api(path, method = "GET", body = null) {
+      const opts = { method, headers: { "Content-Type": "application/json" }, credentials: "include" };
+      if (body) opts.body = JSON.stringify(body);
+      const res = await fetch(path, opts);
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    }
+
+    function showToast(text) {
+      const t = document.getElementById("toast");
+      t.textContent = text;
+      t.classList.add("show");
+      clearTimeout(t._timer);
+      t._timer = setTimeout(() => t.classList.remove("show"), 2500);
+    }
+
+    function formatDate(str) {
+      if (!str) return "—";
+      const d = new Date(str);
+      return d.toLocaleDateString("ru") + " " + d.toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" });
+    }
+
+    function renderTable(players) {
+      const tbody = document.getElementById("playerTable");
+      tbody.innerHTML = "";
+      for (const p of players) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td><strong>${escHtml(p.name)}</strong>${p.googleId ? " 🔗" : ""}</td>
+          <td>
+            <input class="coinsInput" type="number" value="${p.coins}" min="0" data-name="${escHtml(p.name)}" />
+            <button class="actionBtn" onclick="setCoins('${escHtml(p.name)}', this)">✓</button>
+          </td>
+          <td>${p.bestScore}</td>
+          <td>${p.games}</td>
+          <td>${p.deaths}</td>
+          <td style="color:#aaa;font-size:11px">${formatDate(p.updatedAt)}</td>
+          <td>${p.isAdmin ? '<span class="adminBadgeRow">ADMIN</span>' : "игрок"}</td>
+          <td style="display:flex;gap:6px;flex-wrap:wrap">
+            ${p.name !== myName ? `
+              <button class="actionBtn ${p.isAdmin ? "danger" : "success"}" onclick="toggleAdmin('${escHtml(p.name)}', ${p.isAdmin})">
+                ${p.isAdmin ? "Снять админа" : "Дать админа"}
+              </button>
+              <button class="actionBtn danger" onclick="deletePlayer('${escHtml(p.name)}')">Удалить</button>
+            ` : '<span style="color:#aaa;font-size:11px">Это вы</span>'}
+          </td>
+        `;
+        tbody.append(tr);
+      }
+    }
+
+    function escHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+
+    async function toggleAdmin(name, current) {
+      if (!confirm(`${current ? "Снять" : "Выдать"} права администратора для ${name}?`)) return;
+      await api("/admin/set_admin", "POST", { name, value: !current });
+      showToast(`${name}: ${current ? "права сняты" : "права выданы"}`);
+      await loadPlayers();
+    }
+
+    async function deletePlayer(name) {
+      if (!confirm(`Удалить игрока ${name}? Это действие необратимо.`)) return;
+      await api("/admin/delete_player", "POST", { name });
+      showToast(`${name} удалён`);
+      await loadPlayers();
+    }
+
+    async function setCoins(name, btn) {
+      const input = btn.previousElementSibling;
+      const coins = parseInt(input.value, 10);
+      if (isNaN(coins) || coins < 0) { showToast("Введите корректное число"); return; }
+      await api("/admin/set_coins", "POST", { name, coins });
+      showToast(`${name}: монеты обновлены → ${coins}`);
+      await loadPlayers();
+    }
+
+    async function loadPlayers() {
+      allPlayers = await api("/admin/players");
+      document.getElementById("statPlayers").textContent = allPlayers.length;
+      document.getElementById("statAdmins").textContent = allPlayers.filter((p) => p.isAdmin).length;
+      applySearch();
+    }
+
+    function applySearch() {
+      const q = document.getElementById("searchInput").value.trim().toLowerCase();
+      const filtered = q ? allPlayers.filter((p) => p.name.toLowerCase().includes(q)) : allPlayers;
+      renderTable(filtered);
+    }
+
+    document.getElementById("searchInput").addEventListener("input", applySearch);
+
+    async function init() {
+      try {
+        const me = await api("/admin/me");
+        myName = me.name;
+        document.getElementById("adminName").textContent = `Вы вошли как ${me.name}`;
+        document.getElementById("adminContent").style.display = "block";
+
+        // Онлайн из /health
+        const health = await api("/health").catch(() => ({}));
+        document.getElementById("statOnline").textContent = health.players ?? "—";
+
+        await loadPlayers();
+      } catch (e) {
+        if (e.message.includes("forbidden") || e.message.includes("403")) {
+          document.getElementById("forbidden").style.display = "block";
+        } else {
+          document.getElementById("forbidden").style.display = "block";
+          document.querySelector("#forbidden h2").textContent = "⚠ Ошибка";
+          document.querySelector("#forbidden p").textContent = e.message;
+        }
+      }
+    }
+
+    init();
+  </script>
+</body>
+
+</html>
