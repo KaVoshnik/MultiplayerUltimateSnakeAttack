@@ -28,7 +28,7 @@
   <a href="https://github.com/KaVoshnik/MultiplayerUltimateSnakeAttack">
     <img src="https://img.shields.io/badge/GitHub-Repository-181717?style=for-the-badge&logo=github" alt="GitHub" />
   </a>
-  <img src="https://img.shields.io/github/v/release/KaVoshnik/MultiplayerUltimateSnakeAttack?style=for-the-badge&label=VERSION" alt="Версия" />
+  <img src="https://img.shields.io/github/v/release/KaVoshnik/MultiplayerUltimateSnakeAttack?style=for-the-badge&label=VERSION&include_prereleases" alt="Версия" />
   <img src="https://img.shields.io/badge/LICENSE-MIT-blue?style=for-the-badge" alt="Лицензия" />
 </p>
 
@@ -36,7 +36,7 @@
   <img src="https://img.shields.io/badge/Node.js-Express-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js" />
   <img src="https://img.shields.io/badge/PostgreSQL-Database-336791?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL" />
   <img src="https://img.shields.io/badge/WebSocket-Realtime-orange?style=flat-square" alt="WebSocket" />
-  <img src="https://img.shields.io/badge/HTML5-CSS3-JavaScript-E34F26?style=flat-square&logo=html5&logoColor=white" alt="Frontend" />
+  <img src="https://img.shields.io/badge/Frontend-HTML5%20%7C%20CSS3%20%7C%20JavaScript-E34F26?style=flat-square&logo=html5&logoColor=white" alt="Frontend" />
 </p>
 
 <p align="center" style="font-size: 1.2em; margin: 30px 0;">
@@ -243,21 +243,33 @@
 
 Этот проект распространяется под лицензией MIT. Подробнее см. в файле [LICENSE](LICENSE).
 
+
 ## КОНТРИБЬЮТОРЫ
 
-<p align="center">
-  <a href="https://github.com/KaVoshnik/MultiplayerUltimateSnakeAttack/graphs/contributors">
-    <img src="https://contrib.rocks/image?repo=KaVoshnik/MultiplayerUltimateSnakeAttack" alt="Contributors" />
-  </a>
-</p>
+<table align="center">
+  <tr>
+    <td align="center">
+      <a href="https://github.com/KaVoshnik">
+        <img src="https://github.com/KaVoshnik.png" width="70" height="70" style="border-radius: 50%;" alt="@KaVoshnik" />
+        <br />
+        <strong style="color: #00ff88;">KaVoshnik</strong>
+      </a>
+    </td>
+    <td align="center" style="padding: 0 40px;">
+      <a href="https://github.com/IWoki">
+        <img src="https://github.com/IWoki.png" width="70" height="70" style="border-radius: 50%;" alt="@IWoki" />
+        <br />
+        <strong style="color: #00ff88;">IWoki</strong>
+      </a>
+    </td>
+  </tr>
+</table>
 
-<br>
-
-<p align="center">
+<p align="center" style="margin-top: 10px;">
   <strong>Мега крутые разрабы змеек</strong>
 </p>
 
-<p align="center">
+<p align="center" style="margin-top: 30px;">
   <a href="https://github.com/KaVoshnik/MultiplayerUltimateSnakeAttack">
     <img src="https://img.shields.io/github/stars/KaVoshnik/MultiplayerUltimateSnakeAttack?style=social" alt="GitHub stars" />
   </a>
@@ -268,5 +280,3 @@
     <img src="https://img.shields.io/github/watchers/KaVoshnik/MultiplayerUltimateSnakeAttack?style=social" alt="GitHub watchers" />
   </a>
 </p>
-
-
