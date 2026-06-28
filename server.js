@@ -1250,11 +1250,18 @@ function processBattlePassRewards(name, entry) {
     const def = getBattlePassTierDef(tier);
     entry.stats.battlePassClaimed.push(tier);
     entry.coins = (Number(entry.coins) || 0) + def.coins;
-    if (def.nickColor?.id && !entry.stats.battlePassUnlocked.includes(def.nickColor.id)) {
+
+    if (def.nickColor && def.nickColor.id && !entry.stats.battlePassUnlocked.includes(def.nickColor.id)) {
       entry.stats.battlePassUnlocked.push(def.nickColor.id);
     }
+
     granted.push(def);
-    pushFeed("bonus", `🎖 ${name}: боевой пропуск ур.${tier} — +${def.coins}🪙${def.nickColor ? `, цвет «${def.nickColor.label}»` : ""}`, name);
+
+    let colorText = "";
+    if (def.nickColor && def.nickColor.label) {
+      colorText = `, цвет «${def.nickColor.label}»`;
+    }
+    pushFeed("bonus", `🎖 ${name}: боевой пропуск ур.${tier} — +${def.coins}🪙${colorText}`, name);
   }
 
   if (!granted.length) return granted;
