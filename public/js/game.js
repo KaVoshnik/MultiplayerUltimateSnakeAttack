@@ -194,6 +194,51 @@ function resolveFoodKind(item) {
   return BAD_KINDS[(item.x + item.y) % BAD_KINDS.length];
 }
 
+function finishGameUpdate(prevScore, prevCombo) {
+  const me = state.players.find((p) => p.id === state.id);
+  syncSpawnFreeze(me);
+  updateHud(me, prevScore, prevCombo);
+  renderPlayers();
+  SnakeFX.updateTrails(state.players);
+  const anyEnraged = state.bosses.some((b) => b.phase === "enraged");
+  if (anyEnraged && !state.bossRageSound) {
+    state.bossRageSound = true;
+    SnakeAudio.play("boss");
+    SnakeFX.addShake(8);
+  }
+  if (!anyEnraged) state.bossRageSound = false;
+}
+
+function applyMotionInterp() {
+  const now = performance.now();
+  const prevDuration = state.renderSnap ? now - state.renderSnap.at : (state.estimatedTickMs || 115);
+  state.renderSnap = {
+    prevSnakes: snapshotSnakes(state.players),
+    at: now,
+    duration: clamp(prevDuration, 40, 200),
+  };
+}
+
+function handleSnapshot(message) {
+  const prevScore = state.players.find((p) => p.id === state.id)?.score || 0;
+  const prevCombo = state.players.find((p) => p.id === state.id)?.combo || 0;
+  const players = GameSyncClient.applySnapshot(state, message);
+  applyRenderSnap(players);
+  finishGameUpdate(prevScore, prevCombo);
+}
+
+function handleDelta(message) {
+  const prevScore = state.players.find((p) => p.id === state.id)?.score || 0;
+  const prevCombo = state.players.find((p) => p.id === state.id)?.combo || 0;
+  const needsInterp = Boolean(message.mv?.length || message.pj?.length);
+  if (needsInterp) applyMotionInterp();
+  GameSyncClient.applyDelta(state, message);
+  if (!needsInterp && (message.pm?.length || message.ple?.length)) {
+    renderPlayers();
+  }
+  finishGameUpdate(prevScore, prevCombo);
+}
+
 function connect() {
   const socket = new WebSocket(getWebSocketUrl());
   state.socket = socket;
@@ -231,30 +276,25 @@ function connect() {
       }
       sendJoin();
     }
+    if (message.type === "snapshot") {
+      handleSnapshot(message);
+      return;
+    }
+    if (message.type === "delta") {
+      handleDelta(message);
+      return;
+    }
     if (message.type === "state") {
       const prevScore = state.players.find((p) => p.id === state.id)?.score || 0;
       const prevCombo = state.players.find((p) => p.id === state.id)?.combo || 0;
       state.grid = message.grid;
       state.food = message.food;
       state.bonuses = message.bonuses || [];
-      // applyRenderSnap ПЕРВЫМ — он снимает снепшот из старого state.players,
-      // затем сам перезаписывает state.players на новые данные
       applyRenderSnap(message.players);
       state.bosses = message.bosses || (message.boss ? [message.boss] : []);
       state.gameMode = message.gameMode || "classic";
       state.taggedPlayerId = message.taggedPlayerId;
-      const me = message.players.find((p) => p.id === state.id);
-      syncSpawnFreeze(me);
-      updateHud(me, prevScore, prevCombo);
-      renderPlayers();
-      SnakeFX.updateTrails(state.players);
-      const anyEnraged = state.bosses.some((b) => b.phase === "enraged");
-      if (anyEnraged && !state.bossRageSound) {
-        state.bossRageSound = true;
-        SnakeAudio.play("boss");
-        SnakeFX.addShake(8);
-      }
-      if (!anyEnraged) state.bossRageSound = false;
+      finishGameUpdate(prevScore, prevCombo);
     }
     if (message.type === "feed") {
       state.feed = message.feed || [];
@@ -404,7 +444,8 @@ function renderPlayers() {
     const tag = state.gameMode === "tag_time" && player.id === state.taggedPlayerId ? " 🏷" : "";
     const scoreText = player.alive ? String(player.score) : "💀";
     // Обновляем только если изменилось
-    const newHtml = `<span><span class="swatch" style="background:${player.color}"></span>${escapeHtml(player.name)}${tag}</span><span>${scoreText}</span>`;
+    const nameStyle = player.nickColor ? ` style="color:${player.nickColor}"` : "";
+    const newHtml = `<span><span class="swatch" style="background:${player.color}"></span><span class="playerNick"${nameStyle}>${escapeHtml(player.name)}</span>${tag}</span><span>${scoreText}</span>`;
     if (li.innerHTML !== newHtml) li.innerHTML = newHtml;
   }
 }
@@ -1013,6 +1054,12 @@ function drawPlayers(view) {
   }
 }
 
+function getPlayerNickFill(player) {
+  if (player.nickColor) return player.nickColor;
+  if (player.id === state.id) return "#3de88a";
+  return "rgba(255,255,255,0.92)";
+}
+
 function drawPlayerNameLabel(x, y, cell, player) {
   if (!player.alive || !player.name) return;
   const cx = x + cell / 2;
@@ -1025,7 +1072,7 @@ function drawPlayerNameLabel(x, y, cell, player) {
   ctx.textBaseline = "top";
   ctx.lineWidth = Math.max(2, fontSize * 0.18);
   ctx.strokeStyle = "rgba(0,0,0,0.75)";
-  ctx.fillStyle = player.id === state.id ? "#3de88a" : "rgba(255,255,255,0.92)";
+  ctx.fillStyle = getPlayerNickFill(player);
   ctx.strokeText(label, cx, cy);
   ctx.fillText(label, cx, cy);
   ctx.restore();

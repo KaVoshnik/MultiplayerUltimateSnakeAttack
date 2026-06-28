@@ -5,6 +5,7 @@ const crypto = require("crypto");
 const os = require("os");
 const db = require("./db");
 const auth = require("./auth");
+const gameSync = require("./lib/game-sync");
 
 const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -16,7 +17,8 @@ const MIN_GOOD_FOOD = 70;
 const SNAKE_SPAWN_LEN = 4;
 const SPAWN_MARGIN = 18;
 const SPAWN_CLEAR_RADIUS = 5;
-const BAD_FOOD_HEAD_BUFFER = 3;
+const BAD_FOOD_HEAD_BUFFER = 6;
+const FOOD_PATH_AVOID_CELLS = 7;
 const BOSS_MOVE_EVERY = 6;
 const BOSS_CHASE_RANGE = 22;
 const BOSS_RANDOM_MOVE_CHANCE = 0.24;
@@ -54,14 +56,57 @@ const MODES = {
 // --- BONUSES ---
 // Бонусы появляются на поле как особые клетки
 const BONUS_TYPES = {
-  shield: { label: "SH", duration: 5000, color: "#62a0ea", desc: "защита от яда" },
-  speed_up: { label: "SP", duration: 4000, color: "#f9f06b", desc: "оверклок +30% очков" },
-  slow_down: { label: "SL", duration: 5000, color: "#dc8add", desc: "замедление" },
-  double: { label: "x2", duration: 6000, color: "#33d17a", desc: "двойные очки" },
-  ghost: { label: "GH", duration: 4000, color: "#8ff0a4", desc: "призрак" },
+  shield: { label: "SH", duration: 10000, color: "#62a0ea", desc: "защита от яда" },
+  speed_up: { label: "SP", duration: 8000, color: "#f9f06b", desc: "оверклок +30% очков" },
+  slow_down: { label: "SL", duration: 10000, color: "#dc8add", desc: "замедление" },
+  double: { label: "x2", duration: 12000, color: "#33d17a", desc: "двойные очки" },
+  ghost: { label: "GH", duration: 8000, color: "#8ff0a4", desc: "призрак" },
 };
 
 const SPAWN_FREEZE_MS = 3000;
+const KILL_REWARD_COINS = 50;
+const BATTLE_PASS_SCORE_STEP = 1000;
+const BATTLE_PASS_MAX_TIER = 12;
+
+const BATTLE_PASS_NICK_COLORS = [
+  { id: "bp_gold", label: "Золото", color: "#ffd166" },
+  { id: "bp_cyan", label: "Бирюза", color: "#22d3ee" },
+  { id: "bp_magenta", label: "Магента", color: "#f472b6" },
+  { id: "bp_lime", label: "Лайм", color: "#a3e635" },
+  { id: "bp_crimson", label: "Багряный", color: "#f87171" },
+  { id: "bp_violet", label: "Фиолет", color: "#a78bfa" },
+  { id: "bp_orange", label: "Оранж", color: "#fb923c" },
+  { id: "bp_ice", label: "Лёд", color: "#93c5fd" },
+  { id: "bp_neon", label: "Неон", color: "#3de88a" },
+  { id: "bp_royal", label: "Корона", color: "#fcd34d" },
+  { id: "bp_plasma", label: "Плазма", color: "#e879f9" },
+  { id: "bp_sunset", label: "Закат", color: "#fb7185" },
+];
+
+function getBattlePassTierDef(tier) {
+  const nickColor = BATTLE_PASS_NICK_COLORS[Math.min(tier - 1, BATTLE_PASS_NICK_COLORS.length - 1)];
+  return {
+    tier,
+    scoreRequired: tier * BATTLE_PASS_SCORE_STEP,
+    coins: 50 + (tier - 1) * 30,
+    nickColor,
+  };
+}
+
+function getBattlePassConfig() {
+  return {
+    scoreStep: BATTLE_PASS_SCORE_STEP,
+    maxTier: BATTLE_PASS_MAX_TIER,
+    tiers: Array.from({ length: BATTLE_PASS_MAX_TIER }, (_, i) => getBattlePassTierDef(i + 1)),
+    nickColors: [{ id: "default", label: "Стандарт", color: null }, ...BATTLE_PASS_NICK_COLORS],
+  };
+}
+
+function resolveNickColorHex(entry) {
+  const id = entry.stats?.activeNickColor;
+  if (!id || id === "default") return null;
+  return BATTLE_PASS_NICK_COLORS.find((c) => c.id === id)?.color || null;
+}
 
 // --- СКИНЫ (цвет тела) + ШЛЯПЫ в едином каталоге ---
 const SHOP_CATALOG = [
@@ -166,6 +211,8 @@ let shopData = {};
 const shopClients = new Map(); // socket id -> player name (shop-only sessions)
 const socketSessions = new Map(); // socket id -> auth session row
 let tickCount = 0;
+let tickJournal = gameSync.createJournal();
+const clientAoi = new Map();
 let gameMode = "classic";
 let taggedPlayerId = null; // для Tag Time
 const feedLog = [];
@@ -244,7 +291,10 @@ function handleHttpRequest(req, res, url) {
     return;
   }
   if (url.pathname === "/shop") { sendJson(res, { skins: SHOP_SKINS, catalog: SHOP_CATALOG, playerData: shopData }); return; }
-  if (url.pathname === "/catalog") { sendJson(res, { catalog: SHOP_CATALOG, skins: SHOP_SKINS, avatars: AVATAR_PRESETS }); return; }
+  if (url.pathname === "/catalog") {
+    sendJson(res, { catalog: SHOP_CATALOG, skins: SHOP_SKINS, avatars: AVATAR_PRESETS, battlePass: getBattlePassConfig() });
+    return;
+  }
   if (url.pathname === "/profile") {
     const name = profileName(url.searchParams.get("name") || "");
     if (!name) { sendJson(res, { error: "no name" }); return; }
@@ -339,6 +389,8 @@ server.on("upgrade", (req, socket) => {
     modes: MODES, difficulties: DIFFICULTIES,
     shopData: defaultShopEntry(),
     feed: feedLog.slice(0, 8),
+    presence: gameSync.buildPresence(buildSyncCtx()),
+    battlePass: getBattlePassConfig(),
   });
 });
 
@@ -361,6 +413,7 @@ async function bootstrap() {
     // setInterval(broadcastState, 250) убран — broadcastState вызывается в конце каждого tick()
     // чтобы клиент получал обновления строго синхронно с игровой логикой
     setInterval(spawnBonuses, 8000);
+    setInterval(broadcastPresence, 5000);
     setInterval(pingClients, 25000);
     setInterval(() => db.cleanupAuthSessions().catch(() => { }), 60 * 60 * 1000);
     if (auth.isGoogleAuthEnabled()) {
@@ -445,11 +498,102 @@ function comboMultiplier(combo) {
   return 1;
 }
 
+function extrasForPlayer(p) {
+  const cos = getPlayerCosmetics(p.name);
+  return {
+    best: Math.max(p.best, bestForName(p.name)),
+    spawnFrozenLeft: Math.max(0, (p.frozenUntil || 0) - Date.now()),
+    heat: Math.min(100, Math.round((p.score || 0) * 0.4 + (p.combo || 0) * 9)),
+    isTagged: gameMode === "tag_time" && p.id === taggedPlayerId,
+    avatar: cos.avatar,
+    snakeHatEmoji: cos.snakeHatEmoji,
+    snakeHatId: cos.snakeHatId,
+    nickColor: resolveNickColorHex(getProfile(p.name)),
+  };
+}
+
+function buildSyncCtx() {
+  return {
+    grid: GRID,
+    players,
+    food,
+    bonuses,
+    bosses,
+    bonusTypes: BONUS_TYPES,
+    tickCount,
+    tickMs: currentTickMs,
+    gameMode,
+    taggedPlayerId,
+    clientAoi,
+    extrasFor: extrasForPlayer,
+  };
+}
+
+function sendSnapshot(clientId) {
+  const snap = gameSync.buildSnapshot(buildSyncCtx(), clientId);
+  if (snap) send(clientId, snap);
+}
+
+function broadcastGameDelta(journal) {
+  const ctx = buildSyncCtx();
+  for (const clientId of players.keys()) {
+    const delta = gameSync.buildDelta(ctx, clientId, journal);
+    if (delta) send(clientId, delta);
+  }
+}
+
+function broadcastGameSync() {
+  const ctx = buildSyncCtx();
+  for (const clientId of players.keys()) {
+    const delta = gameSync.buildDelta(ctx, clientId, tickJournal);
+    if (delta) send(clientId, delta);
+  }
+}
+
+function broadcastPresence() {
+  broadcast(gameSync.buildPresence(buildSyncCtx()));
+}
+
+function pushFoodItem(item) {
+  food.push(item);
+  tickJournal.foodAdded.push(gameSync.compactFood(item));
+}
+
+function getMovementPathCells(steps = FOOD_PATH_AVOID_CELLS) {
+  const cells = new Set();
+  for (const player of players.values()) {
+    if (!player.alive) continue;
+    if (player.frozenUntil && Date.now() < player.frozenUntil) continue;
+    if (player.activeBonus === "slow_down" && tickCount % 2 === 0) continue;
+    const dir = player.nextDirection || player.direction;
+    if (!dir) continue;
+    const diff = DIFFICULTIES[player.difficulty] || DIFFICULTIES.normal;
+    let x = player.snake[0].x;
+    let y = player.snake[0].y;
+    for (let i = 0; i < steps; i += 1) {
+      x += dir.x;
+      y += dir.y;
+      if (!insideGrid({ x, y })) {
+        if (diff.wallDeath) break;
+        x = (x + GRID.width) % GRID.width;
+        y = (y + GRID.height) % GRID.height;
+      }
+      cells.add(pointKey({ x, y }));
+    }
+  }
+  return cells;
+}
+
 function tick() {
   if (players.size === 0) return;
+  tickJournal = gameSync.createJournal();
   tickCount += 1;
-  fillFood();
-  if (tickCount % (bosses.some((b) => b.enragedTicks > 0) ? 3 : BOSS_MOVE_EVERY) === 0) moveBosses();
+  const pathCells = getMovementPathCells();
+  fillFood({ avoidCells: pathCells });
+  if (tickCount % (bosses.some((b) => b.enragedTicks > 0) ? 3 : BOSS_MOVE_EVERY) === 0) {
+    moveBosses(pathCells);
+    tickJournal.bossesChanged = true;
+  }
   tickBonusEffects();
   // Перестраиваем occupancySet один раз за тик вместо O(n) .some() в каждой проверке
   occupancyRebuild();
@@ -522,15 +666,18 @@ function tick() {
     const eatenBonusIdx = bonuses.findIndex((b) => b.x === nextHead.x && b.y === nextHead.y);
     const eatenBonus = eatenBonusIdx >= 0 ? bonuses[eatenBonusIdx] : null;
     if (eatenBonus) {
+      tickJournal.bonusRemoved.push([eatenBonus.x, eatenBonus.y]);
       bonuses.splice(eatenBonusIdx, 1);
       activateBonus(player, eatenBonus.bonusType);
     }
 
     const eatenIdx = food.findIndex((item) => item.x === nextHead.x && item.y === nextHead.y);
     const eaten = eatenIdx >= 0 ? food[eatenIdx] : null;
+    player._grewTick = Boolean(eaten);
     player.snake.unshift(nextHead);
 
     if (eaten) {
+      tickJournal.foodRemoved.push([eaten.x, eaten.y]);
       food.splice(eatenIdx, 1);
       if (eaten.good) {
         player.combo = (player.combo || 0) + 1;
@@ -553,11 +700,12 @@ function tick() {
     } else {
       player.snake.pop();
     }
+
+    tickJournal.moves.push(gameSync.packPlayerMove(player));
+    tickJournal.meta.push(gameSync.packPlayerMeta(player, extrasForPlayer(player)));
   }
 
-  // broadcastState вызывается каждый тик — клиент должен получать обновления синхронно с игровой логикой.
-  // Лишняя нагрузка снята через occupancySet и убранный дублирующий setInterval(broadcastState, 250).
-  broadcastState();
+  broadcastGameSync();
 }
 
 function activateBonus(player, bonusType) {
@@ -587,15 +735,28 @@ function spawnBonuses() {
   const types = Object.keys(BONUS_TYPES);
   const bonusType = types[Math.floor(Math.random() * types.length)];
   bonuses.push({ ...point, bonusType, spawnedAt: Date.now() });
+  const journal = gameSync.createJournal();
+  journal.bonusAdded.push(gameSync.compactBonus(
+    { x: point.x, y: point.y, bonusType },
+    BONUS_TYPES,
+  ));
+  broadcastGameDelta(journal);
   // Бонус исчезает через 15 сек если никто не взял
   setTimeout(() => {
     const idx = bonuses.findIndex((b) => b.x === point.x && b.y === point.y);
-    if (idx >= 0) bonuses.splice(idx, 1);
+    if (idx >= 0) {
+      const b = bonuses[idx];
+      bonuses.splice(idx, 1);
+      const expJournal = gameSync.createJournal();
+      expJournal.bonusRemoved.push([b.x, b.y]);
+      broadcastGameDelta(expJournal);
+    }
   }, 15000);
 }
 
 function killPlayer(player, reason, opts = {}) {
   if (!player.alive) return;
+  tickJournal.deaths.push(player.id);
   trackDeathStats(player);
   player.alive = false;
   player.deaths += 1;
@@ -611,7 +772,9 @@ function killPlayer(player, reason, opts = {}) {
     pushFeed("bonus", `💰 ${player.name}: +${reward} монет`, player.name);
   }
   recordScore(player);
-  if (opts.killerPlayer) {
+  if (opts.killerPlayer?.alive) {
+    awardKillCoins(opts.killerPlayer, player);
+  } else if (opts.killerPlayer) {
     pushFeed("kill", `⚔ ${opts.killerPlayer.name} убил ${player.name}`, opts.killerPlayer.name);
   } else {
     pushFeed("death", `💀 ${player.name}: ${reason}`, player.name);
@@ -635,30 +798,11 @@ function recordScore(player) {
 }
 
 function broadcastState() {
-  broadcast({
-    type: "state",
-    grid: GRID,
-    food,
-    bonuses: bonuses.map((b) => ({ ...b, def: BONUS_TYPES[b.bonusType] })),
-    players: [...players.values()].map((p) => {
-      const cos = getPlayerCosmetics(p.name);
-      return {
-        id: p.id, name: p.name, color: p.color, headColor: p.headColor,
-        snake: p.snake, alive: p.alive, score: p.score, coins: p.coins || 0,
-        best: Math.max(p.best, bestForName(p.name)), reason: p.reason,
-        activeBonus: p.activeBonus, bonusExpires: p.bonusExpires,
-        difficulty: p.difficulty, skin: p.skin, rainbow: p.rainbow,
-        combo: p.combo || 0, maxCombo: p.maxCombo || 0,
-        coinsEarned: p.coinsEarned || 0,
-        spawnFrozenLeft: Math.max(0, (p.frozenUntil || 0) - Date.now()),
-        heat: Math.min(100, Math.round((p.score || 0) * 0.4 + (p.combo || 0) * 9)),
-        isTagged: gameMode === "tag_time" && p.id === taggedPlayerId,
-        avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji, snakeHatId: cos.snakeHatId,
-      };
-    }),
-    bosses, leaderboard: getEnrichedLeaderboard(), gameMode, taggedPlayerId,
-    shopMeta: { skins: SHOP_SKINS, catalog: SHOP_CATALOG },
-  });
+  broadcastGameSync();
+}
+
+function resyncPlayer(clientId) {
+  sendSnapshot(clientId);
 }
 
 // ============================================================
@@ -721,7 +865,7 @@ function updateBossPhase(boss, dist) {
   boss.phase = dist <= BOSS_HUNT_RANGE ? "hunt" : dist <= BOSS_CHASE_RANGE ? "stalk" : "idle";
 }
 
-function moveBosses() {
+function moveBosses(avoidCells) {
   const alive = [...players.values()].filter((p) => p.alive);
   removeFoodUnderBosses();
 
@@ -746,15 +890,15 @@ function moveBosses() {
 
     const head = target?.snake?.[0];
     let move = pickBossMove(boss, head, dist);
-    if (move) applyBossStep(boss, move);
+    if (move) applyBossStep(boss, move, avoidCells);
 
     if (boss.trait === "dash" && boss.phase === "enraged" && head && Math.random() < 0.38) {
       move = pickBossMove(boss, head, distanceToBoss(head, boss));
-      if (move) applyBossStep(boss, move);
+      if (move) applyBossStep(boss, move, avoidCells);
     }
     if (boss.trait === "blink" && (boss.phase === "stalk" || boss.agitatedTicks > 0) && head && dist <= BOSS_CHASE_RANGE && Math.random() < 0.22) {
       move = pickBossMove(boss, head, distanceToBoss(head, boss));
-      if (move) applyBossStep(boss, move);
+      if (move) applyBossStep(boss, move, avoidCells);
     }
 
     boss.pulse = (boss.pulse + 1) % 1000;
@@ -770,7 +914,7 @@ function moveBosses() {
   }
 }
 
-function applyBossStep(boss, move) {
+function applyBossStep(boss, move, avoidCells) {
   const prevX = boss.x;
   const prevY = boss.y;
   boss.x += move.x;
@@ -778,16 +922,17 @@ function applyBossStep(boss, move) {
   clampBossInGrid(boss);
 
   if (boss.trait === "poison" && boss.phase === "enraged") {
-    leavePoisonCell(boss, prevX, prevY);
+    leavePoisonCell(boss, prevX, prevY, avoidCells);
   }
 }
 
-function leavePoisonCell(boss, x, y) {
+function leavePoisonCell(boss, x, y, avoidCells) {
   if (Math.random() > 0.45) return;
   if (!insideGrid({ x, y }) || anyBossOccupies({ x, y })) return;
+  if (avoidCells?.has(pointKey({ x, y }))) return;
   if (food.some((item) => item.x === x && item.y === y)) return;
   if (food.length >= FOOD_TARGET + 24) return;
-  food.push(createBadFood({ x, y }));
+  pushFoodItem(createBadFood({ x, y }));
 }
 
 function pickBossMove(boss, target, dist) {
@@ -875,7 +1020,7 @@ function removeFoodUnderBosses() {
 // FOOD
 // ============================================================
 
-function fillFood() {
+function fillFood(opts = {}) {
   for (let i = food.length - 1; i >= 0; i--) {
     if (!food[i].kind) {
       const pt = { x: food[i].x, y: food[i].y };
@@ -884,22 +1029,24 @@ function fillFood() {
       } else if (food[i].good === false || (food[i].value !== undefined && food[i].value !== 6 && food[i].value !== 7)) {
         food[i] = createBadFood(pt);
       } else {
+        tickJournal.foodRemoved.push([food[i].x, food[i].y]);
         food.splice(i, 1);
       }
     }
   }
 
+  const spawnOpts = { avoidCells: opts.avoidCells };
   const diff = getAverageBadFoodRatio();
   while (food.filter((i) => i.good).length < MIN_GOOD_FOOD) {
-    const point = randomEmptyPoint();
+    const point = randomEmptyPoint(spawnOpts);
     if (!point) return;
-    food.push(createGoodFood(point));
+    pushFoodItem(createGoodFood(point));
   }
   while (food.length < FOOD_TARGET) {
     const wantBad = Math.random() < diff;
-    const point = randomEmptyPoint({ avoidNearHeads: wantBad });
+    const point = randomEmptyPoint({ ...spawnOpts, avoidNearHeads: wantBad });
     if (!point) return;
-    food.push(wantBad ? createBadFood(point) : createGoodFood(point));
+    pushFoodItem(wantBad ? createBadFood(point) : createGoodFood(point));
   }
 }
 
@@ -952,6 +1099,11 @@ function handleMessage(id, message) {
     return;
   }
 
+  if (message.type === "equip_nick_color") {
+    equipNickColor(id, message.colorId, message.name);
+    return;
+  }
+
   if (message.type === "join") {
     handleJoin(id, message).catch((err) => console.error("join:", err.message));
     return;
@@ -981,7 +1133,9 @@ function handleMessage(id, message) {
     startNewLife(player.name);
     const skin = getSkinDef(getProfile(player.name).activeSkin);
     players.set(id, createPlayer(id, player.name, player.difficulty, skin));
-    broadcastState();
+    sendSnapshot(id);
+    broadcastGameSync();
+    broadcastPresence();
   }
 
   if (message.type === "change_difficulty") {
@@ -996,7 +1150,14 @@ function sendShopPayload(clientId, name) {
   const entry = getProfile(name);
   syncProfileCoins(name, entry);
   shopData[name] = entry;
-  send(clientId, { type: "shop_update", shopData: entry, skins: SHOP_SKINS, catalog: SHOP_CATALOG, avatars: AVATAR_PRESETS });
+  send(clientId, {
+    type: "shop_update",
+    shopData: entry,
+    skins: SHOP_SKINS,
+    catalog: SHOP_CATALOG,
+    avatars: AVATAR_PRESETS,
+    battlePass: getBattlePassConfig(),
+  });
 }
 
 function syncProfileCoins(name, entry) {
@@ -1075,7 +1236,8 @@ function equipItem(clientId, itemId, nameHint) {
   shopData[name] = entry;
   persistProfile(name, entry);
   sendShopPayload(clientId, name);
-  broadcastState();
+  if (player) resyncPlayer(clientId);
+  broadcastGameSync();
 }
 
 function unequipItem(clientId, itemId, nameHint) {
@@ -1097,7 +1259,8 @@ function unequipItem(clientId, itemId, nameHint) {
   shopData[name] = entry;
   persistProfile(name, entry);
   sendShopPayload(clientId, name);
-  broadcastState();
+  if (player) resyncPlayer(clientId);
+  broadcastGameSync();
 }
 
 async function isNameTaken(name, exceptName = null) {
@@ -1149,7 +1312,9 @@ async function handleJoin(id, message) {
   players.set(id, createPlayer(id, name, difficulty, skin));
   if (mode === "tag_time" && !taggedPlayerId) taggedPlayerId = id;
   restartTickInterval();
-  broadcastState();
+  sendSnapshot(id);
+  broadcastGameSync();
+  broadcastPresence();
 }
 
 async function saveProfile(clientId, message) {
@@ -1238,10 +1403,15 @@ function normalizeProfile(raw) {
     stats: {
       games: raw.stats?.games || 0,
       deaths: raw.stats?.deaths ?? raw.stats?.losses ?? 0,
+      kills: raw.stats?.kills || 0,
       best: raw.stats?.best || 0,
       playTimeMs: raw.stats?.playTimeMs || 0,
       sessionStart: raw.stats?.sessionStart || null,
       googlePicture: raw.stats?.googlePicture || null,
+      battlePassScore: raw.stats?.battlePassScore || 0,
+      battlePassClaimed: Array.isArray(raw.stats?.battlePassClaimed) ? [...raw.stats.battlePassClaimed] : [],
+      battlePassUnlocked: Array.isArray(raw.stats?.battlePassUnlocked) ? [...raw.stats.battlePassUnlocked] : [],
+      activeNickColor: raw.stats?.activeNickColor || null,
     },
   };
   for (const id of entry.unlockedSkins) {
@@ -1271,9 +1441,90 @@ function getPlayerCosmetics(name) {
 function applyCosmeticsToPlayer(player, name) {
   if (!player) return;
   const cos = getPlayerCosmetics(name);
+  const entry = getProfile(name);
   player.avatar = cos.avatar;
   player.snakeHatEmoji = cos.snakeHatEmoji;
   player.snakeHatId = cos.snakeHatId;
+  player.nickColor = resolveNickColorHex(entry);
+}
+
+function processBattlePassRewards(name, entry) {
+  entry.stats.battlePassClaimed = entry.stats.battlePassClaimed || [];
+  entry.stats.battlePassUnlocked = entry.stats.battlePassUnlocked || [];
+  const granted = [];
+
+  for (let tier = 1; tier <= BATTLE_PASS_MAX_TIER; tier += 1) {
+    const required = tier * BATTLE_PASS_SCORE_STEP;
+    if ((entry.stats.battlePassScore || 0) < required) break;
+    if (entry.stats.battlePassClaimed.includes(tier)) continue;
+
+    const def = getBattlePassTierDef(tier);
+    entry.stats.battlePassClaimed.push(tier);
+    entry.coins = (Number(entry.coins) || 0) + def.coins;
+    if (def.nickColor?.id && !entry.stats.battlePassUnlocked.includes(def.nickColor.id)) {
+      entry.stats.battlePassUnlocked.push(def.nickColor.id);
+    }
+    granted.push(def);
+    pushFeed("bonus", `🎖 ${name}: боевой пропуск ур.${tier} — +${def.coins}🪙, цвет «${def.nickColor.label}»`, name);
+  }
+
+  if (!granted.length) return granted;
+
+  shopData[name] = entry;
+  persistProfile(name, entry);
+
+  for (const p of players.values()) {
+    if (p.name.toLowerCase() !== name.toLowerCase()) continue;
+    p.coins = entry.coins;
+    send(p.id, { type: "notice", text: `Боевой пропуск: +${granted.reduce((s, r) => s + r.coins, 0)} монет!` });
+    sendShopPayload(p.id, name);
+    resyncPlayer(p.id);
+  }
+
+  for (const [clientId, clientName] of shopClients) {
+    if (clientName.toLowerCase() === name.toLowerCase() && !players.has(clientId)) {
+      sendShopPayload(clientId, name);
+    }
+  }
+
+  return granted;
+}
+
+function awardKillCoins(killer, victim) {
+  const reward = KILL_REWARD_COINS;
+  killer.coins = (killer.coins || 0) + reward;
+  const entry = getProfile(killer.name);
+  entry.stats.kills = (entry.stats.kills || 0) + 1;
+  entry.coins = killer.coins;
+  shopData[killer.name] = entry;
+  persistProfile(killer.name, entry);
+  pushFeed("kill", `💰 ${killer.name}: +${reward} за убийство ${victim.name}`, killer.name);
+  send(killer.id, { type: "notice", text: `+${reward} монет за убийство!` });
+}
+
+function equipNickColor(clientId, colorId, nameHint) {
+  const name = resolveName(clientId, nameHint);
+  if (!name) return;
+  const entry = getProfile(name);
+
+  if (!colorId || colorId === "default") {
+    entry.stats.activeNickColor = null;
+  } else if (!entry.stats.battlePassUnlocked?.includes(colorId)) {
+    send(clientId, { type: "notice", text: "Сначала открой цвет в боевом пропуске!" });
+    return;
+  } else {
+    entry.stats.activeNickColor = colorId;
+  }
+
+  shopData[name] = entry;
+  persistProfile(name, entry);
+  const player = players.get(clientId);
+  if (player) {
+    applyCosmeticsToPlayer(player, name);
+    resyncPlayer(clientId);
+    broadcastGameSync();
+  }
+  sendShopPayload(clientId, name);
 }
 
 function trackDeathStats(player) {
@@ -1289,8 +1540,10 @@ function trackDeathStats(player) {
   const rivalScores = [...players.values()].filter((p) => p.id !== player.id).map((p) => p.score);
   const sessionTop = Math.max(player.score, ...rivalScores, 0);
   player.sessionMvp = player.score > 0 && player.score >= sessionTop;
+  entry.stats.battlePassScore = (entry.stats.battlePassScore || 0) + (player.score || 0);
   shopData[player.name] = entry;
   persistProfile(player.name, entry);
+  processBattlePassRewards(player.name, entry);
 }
 
 function awardSessionCoins(player) {
@@ -1313,6 +1566,10 @@ function trackDisconnectStats(player) {
   if (entry.stats.sessionStart) {
     entry.stats.playTimeMs = (entry.stats.playTimeMs || 0) + (Date.now() - entry.stats.sessionStart);
     entry.stats.sessionStart = null;
+  }
+  if (player.alive && player.score > 0) {
+    entry.stats.battlePassScore = (entry.stats.battlePassScore || 0) + player.score;
+    processBattlePassRewards(player.name, entry);
   }
   shopData[player.name] = entry;
   persistProfile(player.name, entry);
@@ -1394,6 +1651,7 @@ function createPlayer(id, name, difficulty, skin) {
     activeBonus: null, bonusExpires: null,
     combo: 0, maxCombo: 0,
     avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji, snakeHatId: cos.snakeHatId,
+    nickColor: resolveNickColorHex(shopEntry),
     frozenUntil: Date.now() + SPAWN_FREEZE_MS,
   };
   removeEntitiesUnderSnake(player);
@@ -1448,12 +1706,14 @@ function removeClient(id) {
   sockets.delete(id);
   shopClients.delete(id);
   socketSessions.delete(id);
+  clientAoi.delete(id);
   const player = players.get(id);
   if (player) {
     trackDisconnectStats(player);
     recordScore(player);
     players.delete(id);
-    broadcastState();
+    broadcastGameSync();
+    broadcastPresence();
   }
 }
 
@@ -1574,6 +1834,7 @@ function removeEntitiesUnderSnake(player) {
 function isEmpty(point, opts = {}) {
   if (anyBossOccupies(point)) return false;
   if (occupancyHas(point)) return false;
+  if (opts.avoidCells?.has(pointKey(point))) return false;
   if (opts.avoidNearHeads) {
     for (const player of players.values()) {
       if (!player.alive) continue;

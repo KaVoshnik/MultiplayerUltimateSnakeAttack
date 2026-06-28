@@ -144,20 +144,20 @@ function connect() {
       shopData = msg.shopData;
       updateUserBar(shopData, sessionUser?.name || SnakeStore.getName());
     }
-    if (msg.type === "state" && msg.players) {
-      const alive = msg.players.filter((p) => p.alive).length;
+    if (msg.type === "presence") {
       document.querySelector("#onlineCount").textContent =
-        `${msg.players.length} в сети · ${alive} в бою`;
-      const enragedBoss = (msg.bosses || (msg.boss ? [msg.boss] : [])).find((b) => b.phase === "enraged");
-      if (enragedBoss && liveFeed) {
-        setLiveFeed(`⚠ ${enragedBoss.name} в ярости! Убийств: ${enragedBoss.kills || 0}`);
-      }
+        `${msg.players} в сети · ${msg.alive} в бою`;
     }
     if (msg.type === "feed" && msg.feed?.[0]) {
       setLiveFeed(msg.feed[0].text);
     }
     if (msg.type === "hello") {
-      document.querySelector("#onlineCount").textContent = "Сервер онлайн";
+      if (msg.presence) {
+        document.querySelector("#onlineCount").textContent =
+          `${msg.presence.players} в сети · ${msg.presence.alive} в бою`;
+      } else {
+        document.querySelector("#onlineCount").textContent = "Сервер онлайн";
+      }
     }
   });
   socket.addEventListener("close", () => setTimeout(connect, 1500));
