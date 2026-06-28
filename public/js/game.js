@@ -94,7 +94,7 @@ const keys = {
 connect();
 requestAnimationFrame(draw);
 
-document.querySelector("#retryBtn").addEventListener("click", () => { send({ type: "restart" }); deathPanel.classList.add("hidden"); });
+document.querySelector("#retryBtn").addEventListener("click", () => { send({ type: "restart" }); state.freezeEndsAt = 0; deathPanel.classList.add("hidden"); });
 
 document.addEventListener("keydown", (event) => {
   const direction = keys[event.code];
@@ -160,11 +160,10 @@ function syncSpawnFreeze(me) {
   const wasFrozen = state.freezeEndsAt > Date.now();
   const frozenUntil = me.spawnFrozenLeft || 0; // сервер шлёт абсолютный timestamp
   if (frozenUntil > Date.now()) {
-    // Устанавливаем только если ещё не установлен (не сбрасываем каждый тик)
-    if (state.freezeEndsAt === 0) state.freezeEndsAt = frozenUntil;
+    // Обновляем если новый timestamp дальше (не даём таймеру скакать назад)
+    if (frozenUntil > state.freezeEndsAt) state.freezeEndsAt = frozenUntil;
   } else {
     state.freezeEndsAt = 0;
-    // Freeze только что снялся — отправляем буферизированное нажатие
     if (wasFrozen && state.bufferedDirection) {
       send({ type: "turn", direction: state.bufferedDirection });
       state.bufferedDirection = null;
@@ -1105,15 +1104,26 @@ function drawSnakeCosmetics(x, y, cell, player) {
     ? CustomSkins.get(hatId)
     : null;
 
+  // Смещение шапки в направлении движения (от тела к голове)
+  const dir = player.direction || { x: 0, y: -1 };
+  const offsetX = dir.x * cell * 0.5;
+  const offsetY = dir.y * cell * 0.5;
+  // Перпендикуляр для подъёма шапки "над" головой
+  const perpX = -dir.y * cell * 0.45;
+  const perpY =  dir.x * cell * 0.45;
+  // Если едем вниз — шапка снизу головы, иначе сверху/сбоку
+  const hatX = cx + offsetX * 0.1 + perpX;
+  const hatY = cy + offsetY * 0.1 - perpY;
+
   if (customHat) {
     const size = cell * 0.9;
-    ctx.drawImage(customHat, cx - size / 2, cy - cell * 0.78, size, size);
+    ctx.drawImage(customHat, hatX - size / 2, hatY - size / 2, size, size);
     return;
   }
 
   if (player.snakeHatEmoji) {
     ctx.font = `${cell * 0.55}px sans-serif`;
-    ctx.fillText(player.snakeHatEmoji, cx, cy - cell * 0.55);
+    ctx.fillText(player.snakeHatEmoji, hatX, hatY);
   }
 }
 

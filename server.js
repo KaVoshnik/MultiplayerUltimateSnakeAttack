@@ -253,7 +253,10 @@ const server = http.createServer((req, res) => {
 
   auth.handleRequest(req, res, url, authCtx).then((handled) => {
     if (handled) return;
-    handleHttpRequest(req, res, url);
+    handleHttpRequest(req, res, url).catch((err) => {
+      console.error("HTTP handler:", err.message);
+      if (!res.headersSent) { res.writeHead(500); res.end("Server error"); }
+    });
   }).catch((err) => {
     console.error("HTTP:", err.message);
     res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
@@ -261,7 +264,7 @@ const server = http.createServer((req, res) => {
   });
 });
 
-function handleHttpRequest(req, res, url) {
+async function handleHttpRequest(req, res, url) {
   if (url.pathname === "/health") {
     sendJson(res, { ok: true, uptime: process.uptime(), players: players.size, sockets: sockets.size });
     return;
@@ -312,6 +315,78 @@ function handleHttpRequest(req, res, url) {
   }
   if (url.pathname === "/modes") {
     sendJson(res, { modes: MODES, difficulties: DIFFICULTIES });
+    return;
+  }
+
+  // ---- ADMIN API ----
+  if (url.pathname.startsWith("/admin")) {
+    const session = await auth.getSession(req, db).catch(() => null);
+    const adminOk  = session && await db.isAdmin(session.google_id).catch(() => false);
+    if (!adminOk) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "forbidden" }));
+      return;
+    }
+
+    if (url.pathname === "/admin/players" && req.method === "GET") {
+      const rows = await db.getAdminPlayerList();
+      sendJson(res, rows.map((p) => ({
+        name: p.name, googleId: p.google_id || null,
+        coins: p.coins, isAdmin: p.is_admin,
+        bestScore: p.best_score || 0,
+        games: p.stats?.games || 0,
+        deaths: p.stats?.deaths || 0,
+        updatedAt: p.updated_at,
+      })));
+      return;
+    }
+
+    if (url.pathname === "/admin/set_admin" && req.method === "POST") {
+      let body = "";
+      req.on("data", (c) => (body += c));
+      await new Promise((r) => req.on("end", r));
+      const { name, value } = JSON.parse(body);
+      if (!name) { res.writeHead(400); res.end("bad request"); return; }
+      await db.setAdmin(name, Boolean(value));
+      sendJson(res, { ok: true });
+      return;
+    }
+
+    if (url.pathname === "/admin/delete_player" && req.method === "POST") {
+      let body = "";
+      req.on("data", (c) => (body += c));
+      await new Promise((r) => req.on("end", r));
+      const { name } = JSON.parse(body);
+      if (!name) { res.writeHead(400); res.end("bad request"); return; }
+      const target = await db.findGoogleUserByPlayerName(name).catch(() => null);
+      const superIds = (process.env.ADMIN_GOOGLE_IDS || "").split(",").map((s) => s.trim()).filter(Boolean);
+      if (target && superIds.includes(target.google_id)) {
+        res.writeHead(403); res.end("cannot delete superadmin"); return;
+      }
+      await db.deletePlayer(name);
+      sendJson(res, { ok: true });
+      return;
+    }
+
+    if (url.pathname === "/admin/set_coins" && req.method === "POST") {
+      let body = "";
+      req.on("data", (c) => (body += c));
+      await new Promise((r) => req.on("end", r));
+      const { name, coins } = JSON.parse(body);
+      if (!name || coins === undefined) { res.writeHead(400); res.end("bad request"); return; }
+      const entry = getProfile(name);
+      entry.coins = Math.max(0, Math.floor(Number(coins)));
+      await persistProfile(name, entry);
+      sendJson(res, { ok: true, coins: entry.coins });
+      return;
+    }
+
+    if (url.pathname === "/admin/me" && req.method === "GET") {
+      sendJson(res, { name: session.player_name, googleId: session.google_id });
+      return;
+    }
+
+    res.writeHead(404); res.end("not found");
     return;
   }
 

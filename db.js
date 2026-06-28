@@ -32,7 +32,7 @@ async function migratePlayersTable() {
     await pool.query(`ALTER TABLE players ADD PRIMARY KEY (id)`);
   }
 
-  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS players_name_lower_key ON players (name_lower)`);
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false`);
   await pool.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS players_google_id_key
     ON players (google_id) WHERE google_id IS NOT NULL
@@ -339,6 +339,35 @@ async function resetAll() {
   await pool.query("TRUNCATE players, leaderboard, google_users, auth_sessions RESTART IDENTITY");
 }
 
+async function isAdmin(googleId) {
+  if (!googleId) return false;
+  const superIds = (process.env.ADMIN_GOOGLE_IDS || "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (superIds.includes(googleId)) return true;
+  const { rows } = await pool.query(
+    "SELECT is_admin FROM players WHERE google_id = $1 LIMIT 1",
+    [googleId]
+  );
+  return rows[0]?.is_admin === true;
+}
+
+async function setAdmin(playerName, value) {
+  await pool.query(
+    "UPDATE players SET is_admin = $1 WHERE name_lower = $2",
+    [value, playerName.toLowerCase()]
+  );
+}
+
+async function getAdminPlayerList() {
+  const { rows } = await pool.query(`
+    SELECT p.name, p.google_id, p.coins, p.is_admin, p.stats,
+           p.updated_at, l.score AS best_score
+    FROM players p
+    LEFT JOIN leaderboard l ON l.name = p.name
+    ORDER BY p.updated_at DESC
+  `);
+  return rows;
+}
+
 async function close() {
   if (pool) await pool.end();
 }
@@ -353,6 +382,9 @@ module.exports = {
   upsertLeaderboard,
   resetAll,
   close,
+  isAdmin,
+  setAdmin,
+  getAdminPlayerList,
   findGoogleUser,
   findGoogleUserByPlayerName,
   findPlayerByGoogleId,
