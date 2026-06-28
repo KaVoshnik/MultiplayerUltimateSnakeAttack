@@ -246,8 +246,6 @@
 
 ## КОНТРИБЬЮТОРЫ
 
-## КОНТРИБЬЮТОРЫ
-
 <table align="center">
   <tr>
     <td align="center">
