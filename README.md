@@ -243,21 +243,24 @@
 
 Этот проект распространяется под лицензией MIT. Подробнее см. в файле [LICENSE](LICENSE).
 
+
 ## КОНТРИБЬЮТОРЫ
 
 <p align="center">
-  <a href="https://github.com/KaVoshnik" style="display: inline-flex; flex-direction: column; align-items: center; margin: 0 30px; text-decoration: none;">
-    <img src="https://github.com/KaVoshnik.png" width="70" height="70" style="border-radius: 50%; display: block;" alt="@KaVoshnik" />
-    <span style="color: #00ff88; margin-top: 8px; display: block; font-weight: bold;">KaVoshnik</span>
+  <a href="https://github.com/KaVoshnik" style="display: inline-block; margin: 0 20px; text-align: center; vertical-align: top; text-decoration: none;">
+    <img src="https://github.com/KaVoshnik.png" width="70" height="70" style="border-radius: 50% !important; display: block !important;" alt="@KaVoshnik" />
+    <br />
+    <span style="color: #00ff88; font-weight: bold;">KaVoshnik</span>
   </a>
-  <a href="https://github.com/IWoki" style="display: inline-flex; flex-direction: column; align-items: center; margin: 0 30px; text-decoration: none;">
-    <img src="https://github.com/IWoki.png" width="70" height="70" style="border-radius: 50%; display: block;" alt="@IWoki" />
-    <span style="color: #00ff88; margin-top: 8px; display: block; font-weight: bold;">IWoki</span>
+  <a href="https://github.com/IWoki" style="display: inline-block; margin: 0 20px; text-align: center; vertical-align: top; text-decoration: none;">
+    <img src="https://github.com/IWoki.png" width="70" height="70" style="border-radius: 50% !important; display: block !important;" alt="@IWoki" />
+    <br />
+    <span style="color: #00ff88; font-weight: bold;">IWoki</span>
   </a>
 </p>
 
 <p align="center" style="margin-top: 10px;">
-  <strong style="color: #fff;">Мега крутые разрабы змеек</strong>
+  <strong>Мега крутые разрабы змеек</strong>
 </p>
 
 <p align="center" style="margin-top: 30px;">
