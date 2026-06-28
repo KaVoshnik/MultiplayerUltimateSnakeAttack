@@ -319,9 +319,9 @@ async function handleHttpRequest(req, res, url) {
   }
 
   // ---- ADMIN API ----
-  if (url.pathname.startsWith("/admin")) {
+  if (url.pathname.startsWith("/admin/") || url.pathname === "/admin") {
     const session = await auth.getSession(req, db).catch(() => null);
-    const adminOk  = session && await db.isAdmin(session.google_id).catch(() => false);
+    const adminOk = session && await db.isAdmin(session.google_id).catch(() => false);
     if (!adminOk) {
       res.writeHead(403, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "forbidden" }));
