@@ -943,50 +943,250 @@ function drawBonuses(view) {
   }
 }
 
+// ============================================================
+// Интерполяция позиции босса (клиент знает prevX/prevY/moveAt)
+// ============================================================
+const BOSS_CLIENT_MOVE_MS = 575; // ~BOSS_MOVE_EVERY(5) * TICK_MS(115)
+
+function getBossInterp(boss, view) {
+  const { cell, offsetX, offsetY } = view;
+  if (boss.prevX === undefined || boss.moveAt === undefined) {
+    return { bx: offsetX + boss.x * cell, by: offsetY + boss.y * cell };
+  }
+  const elapsed = Date.now() - boss.moveAt;
+  const raw = Math.min(1, elapsed / BOSS_CLIENT_MOVE_MS);
+  const t = raw * raw * (3 - 2 * raw); // smoothstep
+  const ix = boss.prevX + (boss.x - boss.prevX) * t;
+  const iy = boss.prevY + (boss.y - boss.prevY) * t;
+  return { bx: offsetX + ix * cell, by: offsetY + iy * cell };
+}
+
 function drawBoss(view) {
+  const t = Date.now() / 1000;
+  const { cell, offsetX, offsetY } = view;
+
   for (const boss of state.bosses) {
     const bossSize = boss.size || 1;
-    if (!isInCameraView(boss.x + bossSize / 2, boss.y + bossSize / 2, view, bossSize + 1)) continue;
-    const { cell, offsetX, offsetY } = view;
-    const x = offsetX + boss.x * cell;
-    const y = offsetY + boss.y * cell;
+    if (!isInCameraView(boss.x + bossSize / 2, boss.y + bossSize / 2, view, bossSize + 2)) continue;
+
+    const { bx, by } = getBossInterp(boss, view);
     const size = bossSize * cell;
     const angry = boss.angry;
     const enraged = boss.phase === "enraged";
-    const t = Date.now() / 1000;
+
     ctx.save();
-    if (enraged) {
-      ctx.shadowColor = "rgba(255,30,20,.95)";
-      ctx.shadowBlur = cell * 1.1;
-    } else if (angry) {
-      ctx.shadowColor = "rgba(246,97,81,.8)";
-      ctx.shadowBlur = cell * 0.7;
-    }
-    const pulse = 1 + Math.sin(t * 8 + boss.x) * (enraged ? 0.06 : 0.02);
-    const pad = cell * 0.08;
-    const w = (size - pad * 2) * pulse;
-    const h = (size - pad * 2) * pulse;
-    const ox = x + (size - w) / 2;
-    const oy = y + (size - h) / 2;
-    ctx.fillStyle = enraged ? "#ff1a0a" : angry ? "#ff3b2e" : boss.color || "#f66151";
-    roundRect(ox, oy, w, h, cell * 0.22);
-    ctx.fill();
-    const cx = x + size / 2;
-    const cy = y + size / 2;
-    ctx.fillStyle = "#1a0a0a";
-    ctx.beginPath();
-    ctx.arc(cx - cell * 0.14, cy - cell * 0.05, cell * 0.09, 0, Math.PI * 2);
-    ctx.arc(cx + cell * 0.14, cy - cell * 0.05, cell * 0.09, 0, Math.PI * 2);
-    ctx.fill();
-    if (enraged || size >= cell * 1.5) {
-      ctx.fillStyle = "#ff6b5a";
-      ctx.font = `800 ${cell * 0.2}px Orbitron, sans-serif`;
+
+    // ── VØIDR (dash) ──────────────────────────────────────────
+    if (boss.trait === "dash") {
+      // Красная пульсация + motion blur при рывке
+      const pulse = 1 + Math.sin(t * (enraged ? 14 : 8)) * (enraged ? 0.09 : 0.03);
+      const pad = cell * 0.06;
+      const w = (size - pad * 2) * pulse;
+      const h = (size - pad * 2) * pulse;
+      const ox = bx + (size - w) / 2;
+      const oy = by + (size - h) / 2;
+
+      // Glow
+      ctx.shadowColor = enraged ? "#ff0000" : angry ? "#ff3b2e" : "#f66151";
+      ctx.shadowBlur = enraged ? cell * 1.4 : (angry ? cell * 0.8 : cell * 0.3);
+
+      // Тело
+      ctx.fillStyle = enraged ? "#ff1a0a" : angry ? "#e83020" : boss.color;
+      roundRect(ox, oy, w, h, cell * 0.18);
+      ctx.fill();
+
+      // "Заряд" — диагональные линии при ярости (вспышка скорости)
+      if (enraged) {
+        ctx.save();
+        ctx.globalAlpha = 0.35 + Math.abs(Math.sin(t * 20)) * 0.4;
+        ctx.strokeStyle = "#ffaa00";
+        ctx.lineWidth = cell * 0.05;
+        ctx.beginPath();
+        ctx.moveTo(bx + cell * 0.1, by + cell * 0.9);
+        ctx.lineTo(bx + cell * 0.6, by + cell * 0.1);
+        ctx.moveTo(bx + cell * 0.4, by + cell * 0.9);
+        ctx.lineTo(bx + cell * 0.9, by + cell * 0.1);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Глаза — злые, острые
+      const cx = bx + size / 2;
+      const cy = by + size / 2;
+      ctx.fillStyle = enraged ? "#ffee00" : "#fff";
+      ctx.beginPath();
+      ctx.arc(cx - cell * 0.13, cy - cell * 0.06, cell * 0.08, 0, Math.PI * 2);
+      ctx.arc(cx + cell * 0.13, cy - cell * 0.06, cell * 0.08, 0, Math.PI * 2);
+      ctx.fill();
+      // Зрачки
+      ctx.fillStyle = "#000";
+      ctx.beginPath();
+      ctx.arc(cx - cell * 0.12, cy - cell * 0.05, cell * 0.04, 0, Math.PI * 2);
+      ctx.arc(cx + cell * 0.14, cy - cell * 0.05, cell * 0.04, 0, Math.PI * 2);
+      ctx.fill();
+      // Нахмуренные брови
+      ctx.strokeStyle = enraged ? "#ffee00" : "#ff4422";
+      ctx.lineWidth = cell * 0.06;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(cx - cell * 0.22, cy - cell * 0.18);
+      ctx.lineTo(cx - cell * 0.04, cy - cell * 0.12);
+      ctx.moveTo(cx + cell * 0.22, cy - cell * 0.18);
+      ctx.lineTo(cx + cell * 0.04, cy - cell * 0.12);
+      ctx.stroke();
+
+      // Имя
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = enraged ? "#ffcc00" : "#ff9988";
+      ctx.font = `700 ${Math.max(8, cell * 0.22)}px Orbitron, sans-serif`;
       ctx.textAlign = "center";
-      ctx.fillText(boss.name, cx, cy + cell * 0.35);
+      ctx.fillText(boss.name, cx, by + size + cell * 0.32);
+
+    // ── NYX-7 (blink) ─────────────────────────────────────────
+    } else if (boss.trait === "blink") {
+      const hungerPct = Math.min(1, (boss.hunger || 0) / 10);
+      // Цвет меняется от фиолетового к красному по мере насыщения
+      const hue = Math.round(270 - hungerPct * 90); // 270 (фиолетовый) → 0 (красный)
+      const baseColor = enraged ? "#cc00ff" : `hsl(${hue},85%,55%)`;
+      const pulse = 1 + Math.sin(t * (enraged ? 18 : 6)) * (enraged ? 0.07 : 0.025);
+
+      const pad = cell * 0.06;
+      const w = (size - pad * 2) * pulse;
+      const h = (size - pad * 2) * pulse;
+      const ox = bx + (size - w) / 2;
+      const oy = by + (size - h) / 2;
+
+      ctx.shadowColor = baseColor;
+      ctx.shadowBlur = enraged ? cell * 1.5 : (cell * 0.4 + hungerPct * cell * 0.6);
+
+      // Тело — восьмиугольник (блинк-форма)
+      ctx.fillStyle = baseColor;
+      roundRect(ox, oy, w, h, cell * 0.28);
+      ctx.fill();
+
+      // Индикатор сытости — дуга вокруг тела
+      if (!enraged && hungerPct > 0) {
+        ctx.save();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = `hsl(${hue},90%,65%)`;
+        ctx.lineWidth = cell * 0.07;
+        ctx.globalAlpha = 0.7;
+        ctx.beginPath();
+        const r = size * 0.52;
+        ctx.arc(bx + size / 2, by + size / 2, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * hungerPct);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // "Призрачный хвост" — след при движении
+      if (boss.prevX !== undefined && boss.prevX !== boss.x) {
+        ctx.save();
+        ctx.globalAlpha = 0.18;
+        ctx.fillStyle = baseColor;
+        roundRect(
+          offsetX + boss.prevX * cell + pad,
+          offsetY + boss.prevY * cell + pad,
+          size - pad * 2, size - pad * 2, cell * 0.28
+        );
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Глаза — круглые, светятся
+      const cx = bx + size / 2;
+      const cy = by + size / 2;
+      ctx.fillStyle = enraged ? "#ff44ff" : "#e0c0ff";
+      ctx.beginPath();
+      ctx.arc(cx - cell * 0.12, cy - cell * 0.06, cell * 0.09, 0, Math.PI * 2);
+      ctx.arc(cx + cell * 0.12, cy - cell * 0.06, cell * 0.09, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#200030";
+      ctx.beginPath();
+      ctx.arc(cx - cell * 0.12, cy - cell * 0.06, cell * 0.045, 0, Math.PI * 2);
+      ctx.arc(cx + cell * 0.12, cy - cell * 0.06, cell * 0.045, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Имя + индикатор голода
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = enraged ? "#ff88ff" : `hsl(${hue},80%,75%)`;
+      ctx.font = `700 ${Math.max(8, cell * 0.22)}px Orbitron, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.fillText(boss.name, cx, by + size + cell * 0.32);
+      if (!enraged) {
+        ctx.fillStyle = "rgba(255,255,255,0.5)";
+        ctx.font = `500 ${Math.max(7, cell * 0.18)}px sans-serif`;
+        ctx.fillText(`${boss.hunger || 0}/${10}`, cx, by + size + cell * 0.56);
+      }
+
+    // ── SCR4P (poison) ────────────────────────────────────────
+    } else if (boss.trait === "poison") {
+      const pulse = 1 + Math.sin(t * (enraged ? 10 : 5)) * (enraged ? 0.05 : 0.02);
+      const pad = cell * 0.07;
+      const w = (size - pad * 2) * pulse;
+      const h = (size - pad * 2) * pulse;
+      const ox = bx + (size - w) / 2;
+      const oy = by + (size - h) / 2;
+
+      ctx.shadowColor = enraged ? "#ff6600" : (angry ? "#ea580c" : "#886633");
+      ctx.shadowBlur = enraged ? cell * 1.2 : (angry ? cell * 0.6 : cell * 0.2);
+
+      ctx.fillStyle = enraged ? "#ff4400" : angry ? "#cc4400" : boss.color;
+      roundRect(ox, oy, w, h, cell * 0.14);
+      ctx.fill();
+
+      // Ядовитые "капли" вокруг при ярости
+      if (enraged) {
+        ctx.save();
+        ctx.globalAlpha = 0.5 + Math.sin(t * 12) * 0.3;
+        ctx.fillStyle = "#44ff44";
+        const dropR = cell * 0.08;
+        const dropDist = size * 0.6;
+        for (let i = 0; i < 6; i++) {
+          const angle = (i / 6) * Math.PI * 2 + t * 2;
+          const dx = Math.cos(angle) * dropDist;
+          const dy = Math.sin(angle) * dropDist;
+          ctx.beginPath();
+          ctx.arc(bx + size / 2 + dx, by + size / 2 + dy, dropR, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      // Яд-след (статичный призрак предыдущей позиции)
+      if (boss.prevX !== undefined && (boss.prevX !== boss.x || boss.prevY !== boss.y)) {
+        ctx.save();
+        ctx.globalAlpha = 0.12;
+        ctx.fillStyle = "#44ff44";
+        roundRect(
+          offsetX + boss.prevX * cell + pad,
+          offsetY + boss.prevY * cell + pad,
+          size - pad * 2, size - pad * 2, cell * 0.14
+        );
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Глаза — маленькие, прищуренные
+      const cx = bx + size / 2;
+      const cy = by + size / 2;
+      ctx.fillStyle = "#aaff44";
+      ctx.beginPath();
+      ctx.ellipse(cx - cell * 0.13, cy - cell * 0.06, cell * 0.09, cell * 0.05, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx + cell * 0.13, cy - cell * 0.06, cell * 0.09, cell * 0.05, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Имя
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = enraged ? "#ffaa44" : "#cc8844";
+      ctx.font = `700 ${Math.max(8, cell * 0.22)}px Orbitron, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.fillText(boss.name, cx, by + size + cell * 0.32);
     }
+
     ctx.restore();
   }
 }
+
 
 function drawPlayers(view) {
   const { cell, offsetX, offsetY } = view;
