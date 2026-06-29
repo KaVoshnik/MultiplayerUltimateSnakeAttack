@@ -160,11 +160,13 @@
     let myId   = null;
     let socket = null;
     let currentRoom = null;
+    let _pendingMsg = null; // одно отложенное сообщение до открытия сокета
 
     function connect() {
       socket = new WebSocket(getWebSocketUrl());
       socket.addEventListener("open", () => {
         if (myName) send({ type: "shop_connect", name: myName });
+        if (_pendingMsg) { send(_pendingMsg); _pendingMsg = null; }
       });
       socket.addEventListener("close", () => setTimeout(connect, 1200));
       socket.addEventListener("message", (e) => {
@@ -198,8 +200,11 @@
     }
 
     function send(payload) {
-      if (socket?.readyState === WebSocket.OPEN)
+      if (socket?.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify(payload));
+      } else if (payload.type !== "shop_connect" && payload.type !== "ping") {
+        _pendingMsg = payload; // отложим до открытия
+      }
     }
 
     function showScreen(id) {
