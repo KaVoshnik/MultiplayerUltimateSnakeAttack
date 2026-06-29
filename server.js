@@ -154,6 +154,8 @@ function resolveNickColorHex(entry) {
 // GAME STATE
 // ============================================================
 
+const roomMod = require("./lib/room");
+
 let nextClientId = 1;
 const sockets = new Map(); // id -> socket
 const players = new Map(); // id -> player
@@ -197,6 +199,78 @@ function occupancyRebuild() {
 
 let currentTickMs = DIFFICULTIES.normal.tickMs;
 let tickInterval = null;
+
+// ============================================================
+// ROOMS
+// ============================================================
+
+const rooms      = new Map(); // code -> Room
+const socketRoom = new Map(); // socketId -> roomCode
+
+function _roomDeps(room) {
+  room.send                 = send;
+  room.getProfile           = getProfile;
+  room.persistProfile       = persistProfile;
+  room.getSkinDef           = getSkinDef;
+  room.startNewLife         = startNewLife;
+  room.resolveNickColorHex  = resolveNickColorHex;
+  room.getPlayerCosmetics   = getPlayerCosmetics;
+  room.recordScore          = recordScore;
+  room.awardSessionCoins    = awardSessionCoins;
+  room.awardKillCoins       = awardKillCoins;
+  room.trackDeathStats      = trackDeathStats;
+  room.trackDisconnectStats = trackDisconnectStats;
+  room.savePlayerCoins      = savePlayerCoins;
+}
+
+function createRoom(hostId, isPublic) {
+  let code;
+  do { code = roomMod.genCode(); } while (rooms.has(code));
+  const room = new roomMod.Room({
+    code, hostId, isPublic,
+    onEmpty: (c) => { rooms.delete(c); },
+  });
+  _roomDeps(room);
+  rooms.set(code, room);
+  return room;
+}
+
+function getRoomOf(socketId) {
+  const code = socketRoom.get(socketId);
+  return code ? rooms.get(code) : null;
+}
+
+function leaveRoom(socketId) {
+  const room = getRoomOf(socketId);
+  if (!room) return;
+  socketRoom.delete(socketId);
+  room.removePlayer(socketId);
+}
+
+function joinRoom(socketId, code, name) {
+  leaveRoom(socketId);
+  const room = rooms.get(code);
+  if (!room) return { ok: false, text: "Комната не найдена." };
+  if (!room.canJoin()) return { ok: false, text: "Комната заполнена или игра уже началась." };
+  const cos = getPlayerCosmetics(name);
+  room.addWaiter(socketId, name, cos);
+  socketRoom.set(socketId, code);
+  return { ok: true, room };
+}
+
+// Публичное лобби — одна постоянная комната
+const PUBLIC_ROOM_CODE = "PUBLIC";
+function ensurePublicRoom() {
+  if (!rooms.has(PUBLIC_ROOM_CODE)) {
+    const room = new roomMod.Room({
+      code: PUBLIC_ROOM_CODE, hostId: null, isPublic: true,
+      onEmpty: () => {},
+    });
+    _roomDeps(room);
+    rooms.set(PUBLIC_ROOM_CODE, room);
+  }
+  return rooms.get(PUBLIC_ROOM_CODE);
+}
 
 function restartTickInterval() {
   if (tickInterval) clearInterval(tickInterval);
@@ -319,9 +393,9 @@ async function handleHttpRequest(req, res, url) {
   }
 
   // ---- ADMIN API ----
-  if (url.pathname.startsWith("/admin/") || url.pathname === "/admin") {
+  if (url.pathname.startsWith("/admin")) {
     const session = await auth.getSession(req, db).catch(() => null);
-    const adminOk = session && await db.isAdmin(session.google_id).catch(() => false);
+    const adminOk  = session && await db.isAdmin(session.google_id).catch(() => false);
     if (!adminOk) {
       res.writeHead(403, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "forbidden" }));
@@ -507,6 +581,10 @@ function removeClient(id) {
   shopClients.delete(id);
   socketSessions.delete(id);
   clientAoi.delete(id);
+
+  // Уйти из комнаты если был в ней
+  leaveRoom(id);
+
   const player = players.get(id);
   if (player) {
     trackDisconnectStats(player);
@@ -525,28 +603,43 @@ function removeClient(id) {
 const asyncHandlers = {
   shop_connect: (id, msg) => handleShopConnect(id, msg),
   save_profile: (id, msg) => saveProfile(id, msg),
-  join: (id, msg) => handleJoin(id, msg),
+  join:         (id, msg) => handleJoin(id, msg),
+  room_create:  (id, msg) => handleRoomCreate(id, msg),
+  room_join:    (id, msg) => handleRoomJoin(id, msg),
+  room_start:   (id, msg) => handleRoomStart(id, msg),
+  room_leave:   (id, msg) => handleRoomLeave(id, msg),
+  room_quick:   (id, msg) => handleRoomQuick(id, msg),
 };
 
 // Синхронные хендлеры не требующие наличия player
 const prePlayerHandlers = {
   ping: () => { },
-  buy_item: (id, msg) => buyItem(id, msg.itemId, msg.name),
-  equip_item: (id, msg) => equipItem(id, msg.itemId, msg.name),
-  unequip_item: (id, msg) => unequipItem(id, msg.itemId, msg.name),
+  buy_item:         (id, msg) => buyItem(id, msg.itemId, msg.name),
+  equip_item:       (id, msg) => equipItem(id, msg.itemId, msg.name),
+  unequip_item:     (id, msg) => unequipItem(id, msg.itemId, msg.name),
   equip_nick_color: (id, msg) => equipNickColor(id, msg.colorId, msg.name),
-  buy_skin: (id, msg) => buyItem(id, msg.skinId),
-  equip_skin: (id, msg) => equipItem(id, msg.skinId),
+  buy_skin:         (id, msg) => buyItem(id, msg.skinId),
+  equip_skin:       (id, msg) => equipItem(id, msg.skinId),
 };
 
 // Хендлеры требующие наличия player
 const playerHandlers = {
-  turn: (id, msg, player) => {
+  turn: (id, msg) => {
+    // Сначала пробуем комнату
+    const room = getRoomOf(id);
+    if (room && room.started) { room.handleTurn(id, msg.direction); return; }
+    // Фоллбэк — глобальная игра
+    const player = players.get(id);
+    if (!player) return;
     if (player.frozenUntil && Date.now() < player.frozenUntil) return;
     const next = directionFromKey(msg.direction);
     if (next && !isOpposite(player.direction, next)) player.nextDirection = next;
   },
-  restart: (id, msg, player) => {
+  restart: (id, msg) => {
+    const room = getRoomOf(id);
+    if (room && room.started) { room.restartPlayer(id); return; }
+    const player = players.get(id);
+    if (!player) return;
     recordScore(player);
     startNewLife(player.name);
     const skin = getSkinDef(getProfile(player.name).activeSkin);
@@ -555,13 +648,8 @@ const playerHandlers = {
     broadcastGameSync();
     broadcastPresence();
   },
-  change_difficulty: (id, msg, player) => {
-    if (DIFFICULTIES[msg.difficulty]) {
-      player.difficulty = msg.difficulty;
-      restartTickInterval();
-    }
-  },
 };
+
 
 function handleMessage(id, message) {
   const { type } = message;
@@ -576,11 +664,8 @@ function handleMessage(id, message) {
     return;
   }
 
-  const player = players.get(id);
-  if (!player) return;
-
   if (playerHandlers[type]) {
-    playerHandlers[type](id, message, player);
+    playerHandlers[type](id, message);
   }
 }
 
@@ -1066,6 +1151,61 @@ async function handleShopConnect(id, message) {
   if (!resolved.ok) { send(id, { type: "notice", text: resolved.text }); return; }
   shopClients.set(id, resolved.name);
   sendShopPayload(id, resolved.name);
+}
+
+// ============================================================
+// ROOM HANDLERS
+// ============================================================
+
+async function handleRoomCreate(id, message) {
+  const resolved = await resolvePlayName(id, message.name);
+  if (!resolved.ok) { send(id, { type: "notice", text: resolved.text }); return; }
+  const name = resolved.name;
+  leaveRoom(id);
+  const isPublic = Boolean(message.isPublic);
+  const room = createRoom(id, isPublic);
+  const cos  = getPlayerCosmetics(name);
+  room.addWaiter(id, name, cos);
+  socketRoom.set(id, room.code);
+  send(id, { type: "room_created", code: room.code, ...room.lobbySnapshot() });
+}
+
+async function handleRoomJoin(id, message) {
+  const resolved = await resolvePlayName(id, message.name);
+  if (!resolved.ok) { send(id, { type: "notice", text: resolved.text }); return; }
+  const name = resolved.name;
+  const code = String(message.code || "").toUpperCase().trim();
+  const result = joinRoom(id, code, name);
+  if (!result.ok) { send(id, { type: "room_error", text: result.text }); return; }
+  send(id, { type: "room_joined", code, ...result.room.lobbySnapshot() });
+}
+
+async function handleRoomQuick(id, message) {
+  // Быстрый вход — в публичное лобби
+  const resolved = await resolvePlayName(id, message.name);
+  if (!resolved.ok) { send(id, { type: "notice", text: resolved.text }); return; }
+  const name = resolved.name;
+  const room = ensurePublicRoom();
+  leaveRoom(id);
+  if (!room.hostId) room.hostId = id;
+  const cos = getPlayerCosmetics(name);
+  room.addWaiter(id, name, cos);
+  socketRoom.set(id, PUBLIC_ROOM_CODE);
+  send(id, { type: "room_joined", code: PUBLIC_ROOM_CODE, ...room.lobbySnapshot() });
+}
+
+async function handleRoomStart(id, message) {
+  const room = getRoomOf(id);
+  if (!room) { send(id, { type: "room_error", text: "Вы не в комнате." }); return; }
+  const result = room.start(id);
+  if (!result.ok) { send(id, { type: "room_error", text: result.text }); return; }
+  // Рестартуем глобальный тик если нужно (публичное лобби)
+  restartTickInterval();
+}
+
+async function handleRoomLeave(id, message) {
+  leaveRoom(id);
+  send(id, { type: "room_left" });
 }
 
 async function handleJoin(id, message) {

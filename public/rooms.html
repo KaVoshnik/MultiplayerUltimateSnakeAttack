@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Комнаты — Snake Attack</title>
+  <link rel="stylesheet" href="css/common.css" />
+  <link rel="stylesheet" href="css/pages.css" />
+  <style>
+    .roomsWrap { max-width: 560px; margin: 0 auto; padding: 2rem 1rem; }
+    .roomsHeader { text-align: center; margin-bottom: 2rem; }
+    .roomsHeader h1 { font-size: 1.6rem; margin: 0 0 6px; }
+    .roomsHeader p  { color: var(--text-secondary,#aaa); font-size: 14px; margin: 0; }
+
+    /* Экраны */
+    .screen { display: none; }
+    .screen.active { display: block; }
+
+    /* Меню выбора */
+    .roomMenu { display: flex; flex-direction: column; gap: 12px; }
+    .roomMenuBtn {
+      width: 100%; padding: 18px 24px;
+      background: var(--surface-1, #1a1a1a);
+      border: 1px solid var(--border, #333);
+      border-radius: 14px; cursor: pointer; text-align: left;
+      transition: border-color .15s, background .15s;
+      color: var(--text-primary,#fff);
+    }
+    .roomMenuBtn:hover { background: var(--surface-2,#222); border-color: var(--text-accent,#62a0ea); }
+    .roomMenuBtn .btnTitle { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+    .roomMenuBtn .btnDesc  { font-size: 13px; color: var(--text-secondary,#aaa); }
+    .roomMenuBtn .btnIcon  { font-size: 28px; float: right; margin-top: -4px; }
+
+    /* Форма кода */
+    .codeForm { display: flex; flex-direction: column; gap: 14px; }
+    .codeInput {
+      width: 100%; padding: 14px 18px; font-size: 22px; letter-spacing: .18em;
+      text-transform: uppercase; text-align: center;
+      background: var(--surface-1,#1a1a1a); border: 2px solid var(--border,#444);
+      border-radius: 12px; color: var(--text-primary,#fff); outline: none;
+      transition: border-color .15s;
+      box-sizing: border-box;
+    }
+    .codeInput:focus { border-color: var(--text-accent,#62a0ea); }
+    .joinBtn {
+      width: 100%; padding: 14px; font-size: 15px; font-weight: 600;
+      background: var(--text-accent,#62a0ea); color: #000; border: none;
+      border-radius: 12px; cursor: pointer; transition: opacity .15s;
+    }
+    .joinBtn:hover { opacity: .85; }
+    .backBtn {
+      background: none; border: 1px solid var(--border,#444);
+      color: var(--text-secondary,#aaa); border-radius: 10px;
+      padding: 10px 18px; cursor: pointer; font-size: 13px;
+      transition: border-color .15s;
+    }
+    .backBtn:hover { border-color: #888; color: #fff; }
+
+    /* Лобби ожидания */
+    .lobbyPanel {
+      background: var(--surface-1,#1a1a1a);
+      border: 1px solid var(--border,#333);
+      border-radius: 16px; padding: 1.5rem;
+    }
+    .lobbyCode {
+      text-align: center; margin-bottom: 1.2rem;
+    }
+    .lobbyCode .codeLabel { font-size: 12px; color: var(--text-secondary,#aaa); margin-bottom: 4px; }
+    .lobbyCodeVal {
+      font-size: 32px; font-weight: 700; letter-spacing: .2em;
+      color: var(--text-accent,#62a0ea); cursor: pointer;
+      user-select: all;
+    }
+    .lobbyCodeHint { font-size: 12px; color: #555; margin-top: 4px; }
+    .lobbyCopyBtn {
+      background: none; border: 1px solid var(--border,#444);
+      color: var(--text-secondary,#aaa); border-radius: 8px;
+      padding: 6px 14px; cursor: pointer; font-size: 12px; margin-top: 8px;
+      transition: border-color .15s;
+    }
+    .lobbyCopyBtn:hover { border-color: #888; color: #fff; }
+
+    .lobbyMembers { margin: 1rem 0; }
+    .lobbyMembersTitle { font-size: 12px; color: var(--text-secondary,#aaa); margin-bottom: 10px; }
+    .memberList { display: flex; flex-direction: column; gap: 8px; }
+    .memberRow {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--surface-2,#222); border-radius: 10px; padding: 10px 14px;
+    }
+    .memberAvatar { font-size: 20px; }
+    .memberName { flex: 1; font-size: 14px; font-weight: 500; }
+    .hostBadge {
+      font-size: 11px; background: var(--bg-accent,#1a3a5c);
+      color: var(--text-accent,#62a0ea); padding: 2px 8px; border-radius: 6px;
+    }
+    .youBadge { font-size: 11px; color: #555; }
+
+    .lobbyActions { display: flex; flex-direction: column; gap: 10px; margin-top: 1.2rem; }
+    .startBtn {
+      width: 100%; padding: 14px; font-size: 15px; font-weight: 700;
+      background: #22c55e; color: #000; border: none;
+      border-radius: 12px; cursor: pointer; transition: opacity .15s;
+    }
+    .startBtn:disabled { opacity: .4; cursor: default; }
+    .startBtn:not(:disabled):hover { opacity: .85; }
+    .leaveBtn {
+      width: 100%; padding: 11px; font-size: 13px;
+      background: none; border: 1px solid #dc2626; color: #f87171;
+      border-radius: 12px; cursor: pointer; transition: opacity .15s;
+    }
+    .leaveBtn:hover { background: rgba(220,38,38,.08); }
+    .waitMsg { text-align: center; color: var(--text-secondary,#aaa); font-size: 13px; margin-top: 8px; }
+
+    .errorMsg { color: #f87171; font-size: 13px; text-align: center; min-height: 18px; }
+  </style>
+</head>
+<body data-page="rooms">
+  <nav class="siteNav">
+    <a href="/" class="brand">← ЛОББИ</a>
+    <span class="coinPill">🚪 Комнаты</span>
+  </nav>
+
+  <div class="roomsWrap">
+    <div class="roomsHeader">
+      <h1>Комнаты</h1>
+      <p>Играй с друзьями или в общем лобби</p>
+    </div>
+
+    <!-- Выбор режима -->
+    <div class="screen active" id="screenMenu">
+      <div class="roomMenu">
+        <button type="button" class="roomMenuBtn" id="btnQuickPlay">
+          <span class="btnIcon">⚡</span>
+          <div class="btnTitle">Быстрая игра</div>
+          <div class="btnDesc">Войти в общее публичное лобби</div>
+        </button>
+        <button type="button" class="roomMenuBtn" id="btnCreate">
+          <span class="btnIcon">➕</span>
+          <div class="btnTitle">Создать комнату</div>
+          <div class="btnDesc">Получи код и пригласи друзей (до 16 игроков)</div>
+        </button>
+        <button type="button" class="roomMenuBtn" id="btnJoinExisting">
+          <span class="btnIcon">🔑</span>
+          <div class="btnTitle">Войти по коду</div>
+          <div class="btnDesc">Введи 9-значный код комнаты</div>
+        </button>
+      </div>
+    </div>
+
+    <!-- Ввод кода -->
+    <div class="screen" id="screenCode">
+      <div class="codeForm">
+        <p style="color:var(--text-secondary,#aaa);font-size:14px;margin:0 0 4px">Введи код комнаты:</p>
+        <input class="codeInput" id="codeInput" maxlength="9" placeholder="XXX-XXX-XXX" autocomplete="off" />
+        <p class="errorMsg" id="codeError"></p>
+        <button type="button" class="joinBtn" id="btnJoinCode">Войти</button>
+        <button type="button" class="backBtn" id="btnBackFromCode">← Назад</button>
+      </div>
+    </div>
+
+    <!-- Лобби ожидания -->
+    <div class="screen" id="screenLobby">
+      <div class="lobbyPanel">
+        <div class="lobbyCode" id="lobbyCodeBlock" style="display:none">
+          <div class="codeLabel">Код комнаты — поделись с друзьями</div>
+          <div class="lobbyCodeVal" id="lobbyCodeVal" title="Нажми чтобы скопировать"></div>
+          <div class="lobbyCodeHint">Нажми на код чтобы скопировать</div>
+        </div>
+        <div class="lobbyMembers">
+          <div class="lobbyMembersTitle" id="lobbyMembersTitle">Игроки в лобби</div>
+          <div class="memberList" id="memberList"></div>
+        </div>
+        <div class="lobbyActions">
+          <button type="button" class="startBtn" id="btnStart" disabled>Начать игру</button>
+          <p class="waitMsg" id="waitMsg" style="display:none">Ожидаем хоста…</p>
+          <button type="button" class="leaveBtn" id="btnLeave">Покинуть лобби</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toastWrap"></div>
+  <script src="js/common.js"></script>
+  <script>
+    const state = {
+      socket: null,
+      myId: null,
+      myName: SnakeStore.getName() || "",
+      room: null,
+    };
+
+    // ---- WS ----
+    function connect() {
+      const socket = new WebSocket(getWebSocketUrl());
+      state.socket = socket;
+      socket.addEventListener("open", () => {
+        if (state.myName) send({ type: "shop_connect", name: state.myName });
+      });
+      socket.addEventListener("close", () => setTimeout(connect, 1200));
+      socket.addEventListener("message", (e) => {
+        const msg = JSON.parse(e.data);
+        if (msg.type === "ping") return;
+        if (msg.type === "hello") { state.myId = msg.id; }
+        if (msg.type === "room_created" || msg.type === "room_joined") {
+          state.room = msg;
+          showLobby(msg);
+        }
+        if (msg.type === "room_state") {
+          state.room = msg;
+          renderLobby(msg);
+        }
+        if (msg.type === "room_error") {
+          document.getElementById("codeError").textContent = msg.text;
+          showToast(msg.text);
+        }
+        if (msg.type === "room_left") {
+          state.room = null;
+          showScreen("screenMenu");
+        }
+        if (msg.type === "notice") showToast(msg.text);
+        // Если игра стартовала — переходим в game.html с кодом комнаты
+        if (msg.type === "snapshot") {
+          const code = state.room?.code || "";
+          sessionStorage.setItem("roomCode", code);
+          window.location.href = "/game.html";
+        }
+      });
+    }
+
+    function send(payload) {
+      if (state.socket?.readyState === WebSocket.OPEN)
+        state.socket.send(JSON.stringify(payload));
+    }
+
+    // ---- Screens ----
+    function showScreen(id) {
+      document.querySelectorAll(".screen").forEach((s) => s.classList.remove("active"));
+      document.getElementById(id).classList.add("active");
+    }
+
+    // ---- Lobby render ----
+    function showLobby(msg) {
+      showScreen("screenLobby");
+      const codeBlock = document.getElementById("lobbyCodeBlock");
+      const codeVal   = document.getElementById("lobbyCodeVal");
+      if (msg.code && msg.code !== "PUBLIC") {
+        codeBlock.style.display = "";
+        codeVal.textContent = msg.code;
+        codeVal.onclick = () => {
+          navigator.clipboard?.writeText(msg.code);
+          showToast("Код скопирован!");
+        };
+      } else {
+        codeBlock.style.display = "none";
+      }
+      renderLobby(msg);
+    }
+
+    function renderLobby(msg) {
+      const members = msg.members || [];
+      const isHost  = msg.hostId === state.myId;
+
+      document.getElementById("lobbyMembersTitle").textContent =
+        `Игроки (${members.length}/${msg.maxPlayers || 16})`;
+
+      const list = document.getElementById("memberList");
+      list.innerHTML = "";
+      for (const m of members) {
+        const row = document.createElement("div");
+        row.className = "memberRow";
+        const isMe = m.id === state.myId;
+        row.innerHTML = `
+          <span class="memberAvatar">${m.avatar || "😎"}</span>
+          <span class="memberName">${escHtml(m.name)}</span>
+          ${m.isHost ? '<span class="hostBadge">Хост</span>' : ""}
+          ${isMe ? '<span class="youBadge">Вы</span>' : ""}
+        `;
+        list.append(row);
+      }
+
+      const startBtn = document.getElementById("btnStart");
+      const waitMsg  = document.getElementById("waitMsg");
+      if (isHost) {
+        startBtn.style.display = "";
+        startBtn.disabled = members.length < 1;
+        waitMsg.style.display = "none";
+      } else {
+        startBtn.style.display = "none";
+        waitMsg.style.display = "";
+      }
+    }
+
+    function escHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+    }
+
+    // ---- Actions ----
+    document.getElementById("btnQuickPlay").addEventListener("click", () => {
+      if (!checkName()) return;
+      send({ type: "room_quick", name: state.myName });
+    });
+
+    document.getElementById("btnCreate").addEventListener("click", () => {
+      if (!checkName()) return;
+      send({ type: "room_create", name: state.myName, isPublic: false });
+    });
+
+    document.getElementById("btnJoinExisting").addEventListener("click", () => {
+      showScreen("screenCode");
+      document.getElementById("codeInput").focus();
+    });
+
+    document.getElementById("btnBackFromCode").addEventListener("click", () => {
+      showScreen("screenMenu");
+      document.getElementById("codeError").textContent = "";
+    });
+
+    document.getElementById("codeInput").addEventListener("input", (e) => {
+      e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    });
+
+    document.getElementById("btnJoinCode").addEventListener("click", () => {
+      if (!checkName()) return;
+      const code = document.getElementById("codeInput").value.trim();
+      if (code.length < 9) { document.getElementById("codeError").textContent = "Код должен быть 9 символов."; return; }
+      document.getElementById("codeError").textContent = "";
+      send({ type: "room_join", name: state.myName, code });
+    });
+
+    document.getElementById("btnStart").addEventListener("click", () => {
+      send({ type: "room_start" });
+    });
+
+    document.getElementById("btnLeave").addEventListener("click", () => {
+      send({ type: "room_leave" });
+      state.room = null;
+      showScreen("screenMenu");
+    });
+
+    function checkName() {
+      state.myName = SnakeStore.getName() || "";
+      if (!state.myName) {
+        showToast("Задай никнейм в профиле!");
+        setTimeout(() => { window.location.href = "/profile.html"; }, 1200);
+        return false;
+      }
+      return true;
+    }
+
+    connect();
+  </script>
+</body>
+</html>
