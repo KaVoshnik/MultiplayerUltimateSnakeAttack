@@ -259,18 +259,7 @@ function joinRoom(socketId, code, name) {
 }
 
 // Публичное лобби — одна постоянная комната
-const PUBLIC_ROOM_CODE = "PUBLIC";
-function ensurePublicRoom() {
-  if (!rooms.has(PUBLIC_ROOM_CODE)) {
-    const room = new roomMod.Room({
-      code: PUBLIC_ROOM_CODE, hostId: null, isPublic: true,
-      onEmpty: () => {},
-    });
-    _roomDeps(room);
-    rooms.set(PUBLIC_ROOM_CODE, room);
-  }
-  return rooms.get(PUBLIC_ROOM_CODE);
-}
+
 
 function restartTickInterval() {
   if (tickInterval) clearInterval(tickInterval);
@@ -608,7 +597,6 @@ const asyncHandlers = {
   room_join:    (id, msg) => handleRoomJoin(id, msg),
   room_start:   (id, msg) => handleRoomStart(id, msg),
   room_leave:   (id, msg) => handleRoomLeave(id, msg),
-  room_quick:   (id, msg) => handleRoomQuick(id, msg),
 };
 
 // Синхронные хендлеры не требующие наличия player
@@ -1142,7 +1130,9 @@ async function resolvePlayName(id, requestedName) {
   if (session) return { ok: true, name: session.player_name };
   const name = profileName(requestedName);
   if (!name) return { ok: false, text: "Укажи никнейм в профиле!" };
-  if (await isNameTaken(name)) return { ok: false, text: "Это имя уже занято! Войди через Google в профиле." };
+  // Не блокируем имя если оно уже принадлежит этому же сокету
+  const currentName = shopClients.get(id) || players.get(id)?.name || null;
+  if (await isNameTaken(name, currentName)) return { ok: false, text: "Это имя уже занято! Войди через Google в профиле." };
   return { ok: true, name };
 }
 
@@ -1178,20 +1168,6 @@ async function handleRoomJoin(id, message) {
   const result = joinRoom(id, code, name);
   if (!result.ok) { send(id, { type: "room_error", text: result.text }); return; }
   send(id, { type: "room_joined", code, ...result.room.lobbySnapshot() });
-}
-
-async function handleRoomQuick(id, message) {
-  // Быстрый вход — в публичное лобби
-  const resolved = await resolvePlayName(id, message.name);
-  if (!resolved.ok) { send(id, { type: "notice", text: resolved.text }); return; }
-  const name = resolved.name;
-  const room = ensurePublicRoom();
-  leaveRoom(id);
-  if (!room.hostId) room.hostId = id;
-  const cos = getPlayerCosmetics(name);
-  room.addWaiter(id, name, cos);
-  socketRoom.set(id, PUBLIC_ROOM_CODE);
-  send(id, { type: "room_joined", code: PUBLIC_ROOM_CODE, ...room.lobbySnapshot() });
 }
 
 async function handleRoomStart(id, message) {
