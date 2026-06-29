@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="ru">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Комнаты — Snake Attack</title>
+  <link rel="stylesheet" href="css/common.css" />
+  <link rel="stylesheet" href="css/pages.css" />
+  <style>
+    .wrap {
+      max-width: 500px;
+      margin: 0 auto;
+      padding: 2rem 1rem;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 1.5rem;
+      margin: 0 0 .4rem;
+    }
+
+    .sub {
+      text-align: center;
+      color: #aaa;
+      font-size: 13px;
+      margin: 0 0 2rem;
+    }
+
+    .card {
+      background: #111;
+      border: 1px solid #2a2a2a;
+      border-radius: 14px;
+      padding: 20px 24px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 12px;
+      transition: border-color .15s;
+    }
+
+    .card:hover {
+      border-color: #62a0ea;
+    }
+
+    .card .ico {
+      font-size: 30px;
+      flex-shrink: 0;
+    }
+
+    .card .title {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 3px;
+    }
+
+    .card .desc {
+      font-size: 13px;
+      color: #aaa;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .field {
+      width: 100%;
+      padding: 13px;
+      font-size: 22px;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      text-align: center;
+      background: #111;
+      border: 2px solid #333;
+      border-radius: 12px;
+      color: #fff;
+      outline: none;
+      box-sizing: border-box;
+      margin-bottom: 12px;
+    }
+
+    .field:focus {
+      border-color: #62a0ea;
+    }
+
+    .btn-primary {
+      width: 100%;
+      padding: 13px;
+      font-size: 15px;
+      font-weight: 700;
+      background: #62a0ea;
+      color: #000;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      margin-bottom: 10px;
+    }
+
+    .btn-back {
+      width: 100%;
+      padding: 11px;
+      font-size: 13px;
+      background: none;
+      border: 1px solid #333;
+      color: #aaa;
+      border-radius: 12px;
+      cursor: pointer;
+    }
+
+    .err {
+      color: #f87171;
+      font-size: 13px;
+      text-align: center;
+      margin-bottom: 8px;
+      min-height: 18px;
+    }
+
+    .lobby-code {
+      text-align: center;
+      padding-bottom: 1rem;
+      margin-bottom: 1rem;
+      border-bottom: 1px solid #222;
+    }
+
+    .lobby-code .lbl {
+      font-size: 11px;
+      text-transform: uppercase;
+      color: #aaa;
+      margin-bottom: 6px;
+    }
+
+    .lobby-code .val {
+      font-size: 34px;
+      font-weight: 700;
+      letter-spacing: .22em;
+      color: #62a0ea;
+      cursor: pointer;
+    }
+
+    .lobby-code .hint {
+      font-size: 12px;
+      color: #444;
+      margin-top: 4px;
+    }
+
+    .members-title {
+      font-size: 12px;
+      color: #aaa;
+      margin-bottom: 10px;
+    }
+
+    .member {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #1a1a1a;
+      border-radius: 10px;
+      padding: 10px 14px;
+      margin-bottom: 8px;
+    }
+
+    .member .ava {
+      font-size: 20px;
+    }
+
+    .member .name {
+      flex: 1;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .badge-host {
+      font-size: 11px;
+      background: rgba(98, 160, 234, .15);
+      color: #62a0ea;
+      padding: 2px 8px;
+      border-radius: 6px;
+    }
+
+    .badge-you {
+      font-size: 11px;
+      color: #555;
+    }
+
+    .btn-start {
+      width: 100%;
+      padding: 13px;
+      font-size: 15px;
+      font-weight: 700;
+      background: #22c55e;
+      color: #000;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      margin-bottom: 10px;
+    }
+
+    .btn-start:disabled {
+      opacity: .4;
+      cursor: default;
+    }
+
+    .wait-msg {
+      text-align: center;
+      color: #aaa;
+      font-size: 13px;
+      margin-bottom: 10px;
+    }
+
+    .btn-leave {
+      width: 100%;
+      padding: 11px;
+      font-size: 13px;
+      background: none;
+      border: 1px solid #dc2626;
+      color: #f87171;
+      border-radius: 12px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+
+<body data-page="rooms">
+  <nav class="siteNav">
+    <a href="/" class="brand">← ЛОББИ</a>
+    <span class="coinPill">🚪 Комнаты</span>
+  </nav>
+
+  <div class="wrap">
+    <h1>Приватные комнаты</h1>
+    <p class="sub">Играй с друзьями по коду — до 16 игроков</p>
+
+    <div id="sMenu">
+      <div class="card" id="btnCreate">
+        <span class="ico">➕</span>
+        <div>
+          <div class="title">Создать комнату</div>
+          <div class="desc">Получи 9-значный код и пригласи друзей</div>
+        </div>
+      </div>
+      <div class="card" id="btnJoin">
+        <span class="ico">🔑</span>
+        <div>
+          <div class="title">Войти по коду</div>
+          <div class="desc">Введи код комнаты от друга</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="sCode" class="hidden">
+      <input class="field" id="codeInput" maxlength="9" placeholder="XXXXXXXXX" autocomplete="off" />
+      <div class="err" id="codeErr"></div>
+      <button class="btn-primary" id="btnDoJoin">Войти в комнату</button>
+      <button class="btn-back" id="btnBack">← Назад</button>
+    </div>
+
+    <div id="sLobby" class="hidden">
+      <div class="lobby-code" id="lobbyCodeWrap">
+        <div class="lbl">Код комнаты</div>
+        <div class="val" id="lobbyCode"></div>
+        <div class="hint">Нажми чтобы скопировать</div>
+      </div>
+      <div class="members-title" id="membersTitle">Игроки</div>
+      <div id="memberList"></div>
+      <button class="btn-start" id="btnStart" disabled>Начать игру</button>
+      <p class="wait-msg hidden" id="waitMsg">Ожидаем хоста…</p>
+      <button class="btn-leave" id="btnLeave">Покинуть комнату</button>
+    </div>
+  </div>
+
+  <div class="toastWrap"></div>
+  <script src="js/common.js"></script>
+  <script>
+    (function () {
+      var NAME = SnakeStore.getName() || "";
+      var myId = null;
+      var ws = null;
+      var room = null;
+      var pending = null;
+
+      function show(id) {
+        ["sMenu", "sCode", "sLobby"].forEach(function (s) {
+          document.getElementById(s).className = s === id ? "" : "hidden";
+        });
+      }
+
+      function wsend(obj) {
+        if (ws && ws.readyState === 1) {
+          ws.send(JSON.stringify(obj));
+        } else {
+          pending = obj;
+        }
+      }
+
+      function checkName() {
+        if (!NAME) { showToast("Задай никнейм в профиле!"); return false; }
+        return true;
+      }
+
+      function renderLobby(msg) {
+        room = msg;
+        show("sLobby");
+        var code = msg.code || "";
+        var codeEl = document.getElementById("lobbyCode");
+        codeEl.textContent = code;
+        codeEl.onclick = function () {
+          navigator.clipboard && navigator.clipboard.writeText(code);
+          showToast("Код скопирован!");
+        };
+        document.getElementById("membersTitle").textContent =
+          "Игроки (" + (msg.members || []).length + " / " + (msg.maxPlayers || 16) + ")";
+        var list = document.getElementById("memberList");
+        list.innerHTML = "";
+        (msg.members || []).forEach(function (m) {
+          var div = document.createElement("div");
+          div.className = "member";
+          div.innerHTML =
+            '<span class="ava">' + (m.avatar || "😎") + "</span>" +
+            '<span class="name">' + m.name + "</span>" +
+            (m.isHost ? '<span class="badge-host">Хост</span>' : "") +
+            (m.id === myId ? '<span class="badge-you">Вы</span>' : "");
+          list.appendChild(div);
+        });
+        var isHost = msg.hostId === myId;
+        var startBtn = document.getElementById("btnStart");
+        var waitMsg = document.getElementById("waitMsg");
+        startBtn.disabled = !isHost || (msg.members || []).length < 1;
+        startBtn.className = isHost ? "btn-start" : "btn-start hidden";
+        waitMsg.className = isHost ? "wait-msg hidden" : "wait-msg";
+      }
+
+      function connect() {
+        ws = new WebSocket(getWebSocketUrl());
+        ws.onopen = function () {
+          if (NAME) wsend({ type: "shop_connect", name: NAME });
+          if (pending) { wsend(pending); pending = null; }
+        };
+        ws.onclose = function () { setTimeout(connect, 1200); };
+        ws.onmessage = function (e) {
+          var msg = JSON.parse(e.data);
+          if (msg.type === "ping") return;
+          if (msg.type === "hello") myId = msg.id;
+          if (msg.type === "room_created" || msg.type === "room_joined") renderLobby(msg);
+          if (msg.type === "room_state") renderLobby(msg);
+          if (msg.type === "room_error") { showToast(msg.text); document.getElementById("codeErr").textContent = msg.text; }
+          if (msg.type === "room_left") { room = null; show("sMenu"); }
+          if (msg.type === "notice") showToast(msg.text);
+          if (msg.type === "snapshot") {
+            sessionStorage.setItem("roomCode", room ? room.code : "");
+            location.href = "/game.html";
+          }
+        };
+      }
+
+      document.getElementById("btnCreate").onclick = function () {
+        if (!checkName()) return;
+        wsend({ type: "room_create", name: NAME });
+      };
+
+      document.getElementById("btnJoin").onclick = function () {
+        show("sCode");
+        document.getElementById("codeInput").focus();
+      };
+
+      document.getElementById("btnBack").onclick = function () {
+        document.getElementById("codeErr").textContent = "";
+        document.getElementById("codeInput").value = "";
+        show("sMenu");
+      };
+
+      document.getElementById("codeInput").oninput = function (e) {
+        e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+      };
+
+      document.getElementById("codeInput").onkeydown = function (e) {
+        if (e.key === "Enter") document.getElementById("btnDoJoin").click();
+      };
+
+      document.getElementById("btnDoJoin").onclick = function () {
+        if (!checkName()) return;
+        var code = document.getElementById("codeInput").value.trim();
+        if (code.length < 9) { document.getElementById("codeErr").textContent = "Код должен быть 9 символов."; return; }
+        document.getElementById("codeErr").textContent = "";
+        wsend({ type: "room_join", name: NAME, code: code });
+      };
+
+      document.getElementById("btnStart").onclick = function () {
+        wsend({ type: "room_start" });
+      };
+
+      document.getElementById("btnLeave").onclick = function () {
+        wsend({ type: "room_leave" });
+        room = null;
+        show("sMenu");
+      };
+
+      connect();
+    })();
+  </script>
+</body>
+
+</html>

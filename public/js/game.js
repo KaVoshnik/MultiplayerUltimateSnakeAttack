@@ -275,7 +275,15 @@ function connect() {
         state.feed = message.feed;
         renderFeed();
       }
-      sendJoin();
+      // Если пришли из комнаты — не шлём join, запрашиваем снэпшот комнаты
+      const roomCode = sessionStorage.getItem("roomCode");
+      if (roomCode) {
+        sessionStorage.removeItem("roomCode");
+        state.roomCode = roomCode;
+        send({ type: "room_rejoin", name: state.name, code: roomCode });
+      } else {
+        sendJoin();
+      }
     }
     if (message.type === "snapshot") {
       handleSnapshot(message);
@@ -748,7 +756,7 @@ function drawBackground(width, height, view) {
   // Пересоздаём градиенты только если изменился размер или режим босса
   const c = bgGradientCache;
   if (c.enraged !== enraged || c.width !== width || c.height !== height ||
-    c.mapL !== mapL || c.mapT !== mapT || c.mapW !== mapW || c.mapH !== mapH) {
+      c.mapL !== mapL || c.mapT !== mapT || c.mapW !== mapW || c.mapH !== mapH) {
     c.enraged = enraged;
     c.width = width; c.height = height;
     c.mapL = mapL; c.mapT = mapT; c.mapW = mapW; c.mapH = mapH;
@@ -895,7 +903,7 @@ function drawFoodShape(kind, cx, cy, r, cell) {
       ctx.fillStyle = "#e8453c";
       ctx.beginPath(); ctx.arc(cx, cy - r * 0.1, r * 0.75, Math.PI, 0); ctx.fill();
       break;
-    default:
+  default:
       ctx.fillStyle = "#d4cfc7";
       ctx.lineWidth = Math.max(2, cell * 0.08);
       ctx.strokeStyle = "#d4cfc7"; ctx.lineCap = "round";
