@@ -595,6 +595,7 @@ const asyncHandlers = {
   join:         (id, msg) => handleJoin(id, msg),
   room_create:  (id, msg) => handleRoomCreate(id, msg),
   room_join:    (id, msg) => handleRoomJoin(id, msg),
+  room_rejoin:  (id, msg) => handleRoomRejoin(id, msg),
   room_start:   (id, msg) => handleRoomStart(id, msg),
   room_leave:   (id, msg) => handleRoomLeave(id, msg),
 };
@@ -1172,6 +1173,56 @@ async function handleRoomJoin(id, message) {
   const result = joinRoom(id, code, name);
   if (!result.ok) { send(id, { type: "room_error", text: result.text }); return; }
   send(id, { type: "room_joined", code, ...result.room.lobbySnapshot() });
+}
+
+async function handleRoomRejoin(id, message) {
+  // Игрок перешёл из rooms.html в game.html — переподключаем к уже запущенной комнате
+  const resolved = await resolvePlayName(id, message.name);
+  if (!resolved.ok) { send(id, { type: "room_error", text: resolved.text }); return; }
+  const name = resolved.name;
+  const code = String(message.code || "").toUpperCase().trim();
+  const room = rooms.get(code);
+  if (!room) { send(id, { type: "notice", text: "Комната не найдена." }); sendJoinFallback(id, name); return; }
+
+  if (!shopClients.has(id)) shopClients.set(id, name);
+  socketRoom.set(id, code);
+
+  if (room.started) {
+    // Комната уже запущена — обновляем socket в players и шлём снэпшот
+    const existing = [...room.players.entries()].find(([, p]) => p.name.toLowerCase() === name.toLowerCase());
+    if (existing) {
+      const [oldId, player] = existing;
+      if (oldId !== id) {
+        room.players.delete(oldId);
+        room.clientAoi.delete(oldId);
+        player.id = id;
+        room.players.set(id, player);
+      }
+    } else {
+      // Новый игрок заходит в уже запущенную комнату
+      const prof = getProfile(name);
+      const skin = getSkinDef(prof.activeSkin);
+      const cos  = getPlayerCosmetics(name);
+      if (startNewLife) startNewLife(name);
+      room.players.set(id, room._createPlayer(id, name, skin, cos));
+    }
+    room._sendSnapshot(id);
+  } else {
+    // Комната есть но не запущена — добавляем в лобби
+    const cos = getPlayerCosmetics(name);
+    room.addWaiter(id, name, cos);
+    room.broadcastLobby();
+  }
+}
+
+function sendJoinFallback(id, name) {
+  // Комната пропала — кидаем в обычную игру
+  const prof = getProfile(name);
+  const skin = getSkinDef(prof.activeSkin);
+  startNewLife(name);
+  players.set(id, createPlayer(id, name, "normal", skin));
+  sendSnapshot(id);
+  broadcastGameSync();
 }
 
 async function handleRoomStart(id, message) {

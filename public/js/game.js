@@ -275,13 +275,12 @@ function connect() {
         state.feed = message.feed;
         renderFeed();
       }
-      // Если пришли из комнаты — не шлём join, снэпшот придёт от room.start()
+      // Если пришли из комнаты — не шлём join, запрашиваем снэпшот комнаты
       const roomCode = sessionStorage.getItem("roomCode");
       if (roomCode) {
         sessionStorage.removeItem("roomCode");
         state.roomCode = roomCode;
-        // Переподключаем к комнате чтобы сервер нас узнал
-        send({ type: "room_join", name: state.name, code: roomCode });
+        send({ type: "room_rejoin", name: state.name, code: roomCode });
       } else {
         sendJoin();
       }
