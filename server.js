@@ -1130,9 +1130,11 @@ async function resolvePlayName(id, requestedName) {
   if (session) return { ok: true, name: session.player_name };
   const name = profileName(requestedName);
   if (!name) return { ok: false, text: "Укажи никнейм в профиле!" };
-  // Не блокируем имя если оно уже принадлежит этому же сокету
+  // Не блокируем имя если оно уже принадлежит этому сокету
+  // (учитываем shopClients, players, и само переданное имя если профиль уже существует)
   const currentName = shopClients.get(id) || players.get(id)?.name || null;
-  if (await isNameTaken(name, currentName)) return { ok: false, text: "Это имя уже занято! Войди через Google в профиле." };
+  const exceptName  = currentName || (profileIndex.has(name.toLowerCase()) ? name : null);
+  if (await isNameTaken(name, exceptName)) return { ok: false, text: "Это имя уже занято! Войди через Google в профиле." };
   return { ok: true, name };
 }
 
@@ -1149,11 +1151,12 @@ async function handleShopConnect(id, message) {
 
 async function handleRoomCreate(id, message) {
   const resolved = await resolvePlayName(id, message.name);
-  if (!resolved.ok) { send(id, { type: "notice", text: resolved.text }); return; }
+  if (!resolved.ok) { send(id, { type: "room_error", text: resolved.text }); return; }
   const name = resolved.name;
+  // Регистрируем имя в shopClients если ещё нет
+  if (!shopClients.has(id)) shopClients.set(id, name);
   leaveRoom(id);
-  const isPublic = Boolean(message.isPublic);
-  const room = createRoom(id, isPublic);
+  const room = createRoom(id, false);
   const cos  = getPlayerCosmetics(name);
   room.addWaiter(id, name, cos);
   socketRoom.set(id, room.code);
@@ -1162,8 +1165,9 @@ async function handleRoomCreate(id, message) {
 
 async function handleRoomJoin(id, message) {
   const resolved = await resolvePlayName(id, message.name);
-  if (!resolved.ok) { send(id, { type: "notice", text: resolved.text }); return; }
+  if (!resolved.ok) { send(id, { type: "room_error", text: resolved.text }); return; }
   const name = resolved.name;
+  if (!shopClients.has(id)) shopClients.set(id, name);
   const code = String(message.code || "").toUpperCase().trim();
   const result = joinRoom(id, code, name);
   if (!result.ok) { send(id, { type: "room_error", text: result.text }); return; }

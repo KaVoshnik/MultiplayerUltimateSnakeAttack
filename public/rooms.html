@@ -180,7 +180,8 @@
           renderMembers(msg);
         }
         if (msg.type === "room_error") {
-          document.getElementById("codeError").textContent = msg.text;
+          const errEl = document.getElementById("codeError");
+          if (errEl) errEl.textContent = msg.text;
           showToast(msg.text);
         }
         if (msg.type === "room_left") {
