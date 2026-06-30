@@ -12,6 +12,7 @@ const gameSync = require("./lib/game-sync");
 const bossMod = require("./lib/bosses");
 const foodMod = require("./lib/food");
 const gameConfig = require("./config/game");
+const bonusEffects = require("./lib/bonus-effects");
 
 // ============================================================
 // CONSTANTS
@@ -725,13 +726,6 @@ function extrasForPlayer(p) {
   };
 }
 
-function comboMultiplier(combo) {
-  if (combo >= 10) return 2;
-  if (combo >= 6) return 1.5;
-  if (combo >= 3) return 1.25;
-  return 1;
-}
-
 function tick() {
   if (players.size === 0) return;
   tickJournal = gameSync.createJournal();
@@ -758,7 +752,7 @@ function tick() {
     tickJournal.bossesChanged = true;
   }
 
-  tickBonusEffects();
+  bonusEffects.tickBonusEffects(players);
   occupancyRebuild();
 
   const occupied = new Map();
@@ -836,7 +830,7 @@ function tick() {
       if (eaten.good) {
         player.combo = (player.combo || 0) + 1;
         player.maxCombo = Math.max(player.maxCombo || 0, player.combo);
-        let mult = comboMultiplier(player.combo);
+        let mult = bonusEffects.comboMultiplier(player.combo);
         if (player.activeBonus === "double") mult *= 2;
         if (player.activeBonus === "speed_up") mult *= 1.3;
         const pts = Math.round(eaten.points * mult);
@@ -869,16 +863,6 @@ function activateBonus(player, bonusType) {
   player.bonusExpires = Date.now() + def.duration;
   pushFeed("bonus", `⚡ ${player.name} → ${def.label}`, player.name);
   broadcast({ type: "notice", text: `${player.name} получил бонус ${def.label} ${def.desc}!` });
-}
-
-function tickBonusEffects() {
-  const now = Date.now();
-  for (const player of players.values()) {
-    if (player.activeBonus && player.bonusExpires && now > player.bonusExpires) {
-      player.activeBonus = null;
-      player.bonusExpires = null;
-    }
-  }
 }
 
 function spawnBonuses() {
