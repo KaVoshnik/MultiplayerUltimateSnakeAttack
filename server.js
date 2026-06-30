@@ -746,6 +746,13 @@ function tick() {
       avoidCells: pathCells,
       pushFeed, broadcast, killPlayer,
       pushFoodItem: (item) => { food.push(item); tickJournal.foodAdded.push(gameSync.compactFood(item)); },
+      removeFoodAt: (item) => {
+        const idx = food.findIndex((f) => f.x === item.x && f.y === item.y);
+        if (idx >= 0) {
+          food.splice(idx, 1);
+          tickJournal.foodRemoved.push([item.x, item.y]);
+        }
+      },
       createBadFood: foodMod.createBadFood,
       insideGrid: (pt) => foodMod.insideGrid(pt, GRID),
       pointKey: foodMod.pointKey,
