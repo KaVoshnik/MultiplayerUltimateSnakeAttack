@@ -13,6 +13,7 @@ const bossMod = require("./lib/bosses");
 const foodMod = require("./lib/food");
 const gameConfig = require("./config/game");
 const bonusEffects = require("./lib/bonus-effects");
+const engine = require("./lib/engine");
 
 // ============================================================
 // CONSTANTS
@@ -755,26 +756,9 @@ function tick() {
   bonusEffects.tickBonusEffects(players);
   occupancyRebuild();
 
-  const occupied = new Map();
-  const planned = new Map();
-  const targetCounts = new Map();
-
-  for (const player of players.values()) {
-    if (!player.alive) continue;
-    for (const part of player.snake) occupied.set(foodMod.pointKey(part), player.id);
-  }
-
-  for (const player of players.values()) {
-    if (!player.alive) continue;
-    if (player.frozenUntil && Date.now() < player.frozenUntil) continue;
-    if (player.activeBonus === "slow_down" && tickCount % 2 === 0) continue;
-    player.direction = player.nextDirection;
-    const head = player.snake[0];
-    const nextHead = { x: head.x + player.direction.x, y: head.y + player.direction.y };
-    planned.set(player.id, nextHead);
-    const key = foodMod.pointKey(nextHead);
-    targetCounts.set(key, (targetCounts.get(key) || 0) + 1);
-  }
+  const { occupied, planned, targetCounts } = engine.planMoves(players, {
+    GRID, tickCount, applySlowDown: true,
+  });
 
   for (const player of players.values()) {
     if (!player.alive || !planned.has(player.id)) continue;
