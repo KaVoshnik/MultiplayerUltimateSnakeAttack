@@ -11,6 +11,7 @@ const auth = require("./auth");
 const gameSync = require("./lib/game-sync");
 const bossMod = require("./lib/bosses");
 const foodMod = require("./lib/food");
+const gameConfig = require("./config/game");
 
 // ============================================================
 // CONSTANTS
@@ -20,9 +21,8 @@ const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || "0.0.0.0";
 const PUBLIC_DIR = path.join(__dirname, "public");
 
-const GRID = { width: 210, height: 140 };
+const { GRID, SPAWN_FREEZE_MS, BONUS_TYPES } = gameConfig;
 const MAX_LEADERS = 20;
-const SPAWN_FREEZE_MS = 3000;
 const KILL_REWARD_COINS = 50;
 const BATTLE_PASS_SCORE_STEP = 1000;
 const BATTLE_PASS_MAX_TIER = 60;
@@ -33,14 +33,6 @@ const { BOSS_SPAWN_BUFFER, BOSS_MOVE_EVERY } = bossMod;
 const MODES = {
   classic: { label: "Classic" },
   tag_time: { label: "Tag Time" },
-};
-
-const BONUS_TYPES = {
-  shield: { label: "SH", duration: 10000, color: "#62a0ea", desc: "защита от яда" },
-  speed_up: { label: "SP", duration: 8000, color: "#f9f06b", desc: "оверклок +30% очков" },
-  slow_down: { label: "SL", duration: 10000, color: "#dc8add", desc: "замедление" },
-  double: { label: "x2", duration: 12000, color: "#33d17a", desc: "двойные очки" },
-  ghost: { label: "GH", duration: 8000, color: "#8ff0a4", desc: "призрак" },
 };
 
 const BATTLE_PASS_NICK_COLORS = [
