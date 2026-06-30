@@ -160,9 +160,9 @@ function syncSpawnFreeze(me) {
   const wasFrozen = state.freezeEndsAt > Date.now();
   const frozenUntil = me.spawnFrozenLeft || 0; // сервер шлёт абсолютный timestamp
   if (frozenUntil > Date.now()) {
-    // Обновляем если новый timestamp дальше (не даём таймеру скакать назад)
-    if (frozenUntil > state.freezeEndsAt) state.freezeEndsAt = frozenUntil;
-  } else {
+    // Всегда берём актуальное значение от сервера (источник правды)
+    state.freezeEndsAt = frozenUntil;
+  } else if (state.freezeEndsAt !== 0) {
     state.freezeEndsAt = 0;
     if (wasFrozen && state.bufferedDirection) {
       send({ type: "turn", direction: state.bufferedDirection });
@@ -690,7 +690,7 @@ function drawStatsOverlay(width) {
 
 function drawSpawnOverlay(width, height) {
   if (!isSpawnFrozen()) return;
-  const left = Math.min(3000, Math.max(0, state.freezeEndsAt - Date.now()));
+  const left = Math.max(0, state.freezeEndsAt - Date.now());
   const sec = (left / 1000).toFixed(1);
   ctx.save();
   ctx.fillStyle = "rgba(0,0,0,0.35)";

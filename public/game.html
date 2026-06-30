@@ -31,6 +31,7 @@
           </div>
         </div>
         <button type="button" class="btn ghost small" id="audioBtn" title="Звук">🔊</button>
+        <span class="status" id="onlineStatus" title="Игроков онлайн">👥 <strong id="onlineCount">—</strong></span>
         <span class="status" id="connectionStatus">...</span>
       </div>
     </header>
@@ -67,11 +68,6 @@
         </div>
       </aside>
     </div>
-  </div>
-
-  <div id="onlineCounter" style="position:fixed;left:16px;bottom:16px;background:rgba(15,20,18,.78);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:8px 14px;font-size:12px;color:#9fb;display:flex;align-items:center;gap:8px;z-index:40;">
-    <span style="width:8px;height:8px;border-radius:50%;background:#3de88a;box-shadow:0 0 6px #3de88a;"></span>
-    <span>Онлайн: <strong id="onlineCount" style="color:#fff">—</strong></span>
   </div>
 
   <div class="toastWrap" id="toastWrap"></div>

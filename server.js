@@ -222,6 +222,7 @@ function _roomDeps(room) {
   room.trackDisconnectStats = trackDisconnectStats;
   room.savePlayerCoins      = savePlayerCoins;
   room.getOnlineCount       = () => sockets.size;
+  room.bestForName          = bestForName;
 }
 
 function createRoom(hostId, isPublic) {
