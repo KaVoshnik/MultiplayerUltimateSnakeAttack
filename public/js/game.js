@@ -280,6 +280,7 @@ function connect() {
       if (roomCode) {
         sessionStorage.removeItem("roomCode");
         state.roomCode = roomCode;
+        state.joined = true;
         send({ type: "room_rejoin", name: state.name, code: roomCode });
       } else {
         sendJoin();
