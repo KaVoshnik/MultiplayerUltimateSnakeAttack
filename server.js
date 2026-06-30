@@ -866,14 +866,12 @@ function activateBonus(player, bonusType) {
 }
 
 function spawnBonuses() {
-  if (players.size === 0 || bonuses.length >= 3) return;
-  const point = foodMod.randomEmptyPoint(food, {
-    avoidCells: null, anyBossOccupies: (pt) => bossMod.anyBossOccupies(bosses, pt),
-    occupancySet, GRID, avoidNearHeads: true, players,
+  const spawn = bonusEffects.pickBonusSpawn({
+    players, bonuses, food, bosses, occupancySet,
+    foodMod, bossMod, GRID, BONUS_TYPES,
   });
-  if (!point) return;
-  const types = Object.keys(BONUS_TYPES);
-  const bonusType = types[Math.floor(Math.random() * types.length)];
+  if (!spawn) return;
+  const { point, bonusType } = spawn;
   bonuses.push({ ...point, bonusType, spawnedAt: Date.now() });
 
   const journal = gameSync.createJournal();
