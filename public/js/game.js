@@ -160,9 +160,9 @@ function syncSpawnFreeze(me) {
   const wasFrozen = state.freezeEndsAt > Date.now();
   const frozenUntil = me.spawnFrozenLeft || 0; // сервер шлёт абсолютный timestamp
   if (frozenUntil > Date.now()) {
-    // Обновляем если новый timestamp дальше (не даём таймеру скакать назад)
-    if (frozenUntil > state.freezeEndsAt) state.freezeEndsAt = frozenUntil;
-  } else {
+    // Всегда берём актуальное значение от сервера (источник правды)
+    state.freezeEndsAt = frozenUntil;
+  } else if (state.freezeEndsAt !== 0) {
     state.freezeEndsAt = 0;
     if (wasFrozen && state.bufferedDirection) {
       send({ type: "turn", direction: state.bufferedDirection });
@@ -262,6 +262,11 @@ function connect() {
       if (message.t) state.ping = Math.round(Date.now() - message.t);
       return;
     }
+    if (message.type === "presence") {
+      const el = document.getElementById("onlineCount");
+      if (el) el.textContent = message.players ?? "—";
+      return;
+    }
     if (message.type === "hello") {
       state.id = message.id;
       state.grid = message.grid;
@@ -280,6 +285,13 @@ function connect() {
       if (roomCode) {
         sessionStorage.removeItem("roomCode");
         state.roomCode = roomCode;
+        state.joined = true;
+        const roomHud = document.getElementById("roomCodeHud");
+        const roomVal = document.getElementById("roomCodeVal");
+        if (roomHud && roomVal) {
+          roomVal.textContent = roomCode;
+          roomHud.classList.remove("hidden");
+        }
         send({ type: "room_rejoin", name: state.name, code: roomCode });
       } else {
         sendJoin();
