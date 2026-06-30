@@ -21,9 +21,8 @@ const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || "0.0.0.0";
 const PUBLIC_DIR = path.join(__dirname, "public");
 
-const { GRID, SPAWN_FREEZE_MS, BONUS_TYPES } = gameConfig;
+const { GRID, SPAWN_FREEZE_MS, BONUS_TYPES, KILL_REWARD_COINS } = gameConfig;
 const MAX_LEADERS = 20;
-const KILL_REWARD_COINS = 50;
 const BATTLE_PASS_SCORE_STEP = 1000;
 const BATTLE_PASS_MAX_TIER = 60;
 
