@@ -857,12 +857,10 @@ function tick() {
 }
 
 function activateBonus(player, bonusType) {
-  const def = BONUS_TYPES[bonusType];
-  if (!def) return;
-  player.activeBonus = bonusType;
-  player.bonusExpires = Date.now() + def.duration;
-  pushFeed("bonus", `⚡ ${player.name} → ${def.label}`, player.name);
-  broadcast({ type: "notice", text: `${player.name} получил бонус ${def.label} ${def.desc}!` });
+  bonusEffects.activateBonus(player, bonusType, BONUS_TYPES, (def) => {
+    pushFeed("bonus", `⚡ ${player.name} → ${def.label}`, player.name);
+    broadcast({ type: "notice", text: `${player.name} получил бонус ${def.label} ${def.desc}!` });
+  });
 }
 
 function spawnBonuses() {
