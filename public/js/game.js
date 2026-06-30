@@ -62,6 +62,9 @@ const state = {
   lastMinimapDraw: 0,
   // Буфер для нажатий во время spawn freeze
   bufferedDirection: null,
+  // Эффекты движения боссов (след + вспышка при рывке)
+  bossPrev: new Map(),
+  bossFx: [],
   // FPS / ping
   fps: 0,
   ping: 0,
@@ -201,6 +204,7 @@ function finishGameUpdate(prevScore, prevCombo) {
   updateHud(me, prevScore, prevCombo);
   renderPlayers();
   SnakeFX.updateTrails(state.players);
+  updateBossFx();
   const anyEnraged = state.bosses.some((b) => b.phase === "enraged");
   if (anyEnraged && !state.bossRageSound) {
     state.bossRageSound = true;
@@ -208,6 +212,39 @@ function finishGameUpdate(prevScore, prevCombo) {
     SnakeFX.addShake(8);
   }
   if (!anyEnraged) state.bossRageSound = false;
+}
+
+// Следит за перемещением боссов между тиками: оставляет затухающий
+// след и подсвечивает резкие рывки (VØIDR), чтобы движение не выглядело
+// как "зависание" на месте.
+function updateBossFx() {
+  const seenIds = new Set();
+  for (const boss of state.bosses) {
+    seenIds.add(boss.id);
+    const prev = state.bossPrev.get(boss.id);
+    const half = (boss.size || 1) / 2;
+    if (prev) {
+      const dist = Math.abs(boss.x - prev.x) + Math.abs(boss.y - prev.y);
+      if (dist > 0) {
+        state.bossFx.push({
+          x: prev.x + half,
+          y: prev.y + half,
+          life: 1,
+          color: boss.color || "#f66151",
+        });
+        if (state.bossFx.length > 60) state.bossFx.splice(0, state.bossFx.length - 60);
+      }
+      if (dist >= 3) {
+        // Рывок/телепорт — вспышка + лёгкий шейк камеры
+        SnakeFX.addShake(5);
+        SnakeFX.spawnFloater("⚡", boss.x + half, boss.y - 0.5, "#fff176");
+      }
+    }
+    state.bossPrev.set(boss.id, { x: boss.x, y: boss.y });
+  }
+  for (const id of [...state.bossPrev.keys()]) {
+    if (!seenIds.has(id)) state.bossPrev.delete(id);
+  }
 }
 
 function applyMotionInterp() {
@@ -631,6 +668,7 @@ function draw() {
   SnakeFX.drawTrails(ctx, view.cell, view.offsetX, view.offsetY);
   drawFood(view);
   drawBonuses(view);
+  drawBossTrails(view);
   drawBoss(view);
   drawPlayers(view);
   drawParticles(view);
@@ -953,6 +991,22 @@ function drawBonuses(view) {
     ctx.fillText(bonus.def?.label || "?", x + cell / 2, y + cell / 2);
     ctx.restore();
   }
+}
+
+function drawBossTrails(view) {
+  const { cell, offsetX, offsetY } = view;
+  for (let i = state.bossFx.length - 1; i >= 0; i--) {
+    const f = state.bossFx[i];
+    f.life -= 0.06;
+    if (f.life <= 0) { state.bossFx.splice(i, 1); continue; }
+    if (!isInCameraView(f.x, f.y, view, 1)) continue;
+    ctx.globalAlpha = f.life * 0.5;
+    ctx.fillStyle = f.color;
+    ctx.beginPath();
+    ctx.arc(offsetX + f.x * cell, offsetY + f.y * cell, cell * 0.32 * f.life, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
 }
 
 function drawBoss(view) {
