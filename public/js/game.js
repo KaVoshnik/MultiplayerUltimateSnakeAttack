@@ -262,6 +262,11 @@ function connect() {
       if (message.t) state.ping = Math.round(Date.now() - message.t);
       return;
     }
+    if (message.type === "presence") {
+      const el = document.getElementById("onlineCount");
+      if (el) el.textContent = message.players ?? "—";
+      return;
+    }
     if (message.type === "hello") {
       state.id = message.id;
       state.grid = message.grid;
@@ -281,6 +286,12 @@ function connect() {
         sessionStorage.removeItem("roomCode");
         state.roomCode = roomCode;
         state.joined = true;
+        const roomHud = document.getElementById("roomCodeHud");
+        const roomVal = document.getElementById("roomCodeVal");
+        if (roomHud && roomVal) {
+          roomVal.textContent = roomCode;
+          roomHud.classList.remove("hidden");
+        }
         send({ type: "room_rejoin", name: state.name, code: roomCode });
       } else {
         sendJoin();
@@ -679,7 +690,7 @@ function drawStatsOverlay(width) {
 
 function drawSpawnOverlay(width, height) {
   if (!isSpawnFrozen()) return;
-  const left = Math.max(0, state.freezeEndsAt - Date.now());
+  const left = Math.min(3000, Math.max(0, state.freezeEndsAt - Date.now()));
   const sec = (left / 1000).toFixed(1);
   ctx.save();
   ctx.fillStyle = "rgba(0,0,0,0.35)";

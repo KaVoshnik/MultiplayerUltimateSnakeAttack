@@ -221,6 +221,7 @@ function _roomDeps(room) {
   room.trackDeathStats      = trackDeathStats;
   room.trackDisconnectStats = trackDisconnectStats;
   room.savePlayerCoins      = savePlayerCoins;
+  room.getOnlineCount       = () => sockets.size;
 }
 
 function createRoom(hostId, isPublic) {
@@ -692,7 +693,9 @@ function broadcastGameDelta(journal) {
 }
 
 function broadcastPresence() {
-  broadcast(gameSync.buildPresence(buildSyncCtx()));
+  const presence = gameSync.buildPresence(buildSyncCtx());
+  presence.players = sockets.size; // реальный онлайн всего сервера
+  broadcast(presence);
 }
 
 function resyncPlayer(clientId) {
