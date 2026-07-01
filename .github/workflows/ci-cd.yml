@@ -1,0 +1,61 @@
+name: CI/CD
+
+# Когда запускать этот workflow:
+# - push в ЛЮБУЮ ветку      -> прогоняем проверки (job test), без деплоя
+# - push именно в main      -> проверки + (если прошли) деплой (job deploy)
+# - pull_request в main     -> прогоняем проверки на PR
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ------------------------------------------------------------
+  # JOB 1: проверки (CI). Выполняется всегда — и на PR, и на push.
+  # ------------------------------------------------------------
+  test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout кода
+        uses: actions/checkout@v4
+
+      - name: Установка Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Установка зависимостей
+        run: npm ci
+
+      - name: Линтер (ESLint)
+        run: npm run lint
+
+      - name: Тесты
+        run: npm test
+
+  # ------------------------------------------------------------
+  # JOB 2: деплой (CD). Выполняется ТОЛЬКО если:
+  #   1) job "test" завершился успешно (needs: test)
+  #   2) это push именно в main, а не в PR (if: ...)
+  # ------------------------------------------------------------
+  deploy:
+    name: Deploy to VPS
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Деплой по SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          script: |
+            cd ${{ secrets.VPS_APP_PATH }}
+            git pull origin main
+            npm ci --omit=dev
+            pm2 restart snake-attack
