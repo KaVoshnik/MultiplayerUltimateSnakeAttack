@@ -11,6 +11,9 @@ const auth = require("./auth");
 const gameSync = require("./lib/game-sync");
 const bossMod = require("./lib/bosses");
 const foodMod = require("./lib/food");
+const gameConfig = require("./config/game");
+const bonusEffects = require("./lib/bonus-effects");
+const engine = require("./lib/engine");
 
 // ============================================================
 // CONSTANTS
@@ -20,10 +23,8 @@ const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || "0.0.0.0";
 const PUBLIC_DIR = path.join(__dirname, "public");
 
-const GRID = { width: 210, height: 140 };
+const { GRID, SPAWN_FREEZE_MS, BONUS_TYPES, KILL_REWARD_COINS } = gameConfig;
 const MAX_LEADERS = 20;
-const SPAWN_FREEZE_MS = 3000;
-const KILL_REWARD_COINS = 50;
 const BATTLE_PASS_SCORE_STEP = 1000;
 const BATTLE_PASS_MAX_TIER = 60;
 
@@ -33,14 +34,6 @@ const { BOSS_SPAWN_BUFFER, BOSS_MOVE_EVERY } = bossMod;
 const MODES = {
   classic: { label: "Classic" },
   tag_time: { label: "Tag Time" },
-};
-
-const BONUS_TYPES = {
-  shield: { label: "SH", duration: 10000, color: "#62a0ea", desc: "защита от яда" },
-  speed_up: { label: "SP", duration: 8000, color: "#f9f06b", desc: "оверклок +30% очков" },
-  slow_down: { label: "SL", duration: 10000, color: "#dc8add", desc: "замедление" },
-  double: { label: "x2", duration: 12000, color: "#33d17a", desc: "двойные очки" },
-  ghost: { label: "GH", duration: 8000, color: "#8ff0a4", desc: "призрак" },
 };
 
 const BATTLE_PASS_NICK_COLORS = [
@@ -734,13 +727,6 @@ function extrasForPlayer(p) {
   };
 }
 
-function comboMultiplier(combo) {
-  if (combo >= 10) return 2;
-  if (combo >= 6) return 1.5;
-  if (combo >= 3) return 1.25;
-  return 1;
-}
-
 function tick() {
   if (players.size === 0) return;
   tickJournal = gameSync.createJournal();
@@ -760,6 +746,13 @@ function tick() {
       avoidCells: pathCells,
       pushFeed, broadcast, killPlayer,
       pushFoodItem: (item) => { food.push(item); tickJournal.foodAdded.push(gameSync.compactFood(item)); },
+      removeFoodAt: (item) => {
+        const idx = food.findIndex((f) => f.x === item.x && f.y === item.y);
+        if (idx >= 0) {
+          food.splice(idx, 1);
+          tickJournal.foodRemoved.push([item.x, item.y]);
+        }
+      },
       createBadFood: foodMod.createBadFood,
       insideGrid: (pt) => foodMod.insideGrid(pt, GRID),
       pointKey: foodMod.pointKey,
@@ -767,29 +760,12 @@ function tick() {
     tickJournal.bossesChanged = true;
   }
 
-  tickBonusEffects();
+  bonusEffects.tickBonusEffects(players);
   occupancyRebuild();
 
-  const occupied = new Map();
-  const planned = new Map();
-  const targetCounts = new Map();
-
-  for (const player of players.values()) {
-    if (!player.alive) continue;
-    for (const part of player.snake) occupied.set(foodMod.pointKey(part), player.id);
-  }
-
-  for (const player of players.values()) {
-    if (!player.alive) continue;
-    if (player.frozenUntil && Date.now() < player.frozenUntil) continue;
-    if (player.activeBonus === "slow_down" && tickCount % 2 === 0) continue;
-    player.direction = player.nextDirection;
-    const head = player.snake[0];
-    const nextHead = { x: head.x + player.direction.x, y: head.y + player.direction.y };
-    planned.set(player.id, nextHead);
-    const key = foodMod.pointKey(nextHead);
-    targetCounts.set(key, (targetCounts.get(key) || 0) + 1);
-  }
+  const { occupied, planned, targetCounts } = engine.planMoves(players, {
+    GRID, tickCount, applySlowDown: true,
+  });
 
   for (const player of players.values()) {
     if (!player.alive || !planned.has(player.id)) continue;
@@ -845,7 +821,7 @@ function tick() {
       if (eaten.good) {
         player.combo = (player.combo || 0) + 1;
         player.maxCombo = Math.max(player.maxCombo || 0, player.combo);
-        let mult = comboMultiplier(player.combo);
+        let mult = bonusEffects.comboMultiplier(player.combo);
         if (player.activeBonus === "double") mult *= 2;
         if (player.activeBonus === "speed_up") mult *= 1.3;
         const pts = Math.round(eaten.points * mult);
@@ -872,33 +848,19 @@ function tick() {
 }
 
 function activateBonus(player, bonusType) {
-  const def = BONUS_TYPES[bonusType];
-  if (!def) return;
-  player.activeBonus = bonusType;
-  player.bonusExpires = Date.now() + def.duration;
-  pushFeed("bonus", `⚡ ${player.name} → ${def.label}`, player.name);
-  broadcast({ type: "notice", text: `${player.name} получил бонус ${def.label} ${def.desc}!` });
-}
-
-function tickBonusEffects() {
-  const now = Date.now();
-  for (const player of players.values()) {
-    if (player.activeBonus && player.bonusExpires && now > player.bonusExpires) {
-      player.activeBonus = null;
-      player.bonusExpires = null;
-    }
-  }
+  bonusEffects.activateBonus(player, bonusType, BONUS_TYPES, (def) => {
+    pushFeed("bonus", `⚡ ${player.name} → ${def.label}`, player.name);
+    broadcast({ type: "notice", text: `${player.name} получил бонус ${def.label} ${def.desc}!` });
+  });
 }
 
 function spawnBonuses() {
-  if (players.size === 0 || bonuses.length >= 3) return;
-  const point = foodMod.randomEmptyPoint(food, {
-    avoidCells: null, anyBossOccupies: (pt) => bossMod.anyBossOccupies(bosses, pt),
-    occupancySet, GRID, avoidNearHeads: true, players,
+  const spawn = bonusEffects.pickBonusSpawn({
+    players, bonuses, food, bosses, occupancySet,
+    foodMod, bossMod, GRID, BONUS_TYPES,
   });
-  if (!point) return;
-  const types = Object.keys(BONUS_TYPES);
-  const bonusType = types[Math.floor(Math.random() * types.length)];
+  if (!spawn) return;
+  const { point, bonusType } = spawn;
   bonuses.push({ ...point, bonusType, spawnedAt: Date.now() });
 
   const journal = gameSync.createJournal();
