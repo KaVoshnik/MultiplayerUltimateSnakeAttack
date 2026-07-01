@@ -425,11 +425,15 @@ function updateHud(me, prevScore = 0, prevCombo = 0) {
 
   const nearestBoss = getNearestBoss(me?.snake?.[0]);
   if (nearestBoss) {
-    const enraged = nearestBoss.phase === "enraged";
-    const close = nearestBoss.angry || enraged;
-    bossHud.classList.toggle("hidden", !close);
+    const enraged   = nearestBoss.phase === "enraged";
+    const close     = nearestBoss.angry || enraged;
+    const myHeatHud = me?.heat || 0;
+    const isTarget  = myHeatHud > 50;
+    bossHud.classList.toggle("hidden", !close && !isTarget);
     if (bossName) bossName.textContent = nearestBoss.name;
-    bossLabel.textContent = enraged ? "ЯРОСТЬ!" : nearestBoss.angry ? "РЯДОМ!" : "ОХОТА";
+    if (enraged)       bossLabel.textContent = 'ЯРОСТЬ!';
+    else if (isTarget) bossLabel.textContent = 'ОХОТА ' + myHeatHud + '🔥';
+    else               bossLabel.textContent = nearestBoss.angry ? 'РЯДОМ!' : 'ОХОТА';
     canvasStage.classList.toggle("bossRage", state.bosses.some((b) => b.phase === "enraged"));
   } else {
     bossHud.classList.add("hidden");
@@ -1010,6 +1014,9 @@ function drawBossTrails(view) {
 }
 
 function drawBoss(view) {
+  const me = state.players.find((p) => p.id === state.id);
+  const myHeat = me?.heat || 0;
+
   for (const boss of state.bosses) {
     const bossSize = boss.size || 1;
     if (!isInCameraView(boss.x + bossSize / 2, boss.y + bossSize / 2, view, bossSize + 1)) continue;
@@ -1017,9 +1024,10 @@ function drawBoss(view) {
     const x = offsetX + boss.x * cell;
     const y = offsetY + boss.y * cell;
     const size = bossSize * cell;
-    const angry = boss.angry;
+    const angry   = boss.angry;
     const enraged = boss.phase === "enraged";
     const t = Date.now() / 1000;
+
     ctx.save();
     if (enraged) {
       ctx.shadowColor = "rgba(255,30,20,.95)";
@@ -1028,28 +1036,62 @@ function drawBoss(view) {
       ctx.shadowColor = "rgba(246,97,81,.8)";
       ctx.shadowBlur = cell * 0.7;
     }
+
     const pulse = 1 + Math.sin(t * 8 + boss.x) * (enraged ? 0.06 : 0.02);
-    const pad = cell * 0.08;
-    const w = (size - pad * 2) * pulse;
-    const h = (size - pad * 2) * pulse;
-    const ox = x + (size - w) / 2;
-    const oy = y + (size - h) / 2;
+    const pad   = cell * 0.08;
+    const w     = (size - pad * 2) * pulse;
+    const h     = (size - pad * 2) * pulse;
+    const ox    = x + (size - w) / 2;
+    const oy    = y + (size - h) / 2;
+
     ctx.fillStyle = enraged ? "#ff1a0a" : angry ? "#ff3b2e" : boss.color || "#f66151";
     roundRect(ox, oy, w, h, cell * 0.22);
     ctx.fill();
+
     const cx = x + size / 2;
     const cy = y + size / 2;
+
+    // Глаза
     ctx.fillStyle = "#1a0a0a";
     ctx.beginPath();
     ctx.arc(cx - cell * 0.14, cy - cell * 0.05, cell * 0.09, 0, Math.PI * 2);
     ctx.arc(cx + cell * 0.14, cy - cell * 0.05, cell * 0.09, 0, Math.PI * 2);
     ctx.fill();
+
+    // Имя в ярости или крупный размер
     if (enraged || size >= cell * 1.5) {
       ctx.fillStyle = "#ff6b5a";
       ctx.font = `800 ${cell * 0.2}px Orbitron, sans-serif`;
       ctx.textAlign = "center";
       ctx.fillText(boss.name, cx, cy + cell * 0.35);
     }
+
+    // Индикатор "ты в прицеле": вращающееся кольцо прицела,
+    // чем горячее — тем ярче, появляется при heat > 40
+    if (myHeat > 40 && me?.alive) {
+      const targetAlpha = Math.min(1, (myHeat - 40) / 60) * (0.5 + Math.sin(t * 4) * 0.25);
+      const ringR = size * 0.65 + cell * 0.1 * Math.sin(t * 6);
+      ctx.strokeStyle = `rgba(255,209,102,${targetAlpha.toFixed(2)})`;
+      ctx.lineWidth   = Math.max(1.5, cell * 0.05);
+      ctx.setLineDash([cell * 0.18, cell * 0.10]);
+      ctx.lineDashOffset = -t * 18;
+      ctx.beginPath();
+      ctx.arc(cx, cy, ringR, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.lineDashOffset = 0;
+
+      // Иконка прицела "🎯" вверху босса при heat > 70
+      if (myHeat > 70) {
+        const iconSize = Math.max(10, cell * 0.32);
+        ctx.font      = `${iconSize}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.globalAlpha = 0.7 + Math.sin(t * 5) * 0.3;
+        ctx.fillText("🎯", cx, y - cell * 0.15);
+        ctx.globalAlpha = 1;
+      }
+    }
+
     ctx.restore();
   }
 }
