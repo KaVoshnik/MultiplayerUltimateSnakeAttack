@@ -57,6 +57,7 @@ jobs:
           port: ${{ secrets.VPS_PORT }}
           script: |
             cd ${{ secrets.VPS_APP_PATH }}
+            git checkout main
             git pull origin main
             npm ci --omit=dev
             pm2 restart snake-attack
