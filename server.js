@@ -31,11 +31,6 @@ const BATTLE_PASS_MAX_TIER = 60;
 const { FOOD_TYPES, DIFFICULTIES } = foodMod;
 const { BOSS_SPAWN_BUFFER, BOSS_MOVE_EVERY } = bossMod;
 
-const MODES = {
-  classic: { label: "Classic" },
-  tag_time: { label: "Tag Time" },
-};
-
 const BATTLE_PASS_NICK_COLORS = [
   { id: "bp_gold", label: "Золото", color: "#ffd166", tier: 1 },
   { id: "bp_cyan", label: "Бирюза", color: "#22d3ee", tier: 4 },
@@ -167,8 +162,6 @@ let leaderboard = [];
 let tickCount = 0;
 let tickJournal = gameSync.createJournal();
 const clientAoi = new Map();
-let gameMode = "classic";
-let taggedPlayerId = null;
 const feedLog = [];
 const feedDedupe = new Map();
 let feedBroadcastTimer = null;
@@ -372,7 +365,7 @@ async function handleHttpRequest(req, res, url) {
     return;
   }
   if (url.pathname === "/modes") {
-    sendJson(res, { modes: MODES, difficulties: DIFFICULTIES });
+    sendJson(res, { difficulties: DIFFICULTIES });
     return;
   }
 
@@ -495,7 +488,7 @@ server.on("upgrade", (req, socket) => {
     type: "hello", id, grid: GRID,
     leaderboard: getEnrichedLeaderboard(),
     skins: SHOP_SKINS, catalog: SHOP_CATALOG, avatars: AVATAR_PRESETS,
-    modes: MODES, difficulties: DIFFICULTIES,
+    difficulties: DIFFICULTIES,
     shopData: defaultShopEntry(),
     feed: feedLog.slice(0, 8),
     presence: gameSync.buildPresence(buildSyncCtx()),
@@ -660,7 +653,7 @@ function handleMessage(id, message) {
 function buildSyncCtx() {
   return {
     grid: GRID, players, food, bonuses, bosses, bonusTypes: BONUS_TYPES,
-    tickCount, tickMs: currentTickMs, gameMode, taggedPlayerId,
+    tickCount, tickMs: currentTickMs,
     clientAoi, extrasFor: extrasForPlayer,
   };
 }
@@ -721,7 +714,6 @@ function extrasForPlayer(p) {
     best: Math.max(p.best, bestForName(p.name)),
     spawnFrozenLeft: p.frozenUntil || 0,
     heat: Math.min(100, Math.round((p.score || 0) * 0.4 + (p.combo || 0) * 9)),
-    isTagged: gameMode === "tag_time" && p.id === taggedPlayerId,
     avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji, snakeHatId: cos.snakeHatId,
     nickColor: resolveNickColorHex(getProfile(p.name)),
   };
@@ -746,6 +738,13 @@ function tick() {
       avoidCells: pathCells,
       pushFeed, broadcast, killPlayer,
       pushFoodItem: (item) => { food.push(item); tickJournal.foodAdded.push(gameSync.compactFood(item)); },
+      removeFoodAt: (item) => {
+        const idx = food.findIndex((f) => f.x === item.x && f.y === item.y);
+        if (idx >= 0) {
+          food.splice(idx, 1);
+          tickJournal.foodRemoved.push([item.x, item.y]);
+        }
+      },
       createBadFood: foodMod.createBadFood,
       insideGrid: (pt) => foodMod.insideGrid(pt, GRID),
       pointKey: foodMod.pointKey,
@@ -790,17 +789,10 @@ function tick() {
     }
 
     if (player.activeBonus !== "ghost" && occupied.has(resolvedKey)) {
-      if (gameMode === "tag_time" && player.id === taggedPlayerId && occupied.get(key) !== player.id) {
-        const hitId = occupied.get(key);
-        taggedPlayerId = hitId;
-        send(player.id, { type: "tagged", tagger: true });
-        if (sockets.has(hitId)) send(hitId, { type: "tagged", tagger: false });
-      } else {
-        const killerId = occupied.get(key);
-        const killer = killerId && killerId !== player.id ? players.get(killerId) : null;
-        killPlayer(player, killer ? `${killer.name} убил ${player.name}` : "Столкнулся со змейкой", { at: nextHead, killerPlayer: killer });
-        continue;
-      }
+      const killerId = occupied.get(key);
+      const killer = killerId && killerId !== player.id ? players.get(killerId) : null;
+      killPlayer(player, killer ? `${killer.name} убил ${player.name}` : "Столкнулся со змейкой", { at: nextHead, killerPlayer: killer });
+      continue;
     }
 
     const eatenIdx = food.findIndex((item) => item.x === nextHead.x && item.y === nextHead.y);
@@ -1203,14 +1195,11 @@ async function handleJoin(id, message) {
   if (!resolved.ok) { send(id, { type: "notice", text: resolved.text }); return; }
   const name = resolved.name;
   const difficulty = DIFFICULTIES[message.difficulty] ? message.difficulty : "normal";
-  const mode = MODES[message.mode] ? message.mode : "classic";
-  gameMode = mode;
   const prof = getProfile(name);
   const skin = getSkinDef(prof.activeSkin);
   startNewLife(name);
   shopClients.set(id, name);
   players.set(id, createPlayer(id, name, difficulty, skin));
-  if (mode === "tag_time" && !taggedPlayerId) taggedPlayerId = id;
   restartTickInterval();
   sendSnapshot(id);
   broadcastGameSync();
