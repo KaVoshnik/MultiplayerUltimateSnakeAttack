@@ -4,6 +4,7 @@ name: CI/CD
 # - push в ЛЮБУЮ ветку      -> прогоняем проверки (job test), без деплоя
 # - push именно в main      -> проверки + (если прошли) деплой (job deploy)
 # - pull_request в main     -> прогоняем проверки на PR
+
 on:
   push:
     branches: ["**"]
