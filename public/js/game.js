@@ -49,8 +49,6 @@ const state = {
   shopData: { coins: 0, unlockedSkins: ["default"], activeSkin: "default" },
   joined: false,
   name: settings.name,
-  gameMode: "classic",
-  taggedPlayerId: null,
   feed: [],
   lastCombo: 0,
   wasAlive: true,
@@ -350,8 +348,6 @@ function connect() {
       state.bonuses = message.bonuses || [];
       applyRenderSnap(message.players);
       state.bosses = message.bosses || (message.boss ? [message.boss] : []);
-      state.gameMode = message.gameMode || "classic";
-      state.taggedPlayerId = message.taggedPlayerId;
       finishGameUpdate(prevScore, prevCombo);
     }
     if (message.type === "feed") {
@@ -359,7 +355,6 @@ function connect() {
       renderFeed();
     }
     if (message.type === "notice") { showToast(message.text); SnakeAudio.play("feed"); }
-    if (message.type === "tagged") showToast(message.tagger ? "Тэг передан!" : "Тебе передали тэг!");
     if (message.type === "shop_update") {
       state.shopData = message.shopData;
       if (message.skins) state.skins = message.skins;
@@ -499,11 +494,10 @@ function renderPlayers() {
   for (let i = 0; i < players.length; i++) {
     const player = players[i];
     const li = playersEl.children[i];
-    const tag = state.gameMode === "tag_time" && player.id === state.taggedPlayerId ? " 🏷" : "";
     const scoreText = player.alive ? String(player.score) : "💀";
     // Обновляем только если изменилось
     const nameStyle = player.nickColor ? ` style="color:${player.nickColor}"` : "";
-    const newHtml = `<span><span class="swatch" style="background:${player.color}"></span><span class="playerNick"${nameStyle}>${escapeHtml(player.name)}</span>${tag}</span><span>${scoreText}</span>`;
+    const newHtml = `<span><span class="swatch" style="background:${player.color}"></span><span class="playerNick"${nameStyle}>${escapeHtml(player.name)}</span></span><span>${scoreText}</span>`;
     if (li.innerHTML !== newHtml) li.innerHTML = newHtml;
   }
 }
@@ -1058,7 +1052,6 @@ function drawPlayers(view) {
   const { cell, offsetX, offsetY } = view;
   for (const player of state.players) {
     ctx.globalAlpha = player.alive ? 1 : 0.35;
-    const isTagged = state.gameMode === "tag_time" && player.id === state.taggedPlayerId;
 
     // Интерполированная позиция головы для направления
     const { px: headPx, py: headPy } = getSegmentPos(player.id, 0, player.snake[0], cell, offsetX, offsetY);
@@ -1090,7 +1083,6 @@ function drawPlayers(view) {
       const segS = cell * 0.84;
 
       if (index === 0) {
-        if (isTagged) { ctx.strokeStyle = "#ffd166"; ctx.lineWidth = cell * 0.1; roundRect(px + cell * 0.04, py + cell * 0.04, cell * 0.92, cell * 0.92, cell * 0.2); ctx.stroke(); }
         if (player.activeBonus === "ghost") ctx.globalAlpha = 0.6;
         if (heatGlow) {
           ctx.strokeStyle = player.color;
