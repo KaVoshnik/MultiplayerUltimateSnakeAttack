@@ -689,6 +689,17 @@ function resyncPlayer(clientId) {
   sendSnapshot(clientId);
 }
 
+// Заставляет всех остальных клиентов, которые уже "видели" этого
+// игрока (он был в их AOI), получить его свежую позицию как полный
+// join вместо обычного mv. Нужно после респавна: broadcastGameSync()
+// использует journal последнего тика, который не содержит информации
+// о респавне (он произошёл вне тика), поэтому без этого другие клиенты
+// продолжали бы хранить позицию игрока на месте смерти до следующего
+// тика — и увидели бы резкий "телепорт" через карту при следующем mv.
+function forceAoiResync(playerId) {
+  for (const aoiSet of clientAoi.values()) aoiSet.delete(playerId);
+}
+
 function pushFeed(kind, text, playerName = "") {
   const dedupeKey = `${kind}:${text}`;
   const now = Date.now();
@@ -1173,6 +1184,7 @@ function sendJoinFallback(id, name) {
   startNewLife(name);
   players.set(id, createPlayer(id, name, "normal", skin));
   sendSnapshot(id);
+  forceAoiResync(id);
   broadcastGameSync();
 }
 
@@ -1202,6 +1214,7 @@ async function handleJoin(id, message) {
   players.set(id, createPlayer(id, name, difficulty, skin));
   restartTickInterval();
   sendSnapshot(id);
+  forceAoiResync(id);
   broadcastGameSync();
   broadcastPresence();
 }

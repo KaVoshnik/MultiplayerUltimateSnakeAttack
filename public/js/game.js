@@ -538,13 +538,26 @@ function getSnapT() {
   return smoothstep(raw);
 }
 
-// Возвращает интерполированную позицию сегмента index для игрока playerId
-// Каждый сегмент интерполируется от своей предыдущей позиции к текущей
+// Возвращает интерполированную позицию сегмента index для игрока playerId.
+// Каждый сегмент интерполируется от своей предыдущей позиции к текущей.
+// При wraparound (переход через край поля в easy-режиме) интерполяция
+// пропускается — сегмент показывается сразу в новой позиции, иначе
+// он бы визуально "телепортировался" через всё поле.
 function getSegmentPos(playerId, index, currentSeg, cell, offsetX, offsetY) {
   if (!state.renderSnap) return { px: offsetX + currentSeg.x * cell, py: offsetY + currentSeg.y * cell };
   const prevSnake = state.renderSnap.prevSnakes?.get(playerId);
   const prev = prevSnake?.[index];
   if (!prev) return { px: offsetX + currentSeg.x * cell, py: offsetY + currentSeg.y * cell };
+
+  // Если разница больше половины поля — был wraparound, не интерполируем
+  const grid = state.grid;
+  if (grid && (
+    Math.abs(currentSeg.x - prev.x) > grid.width / 2 ||
+    Math.abs(currentSeg.y - prev.y) > grid.height / 2
+  )) {
+    return { px: offsetX + currentSeg.x * cell, py: offsetY + currentSeg.y * cell };
+  }
+
   const t = getSnapT();
   const ix = prev.x + (currentSeg.x - prev.x) * t;
   const iy = prev.y + (currentSeg.y - prev.y) * t;
@@ -558,6 +571,16 @@ function getCameraHead(player) {
   const prevSnake = state.renderSnap.prevSnakes?.get(player.id);
   const prev = prevSnake?.[0];
   if (!prev) return { x: head.x + 0.5, y: head.y + 0.5 };
+
+  // Аналогичная wraparound-защита для камеры
+  const grid = state.grid;
+  if (grid && (
+    Math.abs(head.x - prev.x) > grid.width / 2 ||
+    Math.abs(head.y - prev.y) > grid.height / 2
+  )) {
+    return { x: head.x + 0.5, y: head.y + 0.5 };
+  }
+
   const t = getSnapT();
   return {
     x: prev.x + (head.x - prev.x) * t + 0.5,
