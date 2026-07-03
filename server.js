@@ -724,7 +724,7 @@ function extrasForPlayer(p) {
   const cos = getPlayerCosmetics(p.name);
   return {
     best: Math.max(p.best, bestForName(p.name)),
-    spawnFrozenLeft: p.frozenUntil || 0,
+    spawnFrozenLeft: p.frozenUntil ? Math.max(0, p.frozenUntil - Date.now()) : 0,
     heat: Math.min(100, Math.round((p.score || 0) * 0.4 + (p.combo || 0) * 9)),
     avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji, snakeHatId: cos.snakeHatId,
     nickColor: resolveNickColorHex(getProfile(p.name)),

@@ -159,10 +159,10 @@ function isSpawnFrozen() {
 function syncSpawnFreeze(me) {
   if (!me) return;
   const wasFrozen = state.freezeEndsAt > Date.now();
-  const frozenUntil = me.spawnFrozenLeft || 0; // сервер шлёт абсолютный timestamp
-  if (frozenUntil > Date.now()) {
-    // Всегда берём актуальное значение от сервера (источник правды)
-    state.freezeEndsAt = frozenUntil;
+  const msLeft = me.spawnFrozenLeft || 0; // сервер шлёт мс до разморозки, не абсолютное время
+  if (msLeft > 0) {
+    // Считаем дедлайн от своих часов — не зависим от рассинхрона часов клиент/сервер
+    state.freezeEndsAt = Date.now() + msLeft;
   } else if (state.freezeEndsAt !== 0) {
     state.freezeEndsAt = 0;
     if (wasFrozen && state.bufferedDirection) {
