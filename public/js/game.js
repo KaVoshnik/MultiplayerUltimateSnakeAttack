@@ -49,8 +49,6 @@ const state = {
   shopData: { coins: 0, unlockedSkins: ["default"], activeSkin: "default" },
   joined: false,
   name: settings.name,
-  gameMode: "classic",
-  taggedPlayerId: null,
   feed: [],
   lastCombo: 0,
   wasAlive: true,
@@ -350,8 +348,6 @@ function connect() {
       state.bonuses = message.bonuses || [];
       applyRenderSnap(message.players);
       state.bosses = message.bosses || (message.boss ? [message.boss] : []);
-      state.gameMode = message.gameMode || "classic";
-      state.taggedPlayerId = message.taggedPlayerId;
       finishGameUpdate(prevScore, prevCombo);
     }
     if (message.type === "feed") {
@@ -359,7 +355,6 @@ function connect() {
       renderFeed();
     }
     if (message.type === "notice") { showToast(message.text); SnakeAudio.play("feed"); }
-    if (message.type === "tagged") showToast(message.tagger ? "Тэг передан!" : "Тебе передали тэг!");
     if (message.type === "shop_update") {
       state.shopData = message.shopData;
       if (message.skins) state.skins = message.skins;
@@ -431,9 +426,9 @@ function updateHud(me, prevScore = 0, prevCombo = 0) {
     const isTarget  = myHeatHud > 50;
     bossHud.classList.toggle("hidden", !close && !isTarget);
     if (bossName) bossName.textContent = nearestBoss.name;
-    if (enraged)       bossLabel.textContent = 'ЯРОСТЬ!';
-    else if (isTarget) bossLabel.textContent = 'ОХОТА ' + myHeatHud + '🔥';
-    else               bossLabel.textContent = nearestBoss.angry ? 'РЯДОМ!' : 'ОХОТА';
+    if (enraged)       bossLabel.textContent = "ЯРОСТЬ!";
+    else if (isTarget) bossLabel.textContent = "ОХОТА " + myHeatHud + "🔥";
+    else               bossLabel.textContent = nearestBoss.angry ? "РЯДОМ!" : "ОХОТА";
     canvasStage.classList.toggle("bossRage", state.bosses.some((b) => b.phase === "enraged"));
   } else {
     bossHud.classList.add("hidden");
@@ -503,11 +498,10 @@ function renderPlayers() {
   for (let i = 0; i < players.length; i++) {
     const player = players[i];
     const li = playersEl.children[i];
-    const tag = state.gameMode === "tag_time" && player.id === state.taggedPlayerId ? " 🏷" : "";
     const scoreText = player.alive ? String(player.score) : "💀";
     // Обновляем только если изменилось
     const nameStyle = player.nickColor ? ` style="color:${player.nickColor}"` : "";
-    const newHtml = `<span><span class="swatch" style="background:${player.color}"></span><span class="playerNick"${nameStyle}>${escapeHtml(player.name)}</span>${tag}</span><span>${scoreText}</span>`;
+    const newHtml = `<span><span class="swatch" style="background:${player.color}"></span><span class="playerNick"${nameStyle}>${escapeHtml(player.name)}</span></span><span>${scoreText}</span>`;
     if (li.innerHTML !== newHtml) li.innerHTML = newHtml;
   }
 }
@@ -548,13 +542,26 @@ function getSnapT() {
   return smoothstep(raw);
 }
 
-// Возвращает интерполированную позицию сегмента index для игрока playerId
-// Каждый сегмент интерполируется от своей предыдущей позиции к текущей
+// Возвращает интерполированную позицию сегмента index для игрока playerId.
+// Каждый сегмент интерполируется от своей предыдущей позиции к текущей.
+// При wraparound (переход через край поля в easy-режиме) интерполяция
+// пропускается — сегмент показывается сразу в новой позиции, иначе
+// он бы визуально "телепортировался" через всё поле.
 function getSegmentPos(playerId, index, currentSeg, cell, offsetX, offsetY) {
   if (!state.renderSnap) return { px: offsetX + currentSeg.x * cell, py: offsetY + currentSeg.y * cell };
   const prevSnake = state.renderSnap.prevSnakes?.get(playerId);
   const prev = prevSnake?.[index];
   if (!prev) return { px: offsetX + currentSeg.x * cell, py: offsetY + currentSeg.y * cell };
+
+  // Если разница больше половины поля — был wraparound, не интерполируем
+  const grid = state.grid;
+  if (grid && (
+    Math.abs(currentSeg.x - prev.x) > grid.width / 2 ||
+    Math.abs(currentSeg.y - prev.y) > grid.height / 2
+  )) {
+    return { px: offsetX + currentSeg.x * cell, py: offsetY + currentSeg.y * cell };
+  }
+
   const t = getSnapT();
   const ix = prev.x + (currentSeg.x - prev.x) * t;
   const iy = prev.y + (currentSeg.y - prev.y) * t;
@@ -568,6 +575,16 @@ function getCameraHead(player) {
   const prevSnake = state.renderSnap.prevSnakes?.get(player.id);
   const prev = prevSnake?.[0];
   if (!prev) return { x: head.x + 0.5, y: head.y + 0.5 };
+
+  // Аналогичная wraparound-защита для камеры
+  const grid = state.grid;
+  if (grid && (
+    Math.abs(head.x - prev.x) > grid.width / 2 ||
+    Math.abs(head.y - prev.y) > grid.height / 2
+  )) {
+    return { x: head.x + 0.5, y: head.y + 0.5 };
+  }
+
   const t = getSnapT();
   return {
     x: prev.x + (head.x - prev.x) * t + 0.5,
@@ -1024,10 +1041,9 @@ function drawBoss(view) {
     const x = offsetX + boss.x * cell;
     const y = offsetY + boss.y * cell;
     const size = bossSize * cell;
-    const angry   = boss.angry;
+    const angry = boss.angry;
     const enraged = boss.phase === "enraged";
     const t = Date.now() / 1000;
-
     ctx.save();
     if (enraged) {
       ctx.shadowColor = "rgba(255,30,20,.95)";
@@ -1036,29 +1052,22 @@ function drawBoss(view) {
       ctx.shadowColor = "rgba(246,97,81,.8)";
       ctx.shadowBlur = cell * 0.7;
     }
-
     const pulse = 1 + Math.sin(t * 8 + boss.x) * (enraged ? 0.06 : 0.02);
-    const pad   = cell * 0.08;
-    const w     = (size - pad * 2) * pulse;
-    const h     = (size - pad * 2) * pulse;
-    const ox    = x + (size - w) / 2;
-    const oy    = y + (size - h) / 2;
-
+    const pad = cell * 0.08;
+    const w = (size - pad * 2) * pulse;
+    const h = (size - pad * 2) * pulse;
+    const ox = x + (size - w) / 2;
+    const oy = y + (size - h) / 2;
     ctx.fillStyle = enraged ? "#ff1a0a" : angry ? "#ff3b2e" : boss.color || "#f66151";
     roundRect(ox, oy, w, h, cell * 0.22);
     ctx.fill();
-
     const cx = x + size / 2;
     const cy = y + size / 2;
-
-    // Глаза
     ctx.fillStyle = "#1a0a0a";
     ctx.beginPath();
     ctx.arc(cx - cell * 0.14, cy - cell * 0.05, cell * 0.09, 0, Math.PI * 2);
     ctx.arc(cx + cell * 0.14, cy - cell * 0.05, cell * 0.09, 0, Math.PI * 2);
     ctx.fill();
-
-    // Имя в ярости или крупный размер
     if (enraged || size >= cell * 1.5) {
       ctx.fillStyle = "#ff6b5a";
       ctx.font = `800 ${cell * 0.2}px Orbitron, sans-serif`;
@@ -1100,7 +1109,6 @@ function drawPlayers(view) {
   const { cell, offsetX, offsetY } = view;
   for (const player of state.players) {
     ctx.globalAlpha = player.alive ? 1 : 0.35;
-    const isTagged = state.gameMode === "tag_time" && player.id === state.taggedPlayerId;
 
     // Интерполированная позиция головы для направления
     const { px: headPx, py: headPy } = getSegmentPos(player.id, 0, player.snake[0], cell, offsetX, offsetY);
@@ -1132,7 +1140,6 @@ function drawPlayers(view) {
       const segS = cell * 0.84;
 
       if (index === 0) {
-        if (isTagged) { ctx.strokeStyle = "#ffd166"; ctx.lineWidth = cell * 0.1; roundRect(px + cell * 0.04, py + cell * 0.04, cell * 0.92, cell * 0.92, cell * 0.2); ctx.stroke(); }
         if (player.activeBonus === "ghost") ctx.globalAlpha = 0.6;
         if (heatGlow) {
           ctx.strokeStyle = player.color;
