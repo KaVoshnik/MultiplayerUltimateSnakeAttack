@@ -622,6 +622,7 @@ const playerHandlers = {
     const skin = getSkinDef(getProfile(player.name).activeSkin);
     players.set(id, createPlayer(id, player.name, player.difficulty, skin));
     sendSnapshot(id);
+    forceAoiResync(id);
     broadcastGameSync();
     broadcastPresence();
   },
@@ -800,7 +801,7 @@ function tick() {
     }
 
     if (player.activeBonus !== "ghost" && occupied.has(resolvedKey)) {
-      const killerId = occupied.get(key);
+      const killerId = occupied.get(resolvedKey);
       const killer = killerId && killerId !== player.id ? players.get(killerId) : null;
       killPlayer(player, killer ? `${killer.name} убил ${player.name}` : "Столкнулся со змейкой", { at: nextHead, killerPlayer: killer });
       continue;
@@ -1123,7 +1124,7 @@ async function handleRoomCreate(id, message) {
   const cos  = getPlayerCosmetics(name);
   room.addWaiter(id, name, cos);
   socketRoom.set(id, room.code);
-  send(id, { type: "room_created", code: room.code, ...room.lobbySnapshot() });
+  send(id, { ...room.lobbySnapshot(), type: "room_created", code: room.code });
 }
 
 async function handleRoomJoin(id, message) {
