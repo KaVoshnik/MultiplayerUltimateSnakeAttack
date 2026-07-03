@@ -31,11 +31,6 @@ const BATTLE_PASS_MAX_TIER = 60;
 const { FOOD_TYPES, DIFFICULTIES } = foodMod;
 const { BOSS_SPAWN_BUFFER, BOSS_MOVE_EVERY } = bossMod;
 
-const MODES = {
-  classic: { label: "Classic" },
-  tag_time: { label: "Tag Time" },
-};
-
 const BATTLE_PASS_NICK_COLORS = [
   { id: "bp_gold", label: "Золото", color: "#ffd166", tier: 1 },
   { id: "bp_cyan", label: "Бирюза", color: "#22d3ee", tier: 4 },
@@ -167,8 +162,6 @@ let leaderboard = [];
 let tickCount = 0;
 let tickJournal = gameSync.createJournal();
 const clientAoi = new Map();
-let gameMode = "classic";
-let taggedPlayerId = null;
 const feedLog = [];
 const feedDedupe = new Map();
 let feedBroadcastTimer = null;
@@ -372,7 +365,7 @@ async function handleHttpRequest(req, res, url) {
     return;
   }
   if (url.pathname === "/modes") {
-    sendJson(res, { modes: MODES, difficulties: DIFFICULTIES });
+    sendJson(res, { difficulties: DIFFICULTIES });
     return;
   }
 
@@ -495,7 +488,7 @@ server.on("upgrade", (req, socket) => {
     type: "hello", id, grid: GRID,
     leaderboard: getEnrichedLeaderboard(),
     skins: SHOP_SKINS, catalog: SHOP_CATALOG, avatars: AVATAR_PRESETS,
-    modes: MODES, difficulties: DIFFICULTIES,
+    difficulties: DIFFICULTIES,
     shopData: defaultShopEntry(),
     feed: feedLog.slice(0, 8),
     presence: gameSync.buildPresence(buildSyncCtx()),
@@ -629,6 +622,7 @@ const playerHandlers = {
     const skin = getSkinDef(getProfile(player.name).activeSkin);
     players.set(id, createPlayer(id, player.name, player.difficulty, skin));
     sendSnapshot(id);
+    forceAoiResync(id);
     broadcastGameSync();
     broadcastPresence();
   },
@@ -660,7 +654,7 @@ function handleMessage(id, message) {
 function buildSyncCtx() {
   return {
     grid: GRID, players, food, bonuses, bosses, bonusTypes: BONUS_TYPES,
-    tickCount, tickMs: currentTickMs, gameMode, taggedPlayerId,
+    tickCount, tickMs: currentTickMs,
     clientAoi, extrasFor: extrasForPlayer,
   };
 }
@@ -696,6 +690,17 @@ function resyncPlayer(clientId) {
   sendSnapshot(clientId);
 }
 
+// Заставляет всех остальных клиентов, которые уже "видели" этого
+// игрока (он был в их AOI), получить его свежую позицию как полный
+// join вместо обычного mv. Нужно после респавна: broadcastGameSync()
+// использует journal последнего тика, который не содержит информации
+// о респавне (он произошёл вне тика), поэтому без этого другие клиенты
+// продолжали бы хранить позицию игрока на месте смерти до следующего
+// тика — и увидели бы резкий "телепорт" через карту при следующем mv.
+function forceAoiResync(playerId) {
+  for (const aoiSet of clientAoi.values()) aoiSet.delete(playerId);
+}
+
 function pushFeed(kind, text, playerName = "") {
   const dedupeKey = `${kind}:${text}`;
   const now = Date.now();
@@ -721,7 +726,6 @@ function extrasForPlayer(p) {
     best: Math.max(p.best, bestForName(p.name)),
     spawnFrozenLeft: p.frozenUntil || 0,
     heat: Math.min(100, Math.round((p.score || 0) * 0.4 + (p.combo || 0) * 9)),
-    isTagged: gameMode === "tag_time" && p.id === taggedPlayerId,
     avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji, snakeHatId: cos.snakeHatId,
     nickColor: resolveNickColorHex(getProfile(p.name)),
   };
@@ -797,17 +801,10 @@ function tick() {
     }
 
     if (player.activeBonus !== "ghost" && occupied.has(resolvedKey)) {
-      if (gameMode === "tag_time" && player.id === taggedPlayerId && occupied.get(key) !== player.id) {
-        const hitId = occupied.get(key);
-        taggedPlayerId = hitId;
-        send(player.id, { type: "tagged", tagger: true });
-        if (sockets.has(hitId)) send(hitId, { type: "tagged", tagger: false });
-      } else {
-        const killerId = occupied.get(key);
-        const killer = killerId && killerId !== player.id ? players.get(killerId) : null;
-        killPlayer(player, killer ? `${killer.name} убил ${player.name}` : "Столкнулся со змейкой", { at: nextHead, killerPlayer: killer });
-        continue;
-      }
+      const killerId = occupied.get(resolvedKey);
+      const killer = killerId && killerId !== player.id ? players.get(killerId) : null;
+      killPlayer(player, killer ? `${killer.name} убил ${player.name}` : "Столкнулся со змейкой", { at: nextHead, killerPlayer: killer });
+      continue;
     }
 
     const eatenIdx = food.findIndex((item) => item.x === nextHead.x && item.y === nextHead.y);
@@ -1127,7 +1124,7 @@ async function handleRoomCreate(id, message) {
   const cos  = getPlayerCosmetics(name);
   room.addWaiter(id, name, cos);
   socketRoom.set(id, room.code);
-  send(id, { type: "room_created", code: room.code, ...room.lobbySnapshot() });
+  send(id, { ...room.lobbySnapshot(), type: "room_created", code: room.code });
 }
 
 async function handleRoomJoin(id, message) {
@@ -1188,6 +1185,7 @@ function sendJoinFallback(id, name) {
   startNewLife(name);
   players.set(id, createPlayer(id, name, "normal", skin));
   sendSnapshot(id);
+  forceAoiResync(id);
   broadcastGameSync();
 }
 
@@ -1210,16 +1208,14 @@ async function handleJoin(id, message) {
   if (!resolved.ok) { send(id, { type: "notice", text: resolved.text }); return; }
   const name = resolved.name;
   const difficulty = DIFFICULTIES[message.difficulty] ? message.difficulty : "normal";
-  const mode = MODES[message.mode] ? message.mode : "classic";
-  gameMode = mode;
   const prof = getProfile(name);
   const skin = getSkinDef(prof.activeSkin);
   startNewLife(name);
   shopClients.set(id, name);
   players.set(id, createPlayer(id, name, difficulty, skin));
-  if (mode === "tag_time" && !taggedPlayerId) taggedPlayerId = id;
   restartTickInterval();
   sendSnapshot(id);
+  forceAoiResync(id);
   broadcastGameSync();
   broadcastPresence();
 }

@@ -65,8 +65,6 @@ const GameSyncClient = (() => {
 
   function applySnapshot(state, msg) {
     state.grid = msg.grid || state.grid;
-    state.gameMode = msg.gameMode || state.gameMode;
-    state.taggedPlayerId = msg.taggedPlayerId;
     state.food = (msg.food || []).map(expandFood);
     state.bonuses = (msg.bonuses || []).map(expandBonus);
     state.bosses = msg.bosses || [];
@@ -75,8 +73,6 @@ const GameSyncClient = (() => {
   }
 
   function applyDelta(state, msg) {
-    if (msg.gameMode) state.gameMode = msg.gameMode;
-    if (msg.taggedPlayerId !== undefined) state.taggedPlayerId = msg.taggedPlayerId;
     if (msg.tickMs) state.estimatedTickMs = msg.tickMs;
     if (msg.bosses) state.bosses = msg.bosses;
 
