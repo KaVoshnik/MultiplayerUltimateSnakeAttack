@@ -74,22 +74,6 @@
   color: var(--green);
 }
 
-.diffBadge {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: .65rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  vertical-align: middle;
-}
-
-.diffBadge.easy { background: rgba(61,232,138,.15); color: var(--green); }
-.diffBadge.normal { background: rgba(91,164,245,.15); color: var(--blue); }
-.diffBadge.hard { background: rgba(255,209,102,.15); color: var(--yellow); }
-.diffBadge.insane { background: rgba(242,95,76,.15); color: var(--red); }
-
 .shopCoinsBar {
   margin-bottom: 20px;
   padding: 14px 18px;
