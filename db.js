@@ -46,6 +46,13 @@ async function migratePlayersTable() {
   `);
 }
 
+async function migrateLeaderboardTable() {
+  // Система сложностей убрана — колонка больше не нужна.
+  // DROP COLUMN трогает только её; остальные колонки и все строки
+  // (name, score, recorded_at) остаются нетронутыми.
+  await pool.query(`ALTER TABLE leaderboard DROP COLUMN IF EXISTS difficulty`);
+}
+
 async function init() {
   pool = new Pool({ connectionString: getDatabaseUrl() });
   await pool.query(`
@@ -67,7 +74,6 @@ async function init() {
       name VARCHAR(32) PRIMARY KEY,
       name_lower VARCHAR(32) NOT NULL UNIQUE,
       score INTEGER NOT NULL DEFAULT 0,
-      difficulty VARCHAR(16) NOT NULL DEFAULT 'normal',
       recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
@@ -95,6 +101,7 @@ async function init() {
   `);
 
   await migratePlayersTable();
+  await migrateLeaderboardTable();
 }
 
 async function findGoogleUser(googleId) {
@@ -226,7 +233,7 @@ async function loadAllPlayers() {
 
 async function loadLeaderboard(limit = 20) {
   const { rows } = await pool.query(
-    `SELECT name, score, difficulty, recorded_at
+    `SELECT name, score, recorded_at
      FROM leaderboard
      ORDER BY score DESC, name ASC
      LIMIT $1`,
@@ -235,7 +242,6 @@ async function loadLeaderboard(limit = 20) {
   return rows.map((row) => ({
     name: row.name,
     score: row.score,
-    difficulty: row.difficulty,
     date: row.recorded_at instanceof Date ? row.recorded_at.toISOString() : row.recorded_at,
   }));
 }
@@ -322,16 +328,15 @@ async function renamePlayer(oldName, newName, entry) {
   }
 }
 
-async function upsertLeaderboard(name, score, difficulty) {
+async function upsertLeaderboard(name, score) {
   await pool.query(
-    `INSERT INTO leaderboard (name, name_lower, score, difficulty, recorded_at)
-     VALUES ($1, $2, $3, $4, NOW())
+    `INSERT INTO leaderboard (name, name_lower, score, recorded_at)
+     VALUES ($1, $2, $3, NOW())
      ON CONFLICT (name_lower) DO UPDATE SET
        name = EXCLUDED.name,
        score = GREATEST(leaderboard.score, EXCLUDED.score),
-       difficulty = CASE WHEN EXCLUDED.score > leaderboard.score THEN EXCLUDED.difficulty ELSE leaderboard.difficulty END,
        recorded_at = CASE WHEN EXCLUDED.score > leaderboard.score THEN NOW() ELSE leaderboard.recorded_at END`,
-    [name, name.toLowerCase(), score, difficulty || "normal"],
+    [name, name.toLowerCase(), score],
   );
 }
 

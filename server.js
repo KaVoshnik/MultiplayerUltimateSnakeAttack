@@ -886,13 +886,11 @@ function recordScore(player) {
   if (!player || player.score <= 0) return;
   const existing = leaderboard.find((e) => e.name.toLowerCase() === player.name.toLowerCase());
   if (!existing || player.score > existing.score) {
-    // difficulty у игрока больше нет — в лидерборде пишем "normal" всегда
-    // (шаг 4: миграция/удаление колонки difficulty в БД — отдельно).
-    if (existing) { existing.score = player.score; existing.date = new Date().toISOString(); existing.difficulty = "normal"; }
-    else leaderboard.push({ name: player.name, score: player.score, date: new Date().toISOString(), difficulty: "normal" });
+    if (existing) { existing.score = player.score; existing.date = new Date().toISOString(); }
+    else leaderboard.push({ name: player.name, score: player.score, date: new Date().toISOString() });
     leaderboard.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, "ru"));
     leaderboard = leaderboard.slice(0, MAX_LEADERS);
-    persistLeaderboardEntry(player.name, player.score, "normal");
+    persistLeaderboardEntry(player.name, player.score);
     broadcast({ type: "leaderboard", leaderboard: getEnrichedLeaderboard() });
   }
 }
@@ -1021,8 +1019,8 @@ function persistProfile(name, entry) {
   }).catch((err) => { console.error("DB player:", err.message); return entry; });
 }
 
-function persistLeaderboardEntry(name, score, difficulty) {
-  db.upsertLeaderboard(name, score, difficulty).catch((err) => console.error("DB leaderboard:", err.message));
+function persistLeaderboardEntry(name, score) {
+  db.upsertLeaderboard(name, score).catch((err) => console.error("DB leaderboard:", err.message));
 }
 
 function startNewLife(name) {
