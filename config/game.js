@@ -6,6 +6,8 @@ const SPAWN_FREEZE_MS = 3000;
 
 const DEFAULT_TICK_MS = 115;
 
+const BAD_FOOD_RATIO = 0.32;
+
 // Лимит игроков в приватной комнате (lib/room.js). В публичном
 // лобби (server.js) лимита нет.
 const MAX_PLAYERS = 16;
@@ -27,6 +29,7 @@ module.exports = {
   GRID,
   SPAWN_FREEZE_MS,
   DEFAULT_TICK_MS,
+  BAD_FOOD_RATIO,
   MAX_PLAYERS,
   KILL_REWARD_COINS,
   BONUS_TYPES,

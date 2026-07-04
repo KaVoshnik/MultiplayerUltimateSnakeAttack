@@ -23,12 +23,12 @@ const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || "0.0.0.0";
 const PUBLIC_DIR = path.join(__dirname, "public");
 
-const { GRID, SPAWN_FREEZE_MS, BONUS_TYPES, KILL_REWARD_COINS } = gameConfig;
+const { GRID, SPAWN_FREEZE_MS, BONUS_TYPES, KILL_REWARD_COINS, DEFAULT_TICK_MS } = gameConfig;
 const MAX_LEADERS = 20;
 const BATTLE_PASS_SCORE_STEP = 1000;
 const BATTLE_PASS_MAX_TIER = 60;
 
-const { FOOD_TYPES, DIFFICULTIES } = foodMod;
+const { FOOD_TYPES } = foodMod;
 const { BOSS_SPAWN_BUFFER, BOSS_MOVE_EVERY } = bossMod;
 
 const BATTLE_PASS_NICK_COLORS = [
@@ -183,7 +183,6 @@ function occupancyRebuild() {
   }
 }
 
-let currentTickMs = DIFFICULTIES.normal.tickMs;
 let tickInterval = null;
 
 // ============================================================
@@ -248,17 +247,6 @@ function joinRoom(socketId, code, name) {
 
 // Публичное лобби — одна постоянная комната
 
-
-function restartTickInterval() {
-  if (tickInterval) clearInterval(tickInterval);
-  let minTick = DIFFICULTIES.normal.tickMs;
-  for (const p of players.values()) {
-    const diff = DIFFICULTIES[p.difficulty] || DIFFICULTIES.normal;
-    if (p.alive && diff.tickMs < minTick) minTick = diff.tickMs;
-  }
-  currentTickMs = minTick;
-  tickInterval = setInterval(tick, currentTickMs);
-}
 
 // ============================================================
 // PROFILE INDEX (O(1) lookup)
@@ -364,11 +352,6 @@ async function handleHttpRequest(req, res, url) {
     sendJson(res, list);
     return;
   }
-  if (url.pathname === "/modes") {
-    sendJson(res, { difficulties: DIFFICULTIES });
-    return;
-  }
-
   // ---- ADMIN API ----
   if (url.pathname.startsWith("/admin")) {
     const session = await auth.getSession(req, db).catch(() => null);
@@ -488,7 +471,6 @@ server.on("upgrade", (req, socket) => {
     type: "hello", id, grid: GRID,
     leaderboard: getEnrichedLeaderboard(),
     skins: SHOP_SKINS, catalog: SHOP_CATALOG, avatars: AVATAR_PRESETS,
-    difficulties: DIFFICULTIES,
     shopData: defaultShopEntry(),
     feed: feedLog.slice(0, 8),
     presence: gameSync.buildPresence(buildSyncCtx()),
@@ -620,7 +602,7 @@ const playerHandlers = {
     recordScore(player);
     startNewLife(player.name);
     const skin = getSkinDef(getProfile(player.name).activeSkin);
-    players.set(id, createPlayer(id, player.name, player.difficulty, skin));
+    players.set(id, createPlayer(id, player.name, skin));
     sendSnapshot(id);
     forceAoiResync(id);
     broadcastGameSync();
@@ -654,7 +636,7 @@ function handleMessage(id, message) {
 function buildSyncCtx() {
   return {
     grid: GRID, players, food, bonuses, bosses, bonusTypes: BONUS_TYPES,
-    tickCount, tickMs: currentTickMs,
+    tickCount, tickMs: DEFAULT_TICK_MS,
     clientAoi, extrasFor: extrasForPlayer,
   };
 }
@@ -775,16 +757,10 @@ function tick() {
     if (!player.alive || !planned.has(player.id)) continue;
     const nextHead = planned.get(player.id);
     const key = foodMod.pointKey(nextHead);
-    const diff = DIFFICULTIES[player.difficulty] || DIFFICULTIES.normal;
 
-    if (!foodMod.insideGrid(nextHead, GRID)) {
-      if (diff.wallDeath) { killPlayer(player, "Врезался в стену"); continue; }
-      nextHead.x = (nextHead.x + GRID.width) % GRID.width;
-      nextHead.y = (nextHead.y + GRID.height) % GRID.height;
-    }
+    if (!foodMod.insideGrid(nextHead, GRID)) { killPlayer(player, "Врезался в стену"); continue; }
 
-    // Пересчитываем key после возможного wall-wrap
-    const resolvedKey = foodMod.pointKey(nextHead);
+    const resolvedKey = key;
 
     if (targetCounts.get(key) > 1) { killPlayer(player, "Столкновение лоб в лоб"); continue; }
 
@@ -910,11 +886,13 @@ function recordScore(player) {
   if (!player || player.score <= 0) return;
   const existing = leaderboard.find((e) => e.name.toLowerCase() === player.name.toLowerCase());
   if (!existing || player.score > existing.score) {
-    if (existing) { existing.score = player.score; existing.date = new Date().toISOString(); existing.difficulty = player.difficulty; }
-    else leaderboard.push({ name: player.name, score: player.score, date: new Date().toISOString(), difficulty: player.difficulty });
+    // difficulty у игрока больше нет — в лидерборде пишем "normal" всегда
+    // (шаг 4: миграция/удаление колонки difficulty в БД — отдельно).
+    if (existing) { existing.score = player.score; existing.date = new Date().toISOString(); existing.difficulty = "normal"; }
+    else leaderboard.push({ name: player.name, score: player.score, date: new Date().toISOString(), difficulty: "normal" });
     leaderboard.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, "ru"));
     leaderboard = leaderboard.slice(0, MAX_LEADERS);
-    persistLeaderboardEntry(player.name, player.score, player.difficulty);
+    persistLeaderboardEntry(player.name, player.score, "normal");
     broadcast({ type: "leaderboard", leaderboard: getEnrichedLeaderboard() });
   }
 }
@@ -923,7 +901,7 @@ function recordScore(player) {
 // PLAYER CREATION
 // ============================================================
 
-function createPlayer(id, name, difficulty, skin) {
+function createPlayer(id, name, skin) {
   const layout = foodMod.findSpawnLayout({
     players, food, bonuses, GRID,
     anyBossOccupies: (pt) => bossMod.anyBossOccupies(bosses, pt),
@@ -938,7 +916,7 @@ function createPlayer(id, name, difficulty, skin) {
   const cos = getPlayerCosmetics(name);
 
   const player = {
-    id, name, difficulty,
+    id, name,
     color: skin.color !== "rainbow" ? skin.color : COLORS[(Number(id) - 1) % COLORS.length],
     headColor: skin.headColor || "#ffffff",
     skin: skin.id,
@@ -1194,8 +1172,6 @@ async function handleRoomStart(id, message) {
   if (!room) { send(id, { type: "room_error", text: "Вы не в комнате." }); return; }
   const result = room.start(id);
   if (!result.ok) { send(id, { type: "room_error", text: result.text }); return; }
-  // Рестартуем глобальный тик если нужно (публичное лобби)
-  restartTickInterval();
 }
 
 async function handleRoomLeave(id, message) {
@@ -1207,13 +1183,11 @@ async function handleJoin(id, message) {
   const resolved = await resolvePlayName(id, message.name);
   if (!resolved.ok) { send(id, { type: "notice", text: resolved.text }); return; }
   const name = resolved.name;
-  const difficulty = DIFFICULTIES[message.difficulty] ? message.difficulty : "normal";
   const prof = getProfile(name);
   const skin = getSkinDef(prof.activeSkin);
   startNewLife(name);
   shopClients.set(id, name);
-  players.set(id, createPlayer(id, name, difficulty, skin));
-  restartTickInterval();
+  players.set(id, createPlayer(id, name, skin));
   sendSnapshot(id);
   forceAoiResync(id);
   broadcastGameSync();
@@ -1534,7 +1508,7 @@ async function bootstrap() {
       food, players, occupancySet, tickJournal: gameSync.createJournal(), GRID,
       anyBossOccupies: (pt) => bossMod.anyBossOccupies(bosses, pt),
     });
-    tickInterval = setInterval(tick, DIFFICULTIES.normal.tickMs);
+    tickInterval = setInterval(tick, DEFAULT_TICK_MS);
     setInterval(spawnBonuses, 8000);
     setInterval(broadcastPresence, 5000);
     setInterval(pingClients, 25000);

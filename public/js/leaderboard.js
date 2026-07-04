@@ -144,9 +144,6 @@ function renderList(rest) {
   page.forEach((entry, i) => {
     const li = document.createElement("li");
     li.style.animationDelay = `${i * 0.05}s`;
-    const diff = sortMode === "score" && entry.difficulty
-      ? `<span class="diffBadge ${entry.difficulty}">${entry.difficulty}</span>`
-      : "";
     const extra = sortMode === "coins"
       ? `<small class="lbPlayerExtra">📈 рекорд ${entry.best || 0}</small>`
       : `<small class="lbPlayerExtra">🎮 ${entry.games || 0} игр · 💀 ${entry.deaths || 0} · 💰 ${entry.coins || 0}</small>`;
@@ -155,7 +152,7 @@ function renderList(rest) {
       <div class="lbPlayerMain">
         <span class="lbListAvatarWrap">${avatarHtml(entry, "lbListAvatar")}</span>
         <div class="lbPlayerText">
-          <span class="name">${escapeHtml(entry.name)}${diff}</span>
+          <span class="name">${escapeHtml(entry.name)}</span>
           ${extra}
         </div>
       </div>
