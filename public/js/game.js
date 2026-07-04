@@ -161,8 +161,12 @@ function syncSpawnFreeze(me) {
   const wasFrozen = state.freezeEndsAt > Date.now();
   const msLeft = me.spawnFrozenLeft || 0; // сервер шлёт мс до разморозки, не абсолютное время
   if (msLeft > 0) {
-    // Считаем дедлайн от своих часов — не зависим от рассинхрона часов клиент/сервер
-    state.freezeEndsAt = Date.now() + msLeft;
+    if (!wasFrozen) {
+      // Ставим дедлайн один раз, при входе в заморозку.
+      // Дальше считаем локально — иначе каждая чужая дельта будет
+      // пересчитывать от того же устаревшего msLeft и откатывать таймер назад.
+      state.freezeEndsAt = Date.now() + msLeft;
+    }
   } else if (state.freezeEndsAt !== 0) {
     state.freezeEndsAt = 0;
     if (wasFrozen && state.bufferedDirection) {
