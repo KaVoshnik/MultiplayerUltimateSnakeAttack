@@ -45,6 +45,13 @@ function setProfileEditable(enabled) {
   if (btnRemoveCustomAvatar) btnRemoveCustomAvatar.disabled = !enabled;
 }
 
+// Показываем только от 2 дней подряд — на первый день это неотличимо от
+// обычного захода и просто шумит рядом с именем.
+function streakBadgeHtml(streak) {
+  if (!streak || streak < 2) return "";
+  return ` <span class="streakBadge" title="${streak} дней подряд">🔥${streak}</span>`;
+}
+
 // Приоритет: своя загруженная фотка > аватарка из Google > эмодзи-пресет.
 function applyAvatarVisuals({ customAvatarUrl, googlePicture, avatar }) {
   const customImg = document.querySelector("#accountCustomAvatar");
@@ -79,7 +86,7 @@ function renderAccount(me) {
     const displayName = document.querySelector("#accountDisplayName");
     const emailEl = document.querySelector("#accountEmail");
 
-    if (displayName) displayName.textContent = me.name;
+    if (displayName) displayName.innerHTML = `${escapeHtml(me.name)}${streakBadgeHtml(me.shopData?.stats?.streak)}`;
     if (emailEl) emailEl.textContent = me.email || "";
 
     applyAvatarVisuals({
@@ -261,7 +268,7 @@ async function loadPublicProfile(name) {
   const displayName = document.querySelector("#accountDisplayName");
   const emailEl = document.querySelector("#accountEmail");
 
-  if (displayName) displayName.textContent = data.name;
+  if (displayName) displayName.innerHTML = `${escapeHtml(data.name)}${streakBadgeHtml(data.streak)}`;
   if (emailEl) emailEl.textContent = `Игр: ${data.stats?.games || 0} · Смертей: ${data.stats?.deaths || 0}`;
 
   applyAvatarVisuals({ customAvatarUrl: data.customAvatarUrl, googlePicture: data.googlePicture, avatar: data.avatar });

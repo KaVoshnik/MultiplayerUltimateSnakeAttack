@@ -27,6 +27,13 @@ function miniAvatarHtml(entry, className = "") {
   return `<span class="${className} lbAvatarEmoji">${entry.avatar || "😎"}</span>`;
 }
 
+// Бейдж стрика показываем только начиная с 2 дней подряд — на первый день
+// это просто шум, ничем не отличающийся от обычного захода.
+function streakBadgeHtml(streak) {
+  if (!streak || streak < 2) return "";
+  return `<span class="streakBadge" title="${streak} дней подряд">🔥${streak}</span>`;
+}
+
 function friendRow(entry, actionsHtml) {
   const li = document.createElement("li");
   li.className = "friendItem";
@@ -37,7 +44,7 @@ function friendRow(entry, actionsHtml) {
       <span class="onlineDot ${entry.online ? "on" : ""}" title="${entry.online ? "В сети" : "Не в сети"}"></span>
     </div>
     <div class="friendInfo">
-      <div class="friendName">${escapeHtml(entry.name)}</div>
+      <div class="friendName">${escapeHtml(entry.name)} ${streakBadgeHtml(entry.streak)}</div>
       <div class="friendMeta">${statusText} · рекорд ${entry.best || 0}</div>
     </div>
     <div class="friendActions">${actionsHtml}</div>
@@ -121,7 +128,7 @@ function renderLists(data) {
         <span class="onlineDot ${entry.online ? "on" : ""}"></span>
       </div>
       <div class="friendInfo">
-        <div class="friendName">#${index + 1} ${escapeHtml(entry.name)}</div>
+        <div class="friendName">#${index + 1} ${escapeHtml(entry.name)} ${streakBadgeHtml(entry.streak)}</div>
         <div class="friendMeta">Рекорд: ${entry.best || 0}</div>
       </div>
     `;
@@ -173,7 +180,7 @@ async function runSearch(query) {
         row.className = "lbSearchRow";
         row.innerHTML = `
           ${miniAvatarHtml(p, "lbSearchAvatar")}
-          <span class="lbSearchName">${escapeHtml(p.name)}</span>
+          <span class="lbSearchName">${escapeHtml(p.name)} ${streakBadgeHtml(p.streak)}</span>
           <span class="lbSearchMeta">🎮 ${p.games || 0}</span>
           <button type="button" class="lbSearchAddBtn">Добавить</button>
         `;

@@ -34,6 +34,13 @@ function avatarHtml(entry, className = "lbAvatar") {
   return `<span class="${className} lbAvatarEmoji">${entry.avatar || "😎"}</span>`;
 }
 
+// Показываем только от 2 дней подряд — на первый день это неотличимо от
+// обычного захода и просто шумит рядом с именем.
+function streakBadgeHtml(streak) {
+  if (!streak || streak < 2) return "";
+  return `<span class="streakBadge" title="${streak} дней подряд">🔥${streak}</span>`;
+}
+
 function openPlayerProfile(name) {
   location.href = `/profile.html?player=${encodeURIComponent(name)}`;
 }
@@ -77,7 +84,7 @@ async function runSearch(query) {
         row.className = "lbSearchRow";
         row.innerHTML = `
           ${avatarHtml(p, "lbSearchAvatar")}
-          <span class="lbSearchName">${escapeHtml(p.name)}</span>
+          <span class="lbSearchName">${escapeHtml(p.name)} ${streakBadgeHtml(p.streak)}</span>
           <span class="lbSearchMeta">🎮 ${p.games || 0} · 💀 ${p.deaths || 0}</span>
         `;
         row.addEventListener("click", () => openPlayerProfile(p.name));
@@ -127,7 +134,7 @@ function renderPodium(top3) {
     card.innerHTML = `
       <div class="podiumMedal">${MEDALS[place - 1] || ""}</div>
       ${avatarHtml(entry, "podiumAvatar")}
-      <div class="podiumName">${escapeHtml(entry.name)}</div>
+      <div class="podiumName">${escapeHtml(entry.name)} ${streakBadgeHtml(entry.streak)}</div>
       <div class="podiumStats">
         <span>🎮 Игр<strong>${entry.games || 0}</strong></span>
         <span>📈 Рекорд<strong>${entry.best || entry.score}</strong></span>
@@ -155,7 +162,7 @@ function renderList(rest) {
       <div class="lbPlayerMain">
         <span class="lbListAvatarWrap">${avatarHtml(entry, "lbListAvatar")}</span>
         <div class="lbPlayerText">
-          <span class="name">${escapeHtml(entry.name)}</span>
+          <span class="name">${escapeHtml(entry.name)} ${streakBadgeHtml(entry.streak)}</span>
           ${extra}
         </div>
       </div>
