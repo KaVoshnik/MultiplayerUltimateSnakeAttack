@@ -182,6 +182,27 @@ function isPlayerOnline(name) {
   }
   return false;
 }
+
+function findSocketIdsByName(name) {
+  const lower = name.toLowerCase();
+  const ids = [];
+  for (const [id, clientName] of shopClients) {
+    if (clientName && clientName.toLowerCase() === lower) ids.push(id);
+  }
+  return ids;
+}
+
+// Возвращает { code, joinable } если игрок сейчас сидит в приватной комнате,
+// иначе null. Смотрим через все его открытые сокеты (может быть открыто
+// несколько вкладок).
+function getPlayerRoomInfo(name) {
+  for (const id of findSocketIdsByName(name)) {
+    const code = socketRoom.get(id);
+    const room = code && rooms.get(code);
+    if (room) return { code, joinable: room.canJoin() };
+  }
+  return null;
+}
 const socketSessions = new Map(); // socket id -> auth session
 let leaderboard = [];
 let tickCount = 0;
@@ -463,13 +484,15 @@ async function handleHttpRequest(req, res, url) {
 
     const enrich = (row, extraDate) => {
       const prof = getProfile(row.name);
+      const online = isPlayerOnline(row.name);
       return {
         name: row.name,
         avatar: prof.avatar,
         googlePicture: prof.stats?.googlePicture || null,
         customAvatarUrl: prof.stats?.customAvatarUrl || null,
         best: prof.stats?.best || 0,
-        online: isPlayerOnline(row.name),
+        online,
+        room: online ? getPlayerRoomInfo(row.name) : null,
         since: extraDate ? row[extraDate] : undefined,
       };
     };
@@ -802,6 +825,7 @@ const asyncHandlers = {
   room_rejoin:  (id, msg) => handleRoomRejoin(id, msg),
   room_start:   (id, msg) => handleRoomStart(id, msg),
   room_leave:   (id, msg) => handleRoomLeave(id, msg),
+  room_invite:  (id, msg) => handleRoomInvite(id, msg),
 };
 
 // Синхронные хендлеры не требующие наличия player
@@ -1410,6 +1434,23 @@ async function handleRoomStart(id, message) {
 async function handleRoomLeave(id, message) {
   leaveRoom(id);
   send(id, { type: "room_left" });
+}
+
+async function handleRoomInvite(id, message) {
+  const session = socketSessions.get(id);
+  if (!session) { send(id, { type: "notice", text: "Войди через Google, чтобы приглашать друзей." }); return; }
+  const code = socketRoom.get(id);
+  if (!code || !rooms.has(code)) { send(id, { type: "notice", text: "Ты сейчас не в комнате." }); return; }
+  const targetName = profileName(message.name);
+  if (!targetName) return;
+  const status = await db.getFriendshipStatus(session.player_name, targetName).catch(() => "none");
+  if (status !== "friends") { send(id, { type: "notice", text: "Приглашать в комнату можно только друзей." }); return; }
+  const targetIds = findSocketIdsByName(targetName);
+  if (targetIds.length === 0) { send(id, { type: "notice", text: `${targetName} сейчас не в сети.` }); return; }
+  for (const targetId of targetIds) {
+    send(targetId, { type: "room_invite", from: session.player_name, code });
+  }
+  send(id, { type: "notice", text: `Приглашение отправлено игроку ${targetName}.` });
 }
 
 async function handleJoin(id, message) {
