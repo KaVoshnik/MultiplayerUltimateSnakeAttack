@@ -98,6 +98,16 @@
   text-overflow: ellipsis;
 }
 
+.streakBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: .7rem;
+  font-weight: 700;
+  color: #f9f06b;
+  white-space: nowrap;
+}
+
 .friendMeta {
   font-size: .75rem;
   color: var(--muted);

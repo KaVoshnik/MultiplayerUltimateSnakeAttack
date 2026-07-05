@@ -75,6 +75,16 @@
   font-size: 1.2rem;
 }
 
+.streakBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: .75rem;
+  font-weight: 700;
+  color: #f9f06b;
+  white-space: nowrap;
+}
+
 .accountEmail {
   margin: 0 0 8px;
   color: var(--muted);

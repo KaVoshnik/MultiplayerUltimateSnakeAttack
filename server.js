@@ -386,6 +386,7 @@ async function handleHttpRequest(req, res, url) {
     sendJson(res, {
       id: prof.id || null, name: key, coins: prof.coins, activeSkin: prof.activeSkin,
       avatar: prof.avatar, googlePicture: prof.stats?.googlePicture || null, customAvatarUrl: prof.stats?.customAvatarUrl || null,
+      streak: prof.stats?.streak || 0,
       stats: { games: prof.stats?.games || 0, deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0, best: prof.stats?.best || 0, playTimeMs: prof.stats?.playTimeMs || 0 },
       online: isPlayerOnline(key),
       friendStatus,
@@ -398,7 +399,7 @@ async function handleHttpRequest(req, res, url) {
       .filter(([name]) => !q || name.toLowerCase().includes(q))
       .map(([name, prof]) => {
         const p = normalizeProfile(prof);
-        return { name, avatar: p.avatar, googlePicture: p.stats?.googlePicture || null, customAvatarUrl: p.stats?.customAvatarUrl || null, games: p.stats.games || 0, deaths: p.stats.deaths || 0, best: p.stats.best || 0, coins: p.coins || 0, playTimeMs: p.stats.playTimeMs || 0 };
+        return { name, avatar: p.avatar, googlePicture: p.stats?.googlePicture || null, customAvatarUrl: p.stats?.customAvatarUrl || null, streak: p.stats?.streak || 0, games: p.stats.games || 0, deaths: p.stats.deaths || 0, best: p.stats.best || 0, coins: p.coins || 0, playTimeMs: p.stats.playTimeMs || 0 };
       })
       .sort((a, b) => a.name.localeCompare(b.name, "ru"))
       .slice(0, 50);
@@ -491,6 +492,7 @@ async function handleHttpRequest(req, res, url) {
         googlePicture: prof.stats?.googlePicture || null,
         customAvatarUrl: prof.stats?.customAvatarUrl || null,
         best: prof.stats?.best || 0,
+        streak: prof.stats?.streak || 0,
         online,
         room: online ? getPlayerRoomInfo(row.name) : null,
         since: extraDate ? row[extraDate] : undefined,
@@ -1254,6 +1256,9 @@ function normalizeProfile(raw) {
       battlePassClaimed: Array.isArray(raw.stats?.battlePassClaimed) ? [...raw.stats.battlePassClaimed] : [],
       battlePassUnlocked: Array.isArray(raw.stats?.battlePassUnlocked) ? [...raw.stats.battlePassUnlocked] : [],
       activeNickColor: raw.stats?.activeNickColor || null,
+      streak: raw.stats?.streak || 0,
+      bestStreak: raw.stats?.bestStreak || 0,
+      lastStreakDate: raw.stats?.lastStreakDate || null,
     },
   };
   for (const id of entry.unlockedSkins) {
@@ -1282,10 +1287,24 @@ function persistLeaderboardEntry(name, score) {
   db.upsertLeaderboard(name, score).catch((err) => console.error("DB leaderboard:", err.message));
 }
 
+// Считаем стрик по календарным дням (UTC), идемпотентно в рамках одного дня —
+// startNewLife может дёргаться много раз за день (респауны), это не проблема.
+function touchDailyStreak(entry) {
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  if (entry.stats.lastStreakDate === today) return;
+  const oneDay = 24 * 60 * 60 * 1000;
+  const last = entry.stats.lastStreakDate;
+  const gapDays = last ? Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${last}T00:00:00Z`)) / oneDay) : null;
+  entry.stats.streak = gapDays === 1 ? (entry.stats.streak || 0) + 1 : 1;
+  entry.stats.bestStreak = Math.max(entry.stats.bestStreak || 0, entry.stats.streak);
+  entry.stats.lastStreakDate = today;
+}
+
 function startNewLife(name) {
   const entry = getProfile(name);
   entry.stats.games = (entry.stats.games || 0) + 1;
   entry.stats.sessionStart = Date.now();
+  touchDailyStreak(entry);
   shopData[name] = entry;
   profileIndexSet(name);
   persistProfile(name, entry);
@@ -1746,13 +1765,13 @@ function processBattlePassRewards(name, entry) {
 function getEnrichedLeaderboard() {
   return leaderboard.map((e, index) => {
     const prof = getProfile(e.name);
-    return { ...e, rank: index + 1, avatar: prof.avatar, googlePicture: prof.stats?.googlePicture || null, customAvatarUrl: prof.stats?.customAvatarUrl || null, deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0, games: prof.stats?.games || 0, best: Math.max(e.score, prof.stats?.best || 0), coins: prof.coins || 0 };
+    return { ...e, rank: index + 1, avatar: prof.avatar, googlePicture: prof.stats?.googlePicture || null, customAvatarUrl: prof.stats?.customAvatarUrl || null, streak: prof.stats?.streak || 0, deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0, games: prof.stats?.games || 0, best: Math.max(e.score, prof.stats?.best || 0), coins: prof.coins || 0 };
   });
 }
 
 function getWealthLeaderboard() {
   return Object.entries(shopData)
-    .map(([name, prof]) => ({ name, coins: prof.coins || 0, score: prof.coins || 0, avatar: prof.avatar || "😎", googlePicture: prof.stats?.googlePicture || null, customAvatarUrl: prof.stats?.customAvatarUrl || null, deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0, games: prof.stats?.games || 0, best: prof.stats?.best || 0 }))
+    .map(([name, prof]) => ({ name, coins: prof.coins || 0, score: prof.coins || 0, avatar: prof.avatar || "😎", googlePicture: prof.stats?.googlePicture || null, customAvatarUrl: prof.stats?.customAvatarUrl || null, streak: prof.stats?.streak || 0, deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0, games: prof.stats?.games || 0, best: prof.stats?.best || 0 }))
     .filter((e) => e.coins > 0)
     .sort((a, b) => b.coins - a.coins || a.name.localeCompare(b.name, "ru"))
     .slice(0, MAX_LEADERS)
