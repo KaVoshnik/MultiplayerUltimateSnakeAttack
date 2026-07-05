@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Друзья — Ultimate Snake Attack</title>
+  <link rel="stylesheet" href="css/common.css" />
+  <link rel="stylesheet" href="css/pages.css" />
+  <link rel="stylesheet" href="css/leaderboard.css" />
+  <link rel="stylesheet" href="css/friends.css" />
+</head>
+<body data-page="friends">
+  <nav class="siteNav">
+    <a href="/" class="brand">← ЛОББИ</a>
+    <div class="links">
+      <a href="/" data-page="lobby">Лобби</a>
+      <a href="/game.html" data-page="game">Игра</a>
+      <a href="/shop.html" data-page="shop">Магазин</a>
+      <a href="/profile.html" data-page="profile">Профиль</a>
+      <a href="/leaderboard.html" data-page="leaderboard">Рекорды</a>
+      <a href="/friends.html" data-page="friends" class="active">Друзья</a>
+    </div>
+  </nav>
+
+  <main class="pageWrap friendsPage">
+    <header class="pageHeader">
+      <h1>🧑‍🤝‍🧑 ДРУЗЬЯ</h1>
+      <p>Добавляй других игроков и следи, кто сейчас в сети</p>
+      <div class="friendsSearchWrap">
+        <input type="search" id="friendsSearch" class="lbSearch" placeholder="Найти игрока по нику…" autocomplete="off" />
+        <div class="lbSearchResults hidden" id="friendsSearchResults"></div>
+      </div>
+    </header>
+
+    <section class="glass pageCard hidden" id="guestCard">
+      <p>Войди через Google на странице профиля, чтобы добавлять друзей.</p>
+      <a href="/profile.html" class="btn primary">Перейти в профиль</a>
+    </section>
+
+    <div id="friendsContent" class="hidden">
+      <section class="glass pageCard friendsSection" id="incomingSection">
+        <h2>Заявки в друзья <span class="countPill" id="incomingCount">0</span></h2>
+        <ul class="friendsList" id="incomingList"></ul>
+        <p class="emptyState" id="incomingEmpty">Пока никто не добавлял тебя.</p>
+      </section>
+
+      <section class="glass pageCard friendsSection">
+        <h2>Друзья <span class="countPill" id="friendsCount">0</span></h2>
+        <ul class="friendsList" id="friendsList"></ul>
+        <p class="emptyState hidden" id="friendsEmpty">Пока нет друзей — найди кого-нибудь через поиск сверху.</p>
+      </section>
+
+      <section class="glass pageCard friendsSection" id="outgoingSection">
+        <h2>Исходящие заявки <span class="countPill" id="outgoingCount">0</span></h2>
+        <ul class="friendsList" id="outgoingList"></ul>
+        <p class="emptyState" id="outgoingEmpty">Нет отправленных заявок.</p>
+      </section>
+    </div>
+  </main>
+
+  <div class="toastWrap"></div>
+  <script src="js/common.js"></script>
+  <script src="js/friends.js"></script>
+</body>
+</html>

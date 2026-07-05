@@ -6,9 +6,14 @@ const SPAWN_FREEZE_MS = 3000;
 
 const DEFAULT_TICK_MS = 115;
 
+const BAD_FOOD_RATIO = 0.32;
+
 // Лимит игроков в приватной комнате (lib/room.js). В публичном
 // лобби (server.js) лимита нет.
 const MAX_PLAYERS = 16;
+
+// Загрузка своей аватарки: жёсткий предел на декодированный размер файла.
+const AVATAR_UPLOAD_MAX_BYTES = 1.5 * 1024 * 1024; // 1.5 МБ
 
 // Награда за килл в публичном лобби (server.js). Комнаты вызывают
 // awardKillCoins через инжектированную зависимость из server.js,
@@ -27,7 +32,9 @@ module.exports = {
   GRID,
   SPAWN_FREEZE_MS,
   DEFAULT_TICK_MS,
+  BAD_FOOD_RATIO,
   MAX_PLAYERS,
+  AVATAR_UPLOAD_MAX_BYTES,
   KILL_REWARD_COINS,
   BONUS_TYPES,
 };

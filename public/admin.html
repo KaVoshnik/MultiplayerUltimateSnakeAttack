@@ -247,6 +247,22 @@
           <tbody id="playerTable"></tbody>
         </table>
       </div>
+
+      <h2 style="margin:28px 0 12px;font-size:16px">Жалобы на аватарки</h2>
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Игрок</th>
+              <th>Жалоб</th>
+              <th>Последняя</th>
+              <th>Действия</th>
+            </tr>
+          </thead>
+          <tbody id="reportsTable"></tbody>
+        </table>
+      </div>
+      <p id="reportsEmpty" style="color:#aaa;font-size:13px;display:none">Жалоб пока нет.</p>
     </div>
   </div>
 
@@ -334,6 +350,36 @@
       await loadPlayers();
     }
 
+    function renderReports(reports) {
+      const tbody = document.getElementById("reportsTable");
+      tbody.innerHTML = "";
+      document.getElementById("reportsEmpty").style.display = reports.length ? "none" : "block";
+      for (const r of reports) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td><strong>${escHtml(r.target)}</strong>${r.hasCustomAvatar ? "" : ' <span style="color:#aaa;font-size:11px">(фото уже нет)</span>'}</td>
+          <td>${r.reports}</td>
+          <td style="color:#aaa;font-size:11px">${formatDate(r.lastReportedAt)}</td>
+          <td>
+            <button class="actionBtn danger" onclick="resetAvatar('${escHtml(r.target)}')">Сбросить аватар</button>
+          </td>
+        `;
+        tbody.append(tr);
+      }
+    }
+
+    async function loadReports() {
+      const reports = await api("/admin/avatar_reports").catch(() => []);
+      renderReports(reports);
+    }
+
+    async function resetAvatar(name) {
+      if (!confirm(`Сбросить аватарку игрока ${name} на дефолтную? Жалобы на него будут очищены.`)) return;
+      await api("/admin/reset_avatar", "POST", { name });
+      showToast(`${name}: аватар сброшен`);
+      await loadReports();
+    }
+
     async function loadPlayers() {
       allPlayers = await api("/admin/players");
       document.getElementById("statPlayers").textContent = allPlayers.length;
@@ -361,6 +407,7 @@
         document.getElementById("statOnline").textContent = health.players ?? "—";
 
         await loadPlayers();
+        await loadReports();
       } catch (e) {
         if (e.message.includes("forbidden") || e.message.includes("403")) {
           document.getElementById("forbidden").style.display = "block";

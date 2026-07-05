@@ -5,7 +5,9 @@
   "description": "THE ULTIMATE MULTIPLAYER SNAKE ATTACK — online multiplayer snake game",
   "scripts": {
     "start": "node server.js",
-    "db:reset": "node scripts/db-reset.js"
+    "db:reset": "node scripts/db-reset.js",
+    "lint": "eslint .",
+    "test": "node --test"
   },
   "engines": {
     "node": ">=18"
@@ -13,5 +15,9 @@
   "dependencies": {
     "dotenv": "^16.4.7",
     "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "eslint": "^9.15.0",
+    "@eslint/js": "^9.15.0"
   }
 }

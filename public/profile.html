@@ -17,6 +17,7 @@
       <a href="/shop.html" data-page="shop">Магазин</a>
       <a href="/profile.html" data-page="profile" class="active">Профиль</a>
       <a href="/leaderboard.html" data-page="leaderboard">Рекорды</a>
+      <a href="/friends.html" data-page="friends">Друзья</a>
     </div>
   </nav>
 
@@ -35,6 +36,7 @@
           <div class="accountAvatarWrap" id="accountAvatarWrap">
             <span class="accountAvatarEmoji" id="accountAvatarEmoji">😎</span>
             <img class="accountAvatarImg hidden" id="accountGoogleAvatar" alt="" referrerpolicy="no-referrer" />
+            <img class="accountAvatarImg hidden" id="accountCustomAvatar" alt="" />
           </div>
           <div class="accountUserInfo">
             <h1 id="accountDisplayName">Игрок</h1>
@@ -43,6 +45,8 @@
           </div>
         </div>
         <button type="button" class="btn ghost" id="btnGoogleLogout">Выйти</button>
+        <button type="button" class="btn primary hidden" id="btnFriendAction">Добавить в друзья</button>
+        <button type="button" class="btn ghost hidden" id="btnReportAvatar">Пожаловаться на аватар</button>
       </div>
     </section>
 
@@ -60,6 +64,14 @@
 
         <label>Аватарка</label>
         <div class="avatarGrid" id="avatarGrid"></div>
+
+        <label>Своё фото</label>
+        <div class="avatarUploadRow">
+          <input type="file" id="avatarUploadInput" accept="image/png,image/jpeg,image/webp" class="hidden" disabled />
+          <button type="button" class="btn ghost" id="btnUploadAvatar" disabled>Загрузить фото</button>
+          <button type="button" class="btn ghost hidden" id="btnRemoveCustomAvatar" disabled>Удалить фото</button>
+        </div>
+        <p class="profileHint">PNG/JPEG/WEBP, до 1.5 МБ. Модерация ручная — на фото могут пожаловаться другие игроки.</p>
 
         <button type="button" class="btn primary" id="saveProfile" style="width:100%;margin-top:20px" disabled>
           СОХРАНИТЬ ИЗМЕНЕНИЯ

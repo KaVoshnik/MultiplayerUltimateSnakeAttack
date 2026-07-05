@@ -112,9 +112,12 @@ function updateUserBar(shopData, name) {
   const avatarEl = document.querySelector("#userAvatar");
   const nameEl = document.querySelector("#userName");
   const coinsEl = document.querySelector("#headerCoins");
+  const customUrl = shopData?.stats?.customAvatarUrl;
   const picture = shopData?.stats?.googlePicture;
   if (avatarEl) {
-    if (picture) {
+    if (customUrl) {
+      avatarEl.innerHTML = `<img src="${escapeHtml(customUrl)}" alt="" class="userAvatarImg" />`;
+    } else if (picture) {
       avatarEl.innerHTML = `<img src="${escapeHtml(picture)}" alt="" class="userAvatarImg" referrerpolicy="no-referrer" />`;
     } else {
       avatarEl.textContent = shopData?.avatar || "😎";

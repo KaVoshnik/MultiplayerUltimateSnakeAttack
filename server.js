@@ -22,19 +22,31 @@ const engine = require("./lib/engine");
 const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || "0.0.0.0";
 const PUBLIC_DIR = path.join(__dirname, "public");
+const AVATARS_DIR = path.join(PUBLIC_DIR, "avatars");
+fs.mkdirSync(AVATARS_DIR, { recursive: true });
 
-const { GRID, SPAWN_FREEZE_MS, BONUS_TYPES, KILL_REWARD_COINS } = gameConfig;
+// Определяем реальный тип файла по магическим байтам — клиент может соврать
+// про content-type, но подделать первые байты валидного изображения смысла нет.
+function sniffImageType(bytes) {
+  if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return "png";
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "jpeg";
+  if (bytes.length >= 12 && bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP") return "webp";
+  return null;
+}
+
+function removeAvatarFile(url) {
+  if (!url || !url.startsWith("/avatars/")) return;
+  const filePath = path.join(AVATARS_DIR, path.basename(url));
+  fs.unlink(filePath, () => {}); // не критично, если файла уже нет
+}
+
+const { GRID, SPAWN_FREEZE_MS, BONUS_TYPES, KILL_REWARD_COINS, DEFAULT_TICK_MS, AVATAR_UPLOAD_MAX_BYTES } = gameConfig;
 const MAX_LEADERS = 20;
 const BATTLE_PASS_SCORE_STEP = 1000;
 const BATTLE_PASS_MAX_TIER = 60;
 
-const { FOOD_TYPES, DIFFICULTIES } = foodMod;
+const { FOOD_TYPES } = foodMod;
 const { BOSS_SPAWN_BUFFER, BOSS_MOVE_EVERY } = bossMod;
-
-const MODES = {
-  classic: { label: "Classic" },
-  tag_time: { label: "Tag Time" },
-};
 
 const BATTLE_PASS_NICK_COLORS = [
   { id: "bp_gold", label: "Золото", color: "#ffd166", tier: 1 },
@@ -162,13 +174,19 @@ const profileIndex = new Map();
 let shopData = {}; // canonicalName -> profile entry
 
 const shopClients = new Map(); // socket id -> player name
+
+function isPlayerOnline(name) {
+  const lower = name.toLowerCase();
+  for (const clientName of shopClients.values()) {
+    if (clientName && clientName.toLowerCase() === lower) return true;
+  }
+  return false;
+}
 const socketSessions = new Map(); // socket id -> auth session
 let leaderboard = [];
 let tickCount = 0;
 let tickJournal = gameSync.createJournal();
 const clientAoi = new Map();
-let gameMode = "classic";
-let taggedPlayerId = null;
 const feedLog = [];
 const feedDedupe = new Map();
 let feedBroadcastTimer = null;
@@ -190,7 +208,6 @@ function occupancyRebuild() {
   }
 }
 
-let currentTickMs = DIFFICULTIES.normal.tickMs;
 let tickInterval = null;
 
 // ============================================================
@@ -255,17 +272,6 @@ function joinRoom(socketId, code, name) {
 
 // Публичное лобби — одна постоянная комната
 
-
-function restartTickInterval() {
-  if (tickInterval) clearInterval(tickInterval);
-  let minTick = DIFFICULTIES.normal.tickMs;
-  for (const p of players.values()) {
-    const diff = DIFFICULTIES[p.difficulty] || DIFFICULTIES.normal;
-    if (p.alive && diff.tickMs < minTick) minTick = diff.tickMs;
-  }
-  currentTickMs = minTick;
-  tickInterval = setInterval(tick, currentTickMs);
-}
 
 // ============================================================
 // PROFILE INDEX (O(1) lookup)
@@ -351,10 +357,17 @@ async function handleHttpRequest(req, res, url) {
     const key = findCanonicalName(name);
     if (!key) { sendJson(res, { error: "not_found" }); return; }
     const prof = getProfile(key);
+    const session = await auth.getSession(req, db).catch(() => null);
+    let friendStatus = "none";
+    if (session && session.player_name.toLowerCase() !== key.toLowerCase()) {
+      friendStatus = await db.getFriendshipStatus(session.player_name, key).catch(() => "none");
+    }
     sendJson(res, {
       id: prof.id || null, name: key, coins: prof.coins, activeSkin: prof.activeSkin,
-      avatar: prof.avatar, googlePicture: prof.stats?.googlePicture || null,
+      avatar: prof.avatar, googlePicture: prof.stats?.googlePicture || null, customAvatarUrl: prof.stats?.customAvatarUrl || null,
       stats: { games: prof.stats?.games || 0, deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0, best: prof.stats?.best || 0, playTimeMs: prof.stats?.playTimeMs || 0 },
+      online: isPlayerOnline(key),
+      friendStatus,
     });
     return;
   }
@@ -364,20 +377,191 @@ async function handleHttpRequest(req, res, url) {
       .filter(([name]) => !q || name.toLowerCase().includes(q))
       .map(([name, prof]) => {
         const p = normalizeProfile(prof);
-        return { name, avatar: p.avatar, googlePicture: p.stats?.googlePicture || null, games: p.stats.games || 0, deaths: p.stats.deaths || 0, best: p.stats.best || 0, coins: p.coins || 0, playTimeMs: p.stats.playTimeMs || 0 };
+        return { name, avatar: p.avatar, googlePicture: p.stats?.googlePicture || null, customAvatarUrl: p.stats?.customAvatarUrl || null, games: p.stats.games || 0, deaths: p.stats.deaths || 0, best: p.stats.best || 0, coins: p.coins || 0, playTimeMs: p.stats.playTimeMs || 0 };
       })
       .sort((a, b) => a.name.localeCompare(b.name, "ru"))
       .slice(0, 50);
     sendJson(res, list);
     return;
   }
-  if (url.pathname === "/modes") {
-    sendJson(res, { modes: MODES, difficulties: DIFFICULTIES });
+  if (url.pathname === "/upload_avatar" && req.method === "POST") {
+    const session = await auth.getSession(req, db).catch(() => null);
+    if (!session) { res.writeHead(401); res.end("unauthorized"); return; }
+
+    let raw;
+    try { raw = await readBodyLimited(req, Math.ceil(AVATAR_UPLOAD_MAX_BYTES * 1.4)); }
+    catch { res.writeHead(413); res.end("payload too large"); return; }
+
+    let body;
+    try { body = JSON.parse(raw.toString("utf8")); } catch { res.writeHead(400); res.end("bad json"); return; }
+
+    const match = /^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/=]+)$/i.exec(String(body.dataUrl || ""));
+    if (!match) { res.writeHead(400); res.end("expected a png/jpeg/webp data URL"); return; }
+
+    const declaredExt = match[1].toLowerCase() === "jpg" ? "jpeg" : match[1].toLowerCase();
+    const bytes = Buffer.from(match[2], "base64");
+    if (bytes.length === 0 || bytes.length > AVATAR_UPLOAD_MAX_BYTES) {
+      res.writeHead(413); res.end(`image must be under ${(AVATAR_UPLOAD_MAX_BYTES / 1024 / 1024).toFixed(1)} MB`); return;
+    }
+
+    // Не доверяем заявленному MIME — сверяем с реальными байтами файла.
+    const sniffedExt = sniffImageType(bytes);
+    if (!sniffedExt || sniffedExt !== declaredExt) {
+      res.writeHead(400); res.end("file content doesn't match declared image type"); return;
+    }
+
+    const name = session.player_name;
+    const entry = getProfile(name);
+    const oldUrl = entry.stats.customAvatarUrl;
+    const filename = `${crypto.randomUUID()}.${sniffedExt}`;
+    await fs.promises.writeFile(path.join(AVATARS_DIR, filename), bytes);
+    entry.stats.customAvatarUrl = `/avatars/${filename}`;
+    await persistProfile(name, entry);
+    if (oldUrl) removeAvatarFile(oldUrl); // подчищаем старый файл, чтобы не копился мусор на диске
+
+    sendJson(res, { ok: true, customAvatarUrl: entry.stats.customAvatarUrl });
+    return;
+  }
+
+  if (url.pathname === "/remove_avatar" && req.method === "POST") {
+    const session = await auth.getSession(req, db).catch(() => null);
+    if (!session) { res.writeHead(401); res.end("unauthorized"); return; }
+    const entry = getProfile(session.player_name);
+    if (entry.stats.customAvatarUrl) removeAvatarFile(entry.stats.customAvatarUrl);
+    entry.stats.customAvatarUrl = null;
+    await persistProfile(session.player_name, entry);
+    sendJson(res, { ok: true });
+    return;
+  }
+
+  if (url.pathname === "/report_avatar" && req.method === "POST") {
+    const session = await auth.getSession(req, db).catch(() => null);
+    if (!session) { res.writeHead(401); res.end("unauthorized"); return; }
+
+    let raw;
+    try { raw = await readBodyLimited(req, 2048); } catch { res.writeHead(413); res.end("payload too large"); return; }
+
+    let body;
+    try { body = JSON.parse(raw.toString("utf8")); } catch { res.writeHead(400); res.end("bad json"); return; }
+
+    const target = profileName(body.target);
+    if (!target) { res.writeHead(400); res.end("bad request"); return; }
+    if (target.toLowerCase() === session.player_name.toLowerCase()) {
+      res.writeHead(400); res.end("can't report yourself"); return;
+    }
+
+    await db.reportAvatar(session.player_name, target);
+    sendJson(res, { ok: true });
+    return;
+  }
+
+  // ---- FRIENDS ----
+  if (url.pathname === "/friends" && req.method === "GET") {
+    const session = await auth.getSession(req, db).catch(() => null);
+    if (!session) { res.writeHead(401); res.end("unauthorized"); return; }
+    const me = session.player_name;
+
+    const enrich = (row, extraDate) => {
+      const prof = getProfile(row.name);
+      return {
+        name: row.name,
+        avatar: prof.avatar,
+        googlePicture: prof.stats?.googlePicture || null,
+        customAvatarUrl: prof.stats?.customAvatarUrl || null,
+        best: prof.stats?.best || 0,
+        online: isPlayerOnline(row.name),
+        since: extraDate ? row[extraDate] : undefined,
+      };
+    };
+
+    const [friends, incoming, outgoing] = await Promise.all([
+      db.listFriends(me), db.listIncomingRequests(me), db.listOutgoingRequests(me),
+    ]);
+    sendJson(res, {
+      friends: friends.map((r) => enrich(r, "responded_at")).sort((a, b) => Number(b.online) - Number(a.online)),
+      incoming: incoming.map((r) => enrich(r, "created_at")),
+      outgoing: outgoing.map((r) => enrich(r, "created_at")),
+    });
+    return;
+  }
+
+  if (url.pathname === "/friends/request" && req.method === "POST") {
+    const session = await auth.getSession(req, db).catch(() => null);
+    if (!session) { res.writeHead(401); res.end("unauthorized"); return; }
+    let raw;
+    try { raw = await readBodyLimited(req, 2048); } catch { res.writeHead(413); res.end("payload too large"); return; }
+    let body;
+    try { body = JSON.parse(raw.toString("utf8")); } catch { res.writeHead(400); res.end("bad json"); return; }
+    const target = findCanonicalName(profileName(body.target) || "");
+    if (!target) { res.writeHead(400); res.end("player not found"); return; }
+    if (target.toLowerCase() === session.player_name.toLowerCase()) {
+      res.writeHead(400); res.end("can't friend yourself"); return;
+    }
+    const status = await db.sendFriendRequest(session.player_name, target);
+    sendJson(res, { ok: true, status }); // "requested" | "accepted" (если запрос был встречным)
+    return;
+  }
+
+  if (url.pathname === "/friends/accept" && req.method === "POST") {
+    const session = await auth.getSession(req, db).catch(() => null);
+    if (!session) { res.writeHead(401); res.end("unauthorized"); return; }
+    let raw;
+    try { raw = await readBodyLimited(req, 2048); } catch { res.writeHead(413); res.end("payload too large"); return; }
+    let body;
+    try { body = JSON.parse(raw.toString("utf8")); } catch { res.writeHead(400); res.end("bad json"); return; }
+    const requester = profileName(body.name);
+    if (!requester) { res.writeHead(400); res.end("bad request"); return; }
+    await db.respondFriendRequest(session.player_name, requester, true);
+    sendJson(res, { ok: true });
+    return;
+  }
+
+  if (url.pathname === "/friends/decline" && req.method === "POST") {
+    const session = await auth.getSession(req, db).catch(() => null);
+    if (!session) { res.writeHead(401); res.end("unauthorized"); return; }
+    let raw;
+    try { raw = await readBodyLimited(req, 2048); } catch { res.writeHead(413); res.end("payload too large"); return; }
+    let body;
+    try { body = JSON.parse(raw.toString("utf8")); } catch { res.writeHead(400); res.end("bad json"); return; }
+    const requester = profileName(body.name);
+    if (!requester) { res.writeHead(400); res.end("bad request"); return; }
+    await db.respondFriendRequest(session.player_name, requester, false);
+    sendJson(res, { ok: true });
+    return;
+  }
+
+  if (url.pathname === "/friends/cancel" && req.method === "POST") {
+    const session = await auth.getSession(req, db).catch(() => null);
+    if (!session) { res.writeHead(401); res.end("unauthorized"); return; }
+    let raw;
+    try { raw = await readBodyLimited(req, 2048); } catch { res.writeHead(413); res.end("payload too large"); return; }
+    let body;
+    try { body = JSON.parse(raw.toString("utf8")); } catch { res.writeHead(400); res.end("bad json"); return; }
+    const target = profileName(body.name);
+    if (!target) { res.writeHead(400); res.end("bad request"); return; }
+    await db.cancelFriendRequest(session.player_name, target);
+    sendJson(res, { ok: true });
+    return;
+  }
+
+  if (url.pathname === "/friends/remove" && req.method === "POST") {
+    const session = await auth.getSession(req, db).catch(() => null);
+    if (!session) { res.writeHead(401); res.end("unauthorized"); return; }
+    let raw;
+    try { raw = await readBodyLimited(req, 2048); } catch { res.writeHead(413); res.end("payload too large"); return; }
+    let body;
+    try { body = JSON.parse(raw.toString("utf8")); } catch { res.writeHead(400); res.end("bad json"); return; }
+    const target = profileName(body.name);
+    if (!target) { res.writeHead(400); res.end("bad request"); return; }
+    await db.removeFriend(session.player_name, target);
+    sendJson(res, { ok: true });
     return;
   }
 
   // ---- ADMIN API ----
-  if (url.pathname.startsWith("/admin")) {
+  // Именно "/admin/" со слэшем — иначе сюда же попадает и статика /admin.html,
+  // не находит подходящий под-роут и улетает в 404 в конце блока.
+  if (url.pathname.startsWith("/admin/")) {
     const session = await auth.getSession(req, db).catch(() => null);
     const adminOk  = session && await db.isAdmin(session.google_id).catch(() => false);
     if (!adminOk) {
@@ -439,6 +623,32 @@ async function handleHttpRequest(req, res, url) {
       return;
     }
 
+    if (url.pathname === "/admin/avatar_reports" && req.method === "GET") {
+      const reports = await db.loadAvatarReports();
+      sendJson(res, reports.map((r) => ({
+        target: r.target_name,
+        reports: r.reports,
+        lastReportedAt: r.last_reported_at,
+        hasCustomAvatar: Boolean(getProfile(r.target_name).stats?.customAvatarUrl),
+      })));
+      return;
+    }
+
+    if (url.pathname === "/admin/reset_avatar" && req.method === "POST") {
+      let body = "";
+      req.on("data", (c) => (body += c));
+      await new Promise((r) => req.on("end", r));
+      const { name } = JSON.parse(body);
+      if (!name) { res.writeHead(400); res.end("bad request"); return; }
+      const entry = getProfile(name);
+      if (entry.stats.customAvatarUrl) removeAvatarFile(entry.stats.customAvatarUrl);
+      entry.stats.customAvatarUrl = null;
+      await persistProfile(name, entry);
+      await db.clearAvatarReports(name);
+      sendJson(res, { ok: true });
+      return;
+    }
+
     if (url.pathname === "/admin/me" && req.method === "GET") {
       sendJson(res, { name: session.player_name, googleId: session.google_id });
       return;
@@ -495,7 +705,6 @@ server.on("upgrade", (req, socket) => {
     type: "hello", id, grid: GRID,
     leaderboard: getEnrichedLeaderboard(),
     skins: SHOP_SKINS, catalog: SHOP_CATALOG, avatars: AVATAR_PRESETS,
-    modes: MODES, difficulties: DIFFICULTIES,
     shopData: defaultShopEntry(),
     feed: feedLog.slice(0, 8),
     presence: gameSync.buildPresence(buildSyncCtx()),
@@ -627,8 +836,9 @@ const playerHandlers = {
     recordScore(player);
     startNewLife(player.name);
     const skin = getSkinDef(getProfile(player.name).activeSkin);
-    players.set(id, createPlayer(id, player.name, player.difficulty, skin));
+    players.set(id, createPlayer(id, player.name, skin));
     sendSnapshot(id);
+    forceAoiResync(id);
     broadcastGameSync();
     broadcastPresence();
   },
@@ -660,7 +870,7 @@ function handleMessage(id, message) {
 function buildSyncCtx() {
   return {
     grid: GRID, players, food, bonuses, bosses, bonusTypes: BONUS_TYPES,
-    tickCount, tickMs: currentTickMs, gameMode, taggedPlayerId,
+    tickCount, tickMs: DEFAULT_TICK_MS,
     clientAoi, extrasFor: extrasForPlayer,
   };
 }
@@ -696,6 +906,17 @@ function resyncPlayer(clientId) {
   sendSnapshot(clientId);
 }
 
+// Заставляет всех остальных клиентов, которые уже "видели" этого
+// игрока (он был в их AOI), получить его свежую позицию как полный
+// join вместо обычного mv. Нужно после респавна: broadcastGameSync()
+// использует journal последнего тика, который не содержит информации
+// о респавне (он произошёл вне тика), поэтому без этого другие клиенты
+// продолжали бы хранить позицию игрока на месте смерти до следующего
+// тика — и увидели бы резкий "телепорт" через карту при следующем mv.
+function forceAoiResync(playerId) {
+  for (const aoiSet of clientAoi.values()) aoiSet.delete(playerId);
+}
+
 function pushFeed(kind, text, playerName = "") {
   const dedupeKey = `${kind}:${text}`;
   const now = Date.now();
@@ -719,9 +940,8 @@ function extrasForPlayer(p) {
   const cos = getPlayerCosmetics(p.name);
   return {
     best: Math.max(p.best, bestForName(p.name)),
-    spawnFrozenLeft: p.frozenUntil || 0,
+    spawnFrozenLeft: p.frozenUntil ? Math.max(0, p.frozenUntil - Date.now()) : 0,
     heat: Math.min(100, Math.round((p.score || 0) * 0.4 + (p.combo || 0) * 9)),
-    isTagged: gameMode === "tag_time" && p.id === taggedPlayerId,
     avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji, snakeHatId: cos.snakeHatId,
     nickColor: resolveNickColorHex(getProfile(p.name)),
   };
@@ -771,16 +991,10 @@ function tick() {
     if (!player.alive || !planned.has(player.id)) continue;
     const nextHead = planned.get(player.id);
     const key = foodMod.pointKey(nextHead);
-    const diff = DIFFICULTIES[player.difficulty] || DIFFICULTIES.normal;
 
-    if (!foodMod.insideGrid(nextHead, GRID)) {
-      if (diff.wallDeath) { killPlayer(player, "Врезался в стену"); continue; }
-      nextHead.x = (nextHead.x + GRID.width) % GRID.width;
-      nextHead.y = (nextHead.y + GRID.height) % GRID.height;
-    }
+    if (!foodMod.insideGrid(nextHead, GRID)) { killPlayer(player, "Врезался в стену"); continue; }
 
-    // Пересчитываем key после возможного wall-wrap
-    const resolvedKey = foodMod.pointKey(nextHead);
+    const resolvedKey = key;
 
     if (targetCounts.get(key) > 1) { killPlayer(player, "Столкновение лоб в лоб"); continue; }
 
@@ -797,17 +1011,10 @@ function tick() {
     }
 
     if (player.activeBonus !== "ghost" && occupied.has(resolvedKey)) {
-      if (gameMode === "tag_time" && player.id === taggedPlayerId && occupied.get(key) !== player.id) {
-        const hitId = occupied.get(key);
-        taggedPlayerId = hitId;
-        send(player.id, { type: "tagged", tagger: true });
-        if (sockets.has(hitId)) send(hitId, { type: "tagged", tagger: false });
-      } else {
-        const killerId = occupied.get(key);
-        const killer = killerId && killerId !== player.id ? players.get(killerId) : null;
-        killPlayer(player, killer ? `${killer.name} убил ${player.name}` : "Столкнулся со змейкой", { at: nextHead, killerPlayer: killer });
-        continue;
-      }
+      const killerId = occupied.get(resolvedKey);
+      const killer = killerId && killerId !== player.id ? players.get(killerId) : null;
+      killPlayer(player, killer ? `${killer.name} убил ${player.name}` : "Столкнулся со змейкой", { at: nextHead, killerPlayer: killer });
+      continue;
     }
 
     const eatenIdx = food.findIndex((item) => item.x === nextHead.x && item.y === nextHead.y);
@@ -913,11 +1120,11 @@ function recordScore(player) {
   if (!player || player.score <= 0) return;
   const existing = leaderboard.find((e) => e.name.toLowerCase() === player.name.toLowerCase());
   if (!existing || player.score > existing.score) {
-    if (existing) { existing.score = player.score; existing.date = new Date().toISOString(); existing.difficulty = player.difficulty; }
-    else leaderboard.push({ name: player.name, score: player.score, date: new Date().toISOString(), difficulty: player.difficulty });
+    if (existing) { existing.score = player.score; existing.date = new Date().toISOString(); }
+    else leaderboard.push({ name: player.name, score: player.score, date: new Date().toISOString() });
     leaderboard.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, "ru"));
     leaderboard = leaderboard.slice(0, MAX_LEADERS);
-    persistLeaderboardEntry(player.name, player.score, player.difficulty);
+    persistLeaderboardEntry(player.name, player.score);
     broadcast({ type: "leaderboard", leaderboard: getEnrichedLeaderboard() });
   }
 }
@@ -926,7 +1133,7 @@ function recordScore(player) {
 // PLAYER CREATION
 // ============================================================
 
-function createPlayer(id, name, difficulty, skin) {
+function createPlayer(id, name, skin) {
   const layout = foodMod.findSpawnLayout({
     players, food, bonuses, GRID,
     anyBossOccupies: (pt) => bossMod.anyBossOccupies(bosses, pt),
@@ -941,7 +1148,7 @@ function createPlayer(id, name, difficulty, skin) {
   const cos = getPlayerCosmetics(name);
 
   const player = {
-    id, name, difficulty,
+    id, name,
     color: skin.color !== "rainbow" ? skin.color : COLORS[(Number(id) - 1) % COLORS.length],
     headColor: skin.headColor || "#ffffff",
     skin: skin.id,
@@ -1018,6 +1225,7 @@ function normalizeProfile(raw) {
       playTimeMs: raw.stats?.playTimeMs || 0,
       sessionStart: raw.stats?.sessionStart || null,
       googlePicture: raw.stats?.googlePicture || null,
+      customAvatarUrl: raw.stats?.customAvatarUrl || null,
       battlePassScore: raw.stats?.battlePassScore || 0,
       battlePassClaimed: Array.isArray(raw.stats?.battlePassClaimed) ? [...raw.stats.battlePassClaimed] : [],
       battlePassUnlocked: Array.isArray(raw.stats?.battlePassUnlocked) ? [...raw.stats.battlePassUnlocked] : [],
@@ -1046,8 +1254,8 @@ function persistProfile(name, entry) {
   }).catch((err) => { console.error("DB player:", err.message); return entry; });
 }
 
-function persistLeaderboardEntry(name, score, difficulty) {
-  db.upsertLeaderboard(name, score, difficulty).catch((err) => console.error("DB leaderboard:", err.message));
+function persistLeaderboardEntry(name, score) {
+  db.upsertLeaderboard(name, score).catch((err) => console.error("DB leaderboard:", err.message));
 }
 
 function startNewLife(name) {
@@ -1127,7 +1335,7 @@ async function handleRoomCreate(id, message) {
   const cos  = getPlayerCosmetics(name);
   room.addWaiter(id, name, cos);
   socketRoom.set(id, room.code);
-  send(id, { type: "room_created", code: room.code, ...room.lobbySnapshot() });
+  send(id, { ...room.lobbySnapshot(), type: "room_created", code: room.code });
 }
 
 async function handleRoomJoin(id, message) {
@@ -1188,6 +1396,7 @@ function sendJoinFallback(id, name) {
   startNewLife(name);
   players.set(id, createPlayer(id, name, "normal", skin));
   sendSnapshot(id);
+  forceAoiResync(id);
   broadcastGameSync();
 }
 
@@ -1196,8 +1405,6 @@ async function handleRoomStart(id, message) {
   if (!room) { send(id, { type: "room_error", text: "Вы не в комнате." }); return; }
   const result = room.start(id);
   if (!result.ok) { send(id, { type: "room_error", text: result.text }); return; }
-  // Рестартуем глобальный тик если нужно (публичное лобби)
-  restartTickInterval();
 }
 
 async function handleRoomLeave(id, message) {
@@ -1209,17 +1416,13 @@ async function handleJoin(id, message) {
   const resolved = await resolvePlayName(id, message.name);
   if (!resolved.ok) { send(id, { type: "notice", text: resolved.text }); return; }
   const name = resolved.name;
-  const difficulty = DIFFICULTIES[message.difficulty] ? message.difficulty : "normal";
-  const mode = MODES[message.mode] ? message.mode : "classic";
-  gameMode = mode;
   const prof = getProfile(name);
   const skin = getSkinDef(prof.activeSkin);
   startNewLife(name);
   shopClients.set(id, name);
-  players.set(id, createPlayer(id, name, difficulty, skin));
-  if (mode === "tag_time" && !taggedPlayerId) taggedPlayerId = id;
-  restartTickInterval();
+  players.set(id, createPlayer(id, name, skin));
   sendSnapshot(id);
+  forceAoiResync(id);
   broadcastGameSync();
   broadcastPresence();
 }
@@ -1502,13 +1705,13 @@ function processBattlePassRewards(name, entry) {
 function getEnrichedLeaderboard() {
   return leaderboard.map((e, index) => {
     const prof = getProfile(e.name);
-    return { ...e, rank: index + 1, avatar: prof.avatar, googlePicture: prof.stats?.googlePicture || null, deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0, games: prof.stats?.games || 0, best: Math.max(e.score, prof.stats?.best || 0), coins: prof.coins || 0 };
+    return { ...e, rank: index + 1, avatar: prof.avatar, googlePicture: prof.stats?.googlePicture || null, customAvatarUrl: prof.stats?.customAvatarUrl || null, deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0, games: prof.stats?.games || 0, best: Math.max(e.score, prof.stats?.best || 0), coins: prof.coins || 0 };
   });
 }
 
 function getWealthLeaderboard() {
   return Object.entries(shopData)
-    .map(([name, prof]) => ({ name, coins: prof.coins || 0, score: prof.coins || 0, avatar: prof.avatar || "😎", googlePicture: prof.stats?.googlePicture || null, deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0, games: prof.stats?.games || 0, best: prof.stats?.best || 0 }))
+    .map(([name, prof]) => ({ name, coins: prof.coins || 0, score: prof.coins || 0, avatar: prof.avatar || "😎", googlePicture: prof.stats?.googlePicture || null, customAvatarUrl: prof.stats?.customAvatarUrl || null, deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0, games: prof.stats?.games || 0, best: prof.stats?.best || 0 }))
     .filter((e) => e.coins > 0)
     .sort((a, b) => b.coins - a.coins || a.name.localeCompare(b.name, "ru"))
     .slice(0, MAX_LEADERS)
@@ -1538,7 +1741,7 @@ async function bootstrap() {
       food, players, occupancySet, tickJournal: gameSync.createJournal(), GRID,
       anyBossOccupies: (pt) => bossMod.anyBossOccupies(bosses, pt),
     });
-    tickInterval = setInterval(tick, DIFFICULTIES.normal.tickMs);
+    tickInterval = setInterval(tick, DEFAULT_TICK_MS);
     setInterval(spawnBonuses, 8000);
     setInterval(broadcastPresence, 5000);
     setInterval(pingClients, 25000);
@@ -1615,4 +1818,20 @@ function corsHeaders() {
 function sendJson(res, payload) {
   res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", ...corsHeaders() });
   res.end(JSON.stringify(payload));
+}
+
+// Читаем тело запроса с жёстким лимитом байт — иначе злоумышленник может
+// стримить сколько угодно данных и посадить память процесса.
+function readBodyLimited(req, maxBytes) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > maxBytes) { req.destroy(); reject(new Error("payload_too_large")); return; }
+      chunks.push(chunk);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks)));
+    req.on("error", reject);
+  });
 }
