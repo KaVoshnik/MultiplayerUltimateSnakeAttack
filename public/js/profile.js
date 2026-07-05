@@ -12,6 +12,7 @@ const avatarUploadInput = document.querySelector("#avatarUploadInput");
 const btnUploadAvatar = document.querySelector("#btnUploadAvatar");
 const btnRemoveCustomAvatar = document.querySelector("#btnRemoveCustomAvatar");
 const btnReportAvatar = document.querySelector("#btnReportAvatar");
+const btnFriendAction = document.querySelector("#btnFriendAction");
 
 const AVATAR_UPLOAD_MAX_BYTES = 1.5 * 1024 * 1024;
 
@@ -255,6 +256,7 @@ async function loadPublicProfile(name) {
     btnReportAvatar.classList.remove("hidden");
     btnReportAvatar.onclick = () => reportAvatar(data.name);
   }
+  renderFriendButton(data.name, data.friendStatus);
 
   const displayName = document.querySelector("#accountDisplayName");
   const emailEl = document.querySelector("#accountEmail");
@@ -271,6 +273,83 @@ async function loadPublicProfile(name) {
   drawPreview();
   renderAvatars();
   return true;
+}
+
+function renderFriendButton(targetName, status) {
+  if (!btnFriendAction) return;
+  if (!state.reporterLoggedIn) { btnFriendAction.classList.add("hidden"); return; }
+
+  btnFriendAction.classList.remove("hidden");
+  btnFriendAction.disabled = false;
+  btnFriendAction.onclick = null;
+
+  if (status === "friends") {
+    btnFriendAction.textContent = "✓ В друзьях — удалить";
+    btnFriendAction.onclick = async () => {
+      if (!confirm(`Удалить ${targetName} из друзей?`)) return;
+      btnFriendAction.disabled = true;
+      const ok = await friendPost("/friends/remove", targetName);
+      showToast(ok ? `${targetName} удалён из друзей` : "Не получилось удалить.");
+      renderFriendButton(targetName, ok ? "none" : status);
+    };
+  } else if (status === "outgoing") {
+    btnFriendAction.textContent = "Заявка отправлена — отменить";
+    btnFriendAction.onclick = async () => {
+      btnFriendAction.disabled = true;
+      const ok = await friendPost("/friends/cancel", targetName);
+      showToast(ok ? "Заявка отменена" : "Не получилось отменить.");
+      renderFriendButton(targetName, ok ? "none" : status);
+    };
+  } else if (status === "incoming") {
+    btnFriendAction.textContent = "Принять заявку в друзья";
+    btnFriendAction.onclick = async () => {
+      btnFriendAction.disabled = true;
+      const ok = await friendPost("/friends/accept", targetName);
+      showToast(ok ? `Теперь вы друзья с ${targetName}` : "Не получилось принять.");
+      renderFriendButton(targetName, ok ? "friends" : status);
+    };
+  } else {
+    btnFriendAction.textContent = "Добавить в друзья";
+    btnFriendAction.onclick = async () => {
+      btnFriendAction.disabled = true;
+      try {
+        const res = await fetch("/friends/request", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ target: targetName }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.status === "accepted") {
+          showToast(`Вы с ${targetName} теперь друзья! (взаимная заявка)`);
+          renderFriendButton(targetName, "friends");
+        } else if (res.ok) {
+          showToast(`Заявка отправлена игроку ${targetName}`);
+          renderFriendButton(targetName, "outgoing");
+        } else {
+          showToast("Не получилось отправить заявку.");
+          renderFriendButton(targetName, "none");
+        }
+      } catch {
+        showToast("Не получилось отправить заявку.");
+        renderFriendButton(targetName, "none");
+      }
+    };
+  }
+}
+
+async function friendPost(path, name) {
+  try {
+    const res = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ name }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
 async function reportAvatar(target) {
