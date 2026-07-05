@@ -173,6 +173,30 @@ function connect() {
         document.querySelector("#onlineCount").textContent = "Сервер онлайн";
       }
     }
+    if (msg.type === "room_invite") showInviteToast(msg.from, msg.code);
   });
   socket.addEventListener("close", () => setTimeout(connect, 1500));
+}
+
+function showInviteToast(from, code) {
+  let wrap = document.querySelector(".toastWrap");
+  if (!wrap) {
+    wrap = document.createElement("div");
+    wrap.className = "toastWrap";
+    document.body.append(wrap);
+  }
+  const toast = document.createElement("div");
+  toast.className = "toast";
+  toast.style.display = "flex";
+  toast.style.alignItems = "center";
+  toast.style.gap = "10px";
+  const span = document.createElement("span");
+  span.textContent = `${from} зовёт в комнату`;
+  const btn = document.createElement("button");
+  btn.textContent = "Войти";
+  btn.style.cssText = "padding:4px 10px;border-radius:6px;border:1px solid #62a0ea;color:#62a0ea;background:none;cursor:pointer;flex-shrink:0";
+  btn.onclick = () => { location.href = `/rooms.html?code=${encodeURIComponent(code)}`; };
+  toast.append(span, btn);
+  wrap.append(toast);
+  setTimeout(() => toast.remove(), 15000);
 }

@@ -218,6 +218,65 @@
       border-radius: 12px;
       cursor: pointer;
     }
+
+    .btn-invite {
+      width: 100%;
+      padding: 11px;
+      font-size: 13px;
+      background: none;
+      border: 1px solid #62a0ea;
+      color: #62a0ea;
+      border-radius: 12px;
+      cursor: pointer;
+      margin-bottom: 10px;
+    }
+
+    .invite-panel {
+      background: #0d0d0d;
+      border: 1px solid #2a2a2a;
+      border-radius: 12px;
+      padding: 10px;
+      margin-bottom: 10px;
+      max-height: 220px;
+      overflow-y: auto;
+    }
+
+    .invite-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 6px;
+    }
+
+    .invite-row .ava {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255,255,255,.06);
+      font-size: 1rem;
+      flex-shrink: 0;
+      object-fit: cover;
+    }
+
+    .invite-row .n { flex: 1; font-size: 13px; }
+    .invite-row .dot { width: 8px; height: 8px; border-radius: 50%; background: #555; flex-shrink: 0; }
+    .invite-row .dot.on { background: #3de88a; box-shadow: 0 0 6px rgba(61,232,138,.7); }
+
+    .invite-row button {
+      padding: 5px 10px;
+      border-radius: 6px;
+      border: 1px solid #62a0ea;
+      color: #62a0ea;
+      background: none;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .invite-row button:disabled { opacity: .4; cursor: default; }
+    .invite-empty { text-align: center; color: #888; font-size: 12px; padding: 10px; }
   </style>
 </head>
 
@@ -265,6 +324,8 @@
       <div id="memberList"></div>
       <button class="btn-start" id="btnStart" disabled>Начать игру</button>
       <p class="wait-msg hidden" id="waitMsg">Ожидаем хоста…</p>
+      <button class="btn-invite" id="btnInvite">👥 Пригласить друга</button>
+      <div id="invitePanel" class="invite-panel hidden"></div>
       <button class="btn-leave" id="btnLeave">Покинуть комнату</button>
     </div>
   </div>
@@ -278,6 +339,7 @@
       var ws = null;
       var room = null;
       var pending = null;
+      var pendingAutoJoinCode = new URLSearchParams(location.search).get("code");
 
       function show(id) {
         ["sMenu", "sCode", "sLobby"].forEach(function (s) {
@@ -296,6 +358,61 @@
       function checkName() {
         if (!NAME) { showToast("Задай никнейм в профиле!"); return false; }
         return true;
+      }
+
+      function showInviteToast(from, code) {
+        var wrap = document.querySelector(".toastWrap");
+        if (!wrap) { wrap = document.createElement("div"); wrap.className = "toastWrap"; document.body.appendChild(wrap); }
+        var toast = document.createElement("div");
+        toast.className = "toast";
+        toast.style.display = "flex";
+        toast.style.alignItems = "center";
+        toast.style.gap = "10px";
+        var span = document.createElement("span");
+        span.textContent = escapeHtml(from) + " зовёт в комнату";
+        var btn = document.createElement("button");
+        btn.textContent = "Войти";
+        btn.style.cssText = "padding:4px 10px;border-radius:6px;border:1px solid #62a0ea;color:#62a0ea;background:none;cursor:pointer;flex-shrink:0";
+        btn.onclick = function () {
+          toast.remove();
+          if (!checkName()) return;
+          if (room) wsend({ type: "room_leave" });
+          wsend({ type: "room_join", name: NAME, code: code });
+        };
+        toast.appendChild(span);
+        toast.appendChild(btn);
+        wrap.appendChild(toast);
+        setTimeout(function () { toast.remove(); }, 15000);
+      }
+
+      async function renderInvitePanel() {
+        var panel = document.getElementById("invitePanel");
+        panel.innerHTML = '<div class="invite-empty">Загрузка…</div>';
+        try {
+          var res = await fetch("/friends", { credentials: "same-origin" });
+          if (!res.ok) { panel.innerHTML = '<div class="invite-empty">Войди через Google в профиле, чтобы приглашать друзей.</div>'; return; }
+          var data = await res.json();
+          if (!data.friends.length) { panel.innerHTML = '<div class="invite-empty">Пока нет друзей — добавь на странице «Друзья».</div>'; return; }
+          panel.innerHTML = "";
+          data.friends.forEach(function (f) {
+            var row = document.createElement("div");
+            row.className = "invite-row";
+            var avaHtml = f.customAvatarUrl ? '<img class="ava" src="' + escapeHtml(f.customAvatarUrl) + '" />' :
+              f.googlePicture ? '<img class="ava" src="' + escapeHtml(f.googlePicture) + '" />' :
+              '<span class="ava">' + (f.avatar || "😎") + '</span>';
+            row.innerHTML = avaHtml +
+              '<span class="dot ' + (f.online ? "on" : "") + '"></span>' +
+              '<span class="n">' + escapeHtml(f.name) + '</span>' +
+              '<button' + (f.online ? "" : " disabled") + '>Позвать</button>';
+            row.querySelector("button").onclick = function () {
+              wsend({ type: "room_invite", name: f.name });
+              showToast("Приглашение отправлено!");
+            };
+            panel.appendChild(row);
+          });
+        } catch (e) {
+          panel.innerHTML = '<div class="invite-empty">Не получилось загрузить друзей.</div>';
+        }
       }
 
       function renderLobby(msg) {
@@ -335,6 +452,11 @@
         ws.onopen = function () {
           if (NAME) wsend({ type: "shop_connect", name: NAME });
           if (pending) { wsend(pending); pending = null; }
+          if (pendingAutoJoinCode) {
+            var code = pendingAutoJoinCode;
+            pendingAutoJoinCode = null;
+            if (checkName()) wsend({ type: "room_join", name: NAME, code: code.toUpperCase() });
+          }
         };
         ws.onclose = function () { setTimeout(connect, 1200); };
         ws.onmessage = function (e) {
@@ -346,6 +468,7 @@
           if (msg.type === "room_error") { showToast(msg.text); document.getElementById("codeErr").textContent = msg.text; }
           if (msg.type === "room_left") { room = null; show("sMenu"); }
           if (msg.type === "notice") showToast(msg.text);
+          if (msg.type === "room_invite") showInviteToast(msg.from, msg.code);
           if (msg.type === "snapshot") {
             sessionStorage.setItem("roomCode", room ? room.code : "");
             location.href = "/game.html";
@@ -393,6 +516,13 @@
         wsend({ type: "room_leave" });
         room = null;
         show("sMenu");
+      };
+
+      document.getElementById("btnInvite").onclick = function () {
+        var panel = document.getElementById("invitePanel");
+        var isHidden = panel.className.indexOf("hidden") !== -1;
+        panel.className = isHidden ? "invite-panel" : "invite-panel hidden";
+        if (isHidden) renderInvitePanel();
       };
 
       connect();
