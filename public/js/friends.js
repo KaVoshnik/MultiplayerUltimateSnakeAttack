@@ -19,10 +19,10 @@ const searchResults = document.querySelector("#friendsSearchResults");
 let loggedIn = false;
 let searchTimer = null;
 
-function miniAvatarHtml(entry) {
-  if (entry.customAvatarUrl) return `<img class="lbAvatarImg" src="${escapeHtml(entry.customAvatarUrl)}" alt="" />`;
-  if (entry.googlePicture) return `<img class="lbAvatarImg" src="${escapeHtml(entry.googlePicture)}" alt="" referrerpolicy="no-referrer" />`;
-  return `<span class="lbAvatarEmoji">${entry.avatar || "😎"}</span>`;
+function miniAvatarHtml(entry, className = "") {
+  if (entry.customAvatarUrl) return `<img class="${className} lbAvatarImg" src="${escapeHtml(entry.customAvatarUrl)}" alt="" />`;
+  if (entry.googlePicture) return `<img class="${className} lbAvatarImg" src="${escapeHtml(entry.googlePicture)}" alt="" referrerpolicy="no-referrer" />`;
+  return `<span class="${className} lbAvatarEmoji">${entry.avatar || "😎"}</span>`;
 }
 
 function friendRow(entry, actionsHtml) {
@@ -143,7 +143,7 @@ async function runSearch(query) {
         const row = document.createElement("div");
         row.className = "lbSearchRow";
         row.innerHTML = `
-          ${miniAvatarHtml(p)}
+          ${miniAvatarHtml(p, "lbSearchAvatar")}
           <span class="lbSearchName">${escapeHtml(p.name)}</span>
           <span class="lbSearchMeta">🎮 ${p.games || 0}</span>
           <button type="button" class="lbSearchAddBtn">Добавить</button>
