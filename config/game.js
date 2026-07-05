@@ -12,6 +12,9 @@ const BAD_FOOD_RATIO = 0.32;
 // лобби (server.js) лимита нет.
 const MAX_PLAYERS = 16;
 
+// Загрузка своей аватарки: жёсткий предел на декодированный размер файла.
+const AVATAR_UPLOAD_MAX_BYTES = 1.5 * 1024 * 1024; // 1.5 МБ
+
 // Награда за килл в публичном лобби (server.js). Комнаты вызывают
 // awardKillCoins через инжектированную зависимость из server.js,
 // так что используют то же значение, но напрямую не объявляют его.
@@ -31,6 +34,7 @@ module.exports = {
   DEFAULT_TICK_MS,
   BAD_FOOD_RATIO,
   MAX_PLAYERS,
+  AVATAR_UPLOAD_MAX_BYTES,
   KILL_REWARD_COINS,
   BONUS_TYPES,
 };
