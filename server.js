@@ -441,7 +441,9 @@ async function handleHttpRequest(req, res, url) {
   }
 
   // ---- ADMIN API ----
-  if (url.pathname.startsWith("/admin")) {
+  // Именно "/admin/" со слэшем — иначе сюда же попадает и статика /admin.html,
+  // не находит подходящий под-роут и улетает в 404 в конце блока.
+  if (url.pathname.startsWith("/admin/")) {
     const session = await auth.getSession(req, db).catch(() => null);
     const adminOk  = session && await db.isAdmin(session.google_id).catch(() => false);
     if (!adminOk) {
