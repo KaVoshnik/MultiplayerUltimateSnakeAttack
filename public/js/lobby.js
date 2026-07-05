@@ -30,11 +30,25 @@ syncSessionUser({
     if (socket?.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({ type: "shop_connect", name: me.name }));
     }
+    loadFriendsBadge();
   },
 }).then((me) => {
   if (me?.loggedIn) sessionUser = me;
   connect();
 });
+
+async function loadFriendsBadge() {
+  const badge = document.querySelector("#friendsBadge");
+  if (!badge) return;
+  try {
+    const res = await fetch("/friends", { credentials: "same-origin" });
+    if (!res.ok) return;
+    const data = await res.json();
+    const count = data.incoming?.length || 0;
+    badge.textContent = String(count);
+    badge.classList.toggle("hidden", count === 0);
+  } catch { /* тихо игнорируем — бейдж не критичен */ }
+}
 
 // Matrix rain + particles hybrid
 const pCanvas = document.querySelector("#particles");

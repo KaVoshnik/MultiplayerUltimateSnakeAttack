@@ -45,6 +45,7 @@ const browserGlobals = {
 
   location: "readonly",
   history: "readonly",
+  confirm: "readonly",
 
   Image: "readonly",
   FileReader: "readonly",
@@ -170,6 +171,7 @@ module.exports = [
       "public/js/lobby.js",
       "public/js/battlepass.js",
       "public/js/leaderboard.js",
+      "public/js/friends.js",
     ],
 
     languageOptions: {

@@ -106,6 +106,19 @@ async function init() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE (reporter_name, target_name)
     );
+
+    CREATE TABLE IF NOT EXISTS friendships (
+      id SERIAL PRIMARY KEY,
+      requester_name VARCHAR(32) NOT NULL,
+      target_name VARCHAR(32) NOT NULL,
+      status VARCHAR(16) NOT NULL DEFAULT 'pending',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      responded_at TIMESTAMPTZ,
+      UNIQUE (requester_name, target_name)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_friendships_requester ON friendships (requester_name);
+    CREATE INDEX IF NOT EXISTS idx_friendships_target ON friendships (target_name);
   `);
 
   await migratePlayersTable();
@@ -327,6 +340,14 @@ async function renamePlayer(oldName, newName, entry) {
       "UPDATE auth_sessions SET player_name = $1 WHERE LOWER(player_name) = LOWER($2)",
       [newName, oldName],
     );
+    await client.query(
+      "UPDATE friendships SET requester_name = $1 WHERE LOWER(requester_name) = LOWER($2)",
+      [newName, oldName],
+    );
+    await client.query(
+      "UPDATE friendships SET target_name = $1 WHERE LOWER(target_name) = LOWER($2)",
+      [newName, oldName],
+    );
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
@@ -349,7 +370,7 @@ async function upsertLeaderboard(name, score) {
 }
 
 async function resetAll() {
-  await pool.query("TRUNCATE players, leaderboard, google_users, auth_sessions, avatar_reports RESTART IDENTITY");
+  await pool.query("TRUNCATE players, leaderboard, google_users, auth_sessions, avatar_reports, friendships RESTART IDENTITY");
 }
 
 async function isAdmin(googleId) {
@@ -405,6 +426,118 @@ async function clearAvatarReports(targetName) {
   await pool.query("DELETE FROM avatar_reports WHERE target_name = $1", [targetName]);
 }
 
+// ---- FRIENDS ----
+
+// Если у B уже есть входящий реквест от A — вместо второй pending-строки
+// сразу принимаем существующую (взаимный запрос = дружба).
+async function sendFriendRequest(fromName, toName) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows: reverse } = await client.query(
+      `SELECT id FROM friendships
+       WHERE requester_name = $1 AND target_name = $2 AND status = 'pending'`,
+      [toName, fromName],
+    );
+    if (reverse.length > 0) {
+      await client.query(
+        `UPDATE friendships SET status = 'accepted', responded_at = NOW() WHERE id = $1`,
+        [reverse[0].id],
+      );
+      await client.query("COMMIT");
+      return "accepted";
+    }
+    await client.query(
+      `INSERT INTO friendships (requester_name, target_name, status)
+       VALUES ($1, $2, 'pending')
+       ON CONFLICT (requester_name, target_name) DO NOTHING`,
+      [fromName, toName],
+    );
+    await client.query("COMMIT");
+    return "requested";
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function respondFriendRequest(targetName, requesterName, accept) {
+  if (accept) {
+    await pool.query(
+      `UPDATE friendships SET status = 'accepted', responded_at = NOW()
+       WHERE requester_name = $1 AND target_name = $2 AND status = 'pending'`,
+      [requesterName, targetName],
+    );
+  } else {
+    await pool.query(
+      `DELETE FROM friendships WHERE requester_name = $1 AND target_name = $2 AND status = 'pending'`,
+      [requesterName, targetName],
+    );
+  }
+}
+
+async function cancelFriendRequest(requesterName, targetName) {
+  await pool.query(
+    `DELETE FROM friendships WHERE requester_name = $1 AND target_name = $2 AND status = 'pending'`,
+    [requesterName, targetName],
+  );
+}
+
+async function removeFriend(nameA, nameB) {
+  await pool.query(
+    `DELETE FROM friendships WHERE status = 'accepted'
+     AND ((requester_name = $1 AND target_name = $2) OR (requester_name = $2 AND target_name = $1))`,
+    [nameA, nameB],
+  );
+}
+
+// 'friends' | 'outgoing' (я отправил, жду) | 'incoming' (мне прислали) | 'none'
+async function getFriendshipStatus(nameA, nameB) {
+  const { rows } = await pool.query(
+    `SELECT requester_name, status FROM friendships
+     WHERE (requester_name = $1 AND target_name = $2) OR (requester_name = $2 AND target_name = $1)
+     LIMIT 1`,
+    [nameA, nameB],
+  );
+  if (rows.length === 0) return "none";
+  if (rows[0].status === "accepted") return "friends";
+  return rows[0].requester_name.toLowerCase() === nameA.toLowerCase() ? "outgoing" : "incoming";
+}
+
+async function listFriends(name) {
+  const { rows } = await pool.query(
+    `SELECT CASE WHEN LOWER(requester_name) = LOWER($1) THEN target_name ELSE requester_name END AS name,
+            responded_at
+     FROM friendships
+     WHERE status = 'accepted' AND (LOWER(requester_name) = LOWER($1) OR LOWER(target_name) = LOWER($1))
+     ORDER BY responded_at DESC NULLS LAST`,
+    [name],
+  );
+  return rows;
+}
+
+async function listIncomingRequests(name) {
+  const { rows } = await pool.query(
+    `SELECT requester_name AS name, created_at
+     FROM friendships WHERE status = 'pending' AND LOWER(target_name) = LOWER($1)
+     ORDER BY created_at DESC`,
+    [name],
+  );
+  return rows;
+}
+
+async function listOutgoingRequests(name) {
+  const { rows } = await pool.query(
+    `SELECT target_name AS name, created_at
+     FROM friendships WHERE status = 'pending' AND LOWER(requester_name) = LOWER($1)
+     ORDER BY created_at DESC`,
+    [name],
+  );
+  return rows;
+}
+
 async function close() {
   if (pool) await pool.end();
 }
@@ -425,6 +558,14 @@ module.exports = {
   reportAvatar,
   loadAvatarReports,
   clearAvatarReports,
+  sendFriendRequest,
+  respondFriendRequest,
+  cancelFriendRequest,
+  removeFriend,
+  getFriendshipStatus,
+  listFriends,
+  listIncomingRequests,
+  listOutgoingRequests,
   findGoogleUser,
   findGoogleUserByPlayerName,
   findPlayerByGoogleId,

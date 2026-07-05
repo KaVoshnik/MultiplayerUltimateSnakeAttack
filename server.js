@@ -174,6 +174,14 @@ const profileIndex = new Map();
 let shopData = {}; // canonicalName -> profile entry
 
 const shopClients = new Map(); // socket id -> player name
+
+function isPlayerOnline(name) {
+  const lower = name.toLowerCase();
+  for (const clientName of shopClients.values()) {
+    if (clientName && clientName.toLowerCase() === lower) return true;
+  }
+  return false;
+}
 const socketSessions = new Map(); // socket id -> auth session
 let leaderboard = [];
 let tickCount = 0;
@@ -349,10 +357,17 @@ async function handleHttpRequest(req, res, url) {
     const key = findCanonicalName(name);
     if (!key) { sendJson(res, { error: "not_found" }); return; }
     const prof = getProfile(key);
+    const session = await auth.getSession(req, db).catch(() => null);
+    let friendStatus = "none";
+    if (session && session.player_name.toLowerCase() !== key.toLowerCase()) {
+      friendStatus = await db.getFriendshipStatus(session.player_name, key).catch(() => "none");
+    }
     sendJson(res, {
       id: prof.id || null, name: key, coins: prof.coins, activeSkin: prof.activeSkin,
       avatar: prof.avatar, googlePicture: prof.stats?.googlePicture || null, customAvatarUrl: prof.stats?.customAvatarUrl || null,
       stats: { games: prof.stats?.games || 0, deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0, best: prof.stats?.best || 0, playTimeMs: prof.stats?.playTimeMs || 0 },
+      online: isPlayerOnline(key),
+      friendStatus,
     });
     return;
   }
@@ -436,6 +451,109 @@ async function handleHttpRequest(req, res, url) {
     }
 
     await db.reportAvatar(session.player_name, target);
+    sendJson(res, { ok: true });
+    return;
+  }
+
+  // ---- FRIENDS ----
+  if (url.pathname === "/friends" && req.method === "GET") {
+    const session = await auth.getSession(req, db).catch(() => null);
+    if (!session) { res.writeHead(401); res.end("unauthorized"); return; }
+    const me = session.player_name;
+
+    const enrich = (row, extraDate) => {
+      const prof = getProfile(row.name);
+      return {
+        name: row.name,
+        avatar: prof.avatar,
+        googlePicture: prof.stats?.googlePicture || null,
+        customAvatarUrl: prof.stats?.customAvatarUrl || null,
+        best: prof.stats?.best || 0,
+        online: isPlayerOnline(row.name),
+        since: extraDate ? row[extraDate] : undefined,
+      };
+    };
+
+    const [friends, incoming, outgoing] = await Promise.all([
+      db.listFriends(me), db.listIncomingRequests(me), db.listOutgoingRequests(me),
+    ]);
+    sendJson(res, {
+      friends: friends.map((r) => enrich(r, "responded_at")).sort((a, b) => Number(b.online) - Number(a.online)),
+      incoming: incoming.map((r) => enrich(r, "created_at")),
+      outgoing: outgoing.map((r) => enrich(r, "created_at")),
+    });
+    return;
+  }
+
+  if (url.pathname === "/friends/request" && req.method === "POST") {
+    const session = await auth.getSession(req, db).catch(() => null);
+    if (!session) { res.writeHead(401); res.end("unauthorized"); return; }
+    let raw;
+    try { raw = await readBodyLimited(req, 2048); } catch { res.writeHead(413); res.end("payload too large"); return; }
+    let body;
+    try { body = JSON.parse(raw.toString("utf8")); } catch { res.writeHead(400); res.end("bad json"); return; }
+    const target = findCanonicalName(profileName(body.target) || "");
+    if (!target) { res.writeHead(400); res.end("player not found"); return; }
+    if (target.toLowerCase() === session.player_name.toLowerCase()) {
+      res.writeHead(400); res.end("can't friend yourself"); return;
+    }
+    const status = await db.sendFriendRequest(session.player_name, target);
+    sendJson(res, { ok: true, status }); // "requested" | "accepted" (если запрос был встречным)
+    return;
+  }
+
+  if (url.pathname === "/friends/accept" && req.method === "POST") {
+    const session = await auth.getSession(req, db).catch(() => null);
+    if (!session) { res.writeHead(401); res.end("unauthorized"); return; }
+    let raw;
+    try { raw = await readBodyLimited(req, 2048); } catch { res.writeHead(413); res.end("payload too large"); return; }
+    let body;
+    try { body = JSON.parse(raw.toString("utf8")); } catch { res.writeHead(400); res.end("bad json"); return; }
+    const requester = profileName(body.name);
+    if (!requester) { res.writeHead(400); res.end("bad request"); return; }
+    await db.respondFriendRequest(session.player_name, requester, true);
+    sendJson(res, { ok: true });
+    return;
+  }
+
+  if (url.pathname === "/friends/decline" && req.method === "POST") {
+    const session = await auth.getSession(req, db).catch(() => null);
+    if (!session) { res.writeHead(401); res.end("unauthorized"); return; }
+    let raw;
+    try { raw = await readBodyLimited(req, 2048); } catch { res.writeHead(413); res.end("payload too large"); return; }
+    let body;
+    try { body = JSON.parse(raw.toString("utf8")); } catch { res.writeHead(400); res.end("bad json"); return; }
+    const requester = profileName(body.name);
+    if (!requester) { res.writeHead(400); res.end("bad request"); return; }
+    await db.respondFriendRequest(session.player_name, requester, false);
+    sendJson(res, { ok: true });
+    return;
+  }
+
+  if (url.pathname === "/friends/cancel" && req.method === "POST") {
+    const session = await auth.getSession(req, db).catch(() => null);
+    if (!session) { res.writeHead(401); res.end("unauthorized"); return; }
+    let raw;
+    try { raw = await readBodyLimited(req, 2048); } catch { res.writeHead(413); res.end("payload too large"); return; }
+    let body;
+    try { body = JSON.parse(raw.toString("utf8")); } catch { res.writeHead(400); res.end("bad json"); return; }
+    const target = profileName(body.name);
+    if (!target) { res.writeHead(400); res.end("bad request"); return; }
+    await db.cancelFriendRequest(session.player_name, target);
+    sendJson(res, { ok: true });
+    return;
+  }
+
+  if (url.pathname === "/friends/remove" && req.method === "POST") {
+    const session = await auth.getSession(req, db).catch(() => null);
+    if (!session) { res.writeHead(401); res.end("unauthorized"); return; }
+    let raw;
+    try { raw = await readBodyLimited(req, 2048); } catch { res.writeHead(413); res.end("payload too large"); return; }
+    let body;
+    try { body = JSON.parse(raw.toString("utf8")); } catch { res.writeHead(400); res.end("bad json"); return; }
+    const target = profileName(body.name);
+    if (!target) { res.writeHead(400); res.end("bad request"); return; }
+    await db.removeFriend(session.player_name, target);
     sendJson(res, { ok: true });
     return;
   }
