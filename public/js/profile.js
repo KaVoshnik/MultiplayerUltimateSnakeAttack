@@ -8,6 +8,12 @@ const accountGuest = document.querySelector("#accountGuest");
 const accountUser = document.querySelector("#accountUser");
 const profileLoginHint = document.querySelector("#profileLoginHint");
 const profileContent = document.querySelector("#profileContent");
+const avatarUploadInput = document.querySelector("#avatarUploadInput");
+const btnUploadAvatar = document.querySelector("#btnUploadAvatar");
+const btnRemoveCustomAvatar = document.querySelector("#btnRemoveCustomAvatar");
+const btnReportAvatar = document.querySelector("#btnReportAvatar");
+
+const AVATAR_UPLOAD_MAX_BYTES = 1.5 * 1024 * 1024;
 
 const state = {
   socket: null,
@@ -32,6 +38,33 @@ function setProfileEditable(enabled) {
   avatarGrid.querySelectorAll(".avatarBtn").forEach((btn) => {
     btn.disabled = !enabled;
   });
+  if (avatarUploadInput) avatarUploadInput.disabled = !enabled;
+  if (btnUploadAvatar) btnUploadAvatar.disabled = !enabled;
+  if (btnRemoveCustomAvatar) btnRemoveCustomAvatar.disabled = !enabled;
+}
+
+// Приоритет: своя загруженная фотка > аватарка из Google > эмодзи-пресет.
+function applyAvatarVisuals({ customAvatarUrl, googlePicture, avatar }) {
+  const customImg = document.querySelector("#accountCustomAvatar");
+  const googleImg = document.querySelector("#accountGoogleAvatar");
+  const emojiEl = document.querySelector("#accountAvatarEmoji");
+
+  customImg?.classList.add("hidden");
+  googleImg?.classList.add("hidden");
+  emojiEl?.classList.add("hidden");
+
+  if (customAvatarUrl && customImg) {
+    customImg.src = customAvatarUrl;
+    customImg.classList.remove("hidden");
+  } else if (googlePicture && googleImg) {
+    googleImg.src = googlePicture;
+    googleImg.classList.remove("hidden");
+  } else if (emojiEl) {
+    emojiEl.textContent = avatar || "😎";
+    emojiEl.classList.remove("hidden");
+  }
+
+  if (btnRemoveCustomAvatar) btnRemoveCustomAvatar.classList.toggle("hidden", !customAvatarUrl);
 }
 
 function renderAccount(me) {
@@ -43,24 +76,15 @@ function renderAccount(me) {
 
     const displayName = document.querySelector("#accountDisplayName");
     const emailEl = document.querySelector("#accountEmail");
-    const googleImg = document.querySelector("#accountGoogleAvatar");
-    const emojiEl = document.querySelector("#accountAvatarEmoji");
 
     if (displayName) displayName.textContent = me.name;
     if (emailEl) emailEl.textContent = me.email || "";
 
-    const picture = me.picture || me.shopData?.stats?.googlePicture;
-    if (picture && googleImg) {
-      googleImg.src = picture;
-      googleImg.classList.remove("hidden");
-      emojiEl?.classList.add("hidden");
-    } else {
-      googleImg?.classList.add("hidden");
-      if (emojiEl) {
-        emojiEl.textContent = me.shopData?.avatar || "😎";
-        emojiEl.classList.remove("hidden");
-      }
-    }
+    applyAvatarVisuals({
+      customAvatarUrl: me.shopData?.stats?.customAvatarUrl,
+      googlePicture: me.picture || me.shopData?.stats?.googlePicture,
+      avatar: me.shopData?.avatar,
+    });
 
     state.oldName = me.name;
     profileNameInput.value = me.name;
@@ -79,7 +103,7 @@ function connect() {
   state.socket = socket;
 
   socket.addEventListener("open", () => {
-    if (state.loggedIn && state.oldName) {
+    if (!state.viewMode && state.loggedIn && state.oldName) {
       socket.send(JSON.stringify({ type: "shop_connect", name: state.oldName }));
     }
   });
@@ -89,6 +113,9 @@ function connect() {
     const msg = JSON.parse(event.data);
     if (msg.type === "ping") return;
     if (msg.type === "auth_ready") {
+      // На странице чужого публичного профиля свою сессию подхватывать нельзя —
+      // иначе ник останется чужим, а данные подменятся своими (shop_update ниже).
+      if (state.viewMode) return;
       state.wsAuthed = true;
       state.oldName = msg.name || state.oldName;
       socket.send(JSON.stringify({ type: "shop_connect", name: msg.name }));
@@ -98,11 +125,14 @@ function connect() {
       state.avatars = msg.avatars || [];
       state.catalog = msg.catalog || [];
       renderAvatars();
-      if (state.loggedIn && state.oldName) {
+      if (!state.viewMode && state.loggedIn && state.oldName) {
         socket.send(JSON.stringify({ type: "shop_connect", name: state.oldName }));
       }
     }
     if (msg.type === "shop_update") {
+      // Тот же случай: пока смотрим чужой публичный профиль, свои shop_update
+      // прилетать не должны (см. auth_ready выше), но подстрахуемся и здесь.
+      if (state.viewMode) return;
       state.shopData = msg.shopData;
       if (state.loggedIn) state.wsAuthed = true;
       if (msg.catalog) state.catalog = msg.catalog;
@@ -193,7 +223,7 @@ async function loadPublicProfile(name) {
     avatar: data.avatar,
     equipped: data.equipped || {},
     inventory: data.inventory || [],
-    stats: data.stats,
+    stats: { ...data.stats, googlePicture: data.googlePicture, customAvatarUrl: data.customAvatarUrl },
   };
   state.selectedAvatar = data.avatar || "😎";
   state.oldName = data.name;
@@ -207,25 +237,21 @@ async function loadPublicProfile(name) {
   document.querySelector("#btnGoogleLogout")?.classList.add("hidden");
   document.querySelector(".accountBadge").textContent = "Публичный профиль";
 
+  // В чужом профиле нет своих кнопок загрузки/удаления фото — только жалоба.
+  document.querySelector(".avatarUploadRow")?.classList.add("hidden");
+  if (btnReportAvatar) {
+    btnReportAvatar.classList.remove("hidden");
+    btnReportAvatar.onclick = () => reportAvatar(data.name);
+  }
+
   const displayName = document.querySelector("#accountDisplayName");
   const emailEl = document.querySelector("#accountEmail");
-  const googleImg = document.querySelector("#accountGoogleAvatar");
-  const emojiEl = document.querySelector("#accountAvatarEmoji");
 
   if (displayName) displayName.textContent = data.name;
   if (emailEl) emailEl.textContent = `Игр: ${data.stats?.games || 0} · Смертей: ${data.stats?.deaths || 0}`;
 
-  if (data.googlePicture && googleImg) {
-    googleImg.src = data.googlePicture;
-    googleImg.classList.remove("hidden");
-    emojiEl?.classList.add("hidden");
-  } else {
-    googleImg?.classList.add("hidden");
-    if (emojiEl) {
-      emojiEl.textContent = data.avatar || "😎";
-      emojiEl.classList.remove("hidden");
-    }
-  }
+  applyAvatarVisuals({ customAvatarUrl: data.customAvatarUrl, googlePicture: data.googlePicture, avatar: data.avatar });
+  btnRemoveCustomAvatar?.classList.add("hidden"); // не своё фото — удалять его отсюда нельзя
 
   document.title = `${data.name} — Профиль`;
   renderStats();
@@ -234,6 +260,96 @@ async function loadPublicProfile(name) {
   renderAvatars();
   return true;
 }
+
+async function reportAvatar(target) {
+  if (!state.loggedIn) {
+    showToast("Войди через Google, чтобы жаловаться на аватарки.");
+    return;
+  }
+  btnReportAvatar.disabled = true;
+  try {
+    const res = await fetch("/report_avatar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ target }),
+    });
+    if (res.ok) showToast("Спасибо, жалоба отправлена модераторам.");
+    else showToast("Не получилось отправить жалобу.");
+  } catch {
+    showToast("Не получилось отправить жалобу.");
+  } finally {
+    btnReportAvatar.disabled = false;
+  }
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+btnUploadAvatar?.addEventListener("click", () => avatarUploadInput?.click());
+
+avatarUploadInput?.addEventListener("change", async () => {
+  const file = avatarUploadInput.files?.[0];
+  avatarUploadInput.value = ""; // сразу сбрасываем, чтобы можно было выбрать тот же файл повторно
+  if (!file) return;
+
+  if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+    showToast("Нужен файл PNG, JPEG или WEBP.");
+    return;
+  }
+  if (file.size > AVATAR_UPLOAD_MAX_BYTES) {
+    showToast(`Файл слишком большой — до ${(AVATAR_UPLOAD_MAX_BYTES / 1024 / 1024).toFixed(1)} МБ.`);
+    return;
+  }
+
+  btnUploadAvatar.disabled = true;
+  try {
+    const dataUrl = await fileToDataUrl(file);
+    const res = await fetch("/upload_avatar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ dataUrl }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      showToast("Не получилось загрузить фото. Проверь формат и размер.");
+      return;
+    }
+    if (state.shopData) state.shopData.stats = { ...state.shopData.stats, customAvatarUrl: data.customAvatarUrl };
+    applyAvatarVisuals({ customAvatarUrl: data.customAvatarUrl, googlePicture: state.shopData?.stats?.googlePicture, avatar: state.selectedAvatar });
+    showToast("Фото обновлено!");
+  } catch {
+    showToast("Не получилось загрузить фото.");
+  } finally {
+    btnUploadAvatar.disabled = false;
+  }
+});
+
+btnRemoveCustomAvatar?.addEventListener("click", async () => {
+  btnRemoveCustomAvatar.disabled = true;
+  try {
+    const res = await fetch("/remove_avatar", { method: "POST", credentials: "include" });
+    if (res.ok) {
+      if (state.shopData) state.shopData.stats = { ...state.shopData.stats, customAvatarUrl: null };
+      applyAvatarVisuals({ customAvatarUrl: null, googlePicture: state.shopData?.stats?.googlePicture, avatar: state.selectedAvatar });
+      showToast("Фото удалено.");
+    } else {
+      showToast("Не получилось удалить фото.");
+    }
+  } catch {
+    showToast("Не получилось удалить фото.");
+  } finally {
+    btnRemoveCustomAvatar.disabled = false;
+  }
+});
+
 
 function renderEquipped() {
   equippedList.innerHTML = "";

@@ -25,6 +25,9 @@ tabButtons.forEach((btn) => {
 });
 
 function avatarHtml(entry, className = "lbAvatar") {
+  if (entry.customAvatarUrl) {
+    return `<img class="${className} lbAvatarImg" src="${escapeHtml(entry.customAvatarUrl)}" alt="" />`;
+  }
   if (entry.googlePicture) {
     return `<img class="${className} lbAvatarImg" src="${escapeHtml(entry.googlePicture)}" alt="" referrerpolicy="no-referrer" />`;
   }

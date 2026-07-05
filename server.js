@@ -22,8 +22,25 @@ const engine = require("./lib/engine");
 const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || "0.0.0.0";
 const PUBLIC_DIR = path.join(__dirname, "public");
+const AVATARS_DIR = path.join(PUBLIC_DIR, "avatars");
+fs.mkdirSync(AVATARS_DIR, { recursive: true });
 
-const { GRID, SPAWN_FREEZE_MS, BONUS_TYPES, KILL_REWARD_COINS, DEFAULT_TICK_MS } = gameConfig;
+// Определяем реальный тип файла по магическим байтам — клиент может соврать
+// про content-type, но подделать первые байты валидного изображения смысла нет.
+function sniffImageType(bytes) {
+  if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return "png";
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "jpeg";
+  if (bytes.length >= 12 && bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP") return "webp";
+  return null;
+}
+
+function removeAvatarFile(url) {
+  if (!url || !url.startsWith("/avatars/")) return;
+  const filePath = path.join(AVATARS_DIR, path.basename(url));
+  fs.unlink(filePath, () => {}); // не критично, если файла уже нет
+}
+
+const { GRID, SPAWN_FREEZE_MS, BONUS_TYPES, KILL_REWARD_COINS, DEFAULT_TICK_MS, AVATAR_UPLOAD_MAX_BYTES } = gameConfig;
 const MAX_LEADERS = 20;
 const BATTLE_PASS_SCORE_STEP = 1000;
 const BATTLE_PASS_MAX_TIER = 60;
@@ -334,7 +351,7 @@ async function handleHttpRequest(req, res, url) {
     const prof = getProfile(key);
     sendJson(res, {
       id: prof.id || null, name: key, coins: prof.coins, activeSkin: prof.activeSkin,
-      avatar: prof.avatar, googlePicture: prof.stats?.googlePicture || null,
+      avatar: prof.avatar, googlePicture: prof.stats?.googlePicture || null, customAvatarUrl: prof.stats?.customAvatarUrl || null,
       stats: { games: prof.stats?.games || 0, deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0, best: prof.stats?.best || 0, playTimeMs: prof.stats?.playTimeMs || 0 },
     });
     return;
@@ -345,13 +362,84 @@ async function handleHttpRequest(req, res, url) {
       .filter(([name]) => !q || name.toLowerCase().includes(q))
       .map(([name, prof]) => {
         const p = normalizeProfile(prof);
-        return { name, avatar: p.avatar, googlePicture: p.stats?.googlePicture || null, games: p.stats.games || 0, deaths: p.stats.deaths || 0, best: p.stats.best || 0, coins: p.coins || 0, playTimeMs: p.stats.playTimeMs || 0 };
+        return { name, avatar: p.avatar, googlePicture: p.stats?.googlePicture || null, customAvatarUrl: p.stats?.customAvatarUrl || null, games: p.stats.games || 0, deaths: p.stats.deaths || 0, best: p.stats.best || 0, coins: p.coins || 0, playTimeMs: p.stats.playTimeMs || 0 };
       })
       .sort((a, b) => a.name.localeCompare(b.name, "ru"))
       .slice(0, 50);
     sendJson(res, list);
     return;
   }
+  if (url.pathname === "/upload_avatar" && req.method === "POST") {
+    const session = await auth.getSession(req, db).catch(() => null);
+    if (!session) { res.writeHead(401); res.end("unauthorized"); return; }
+
+    let raw;
+    try { raw = await readBodyLimited(req, Math.ceil(AVATAR_UPLOAD_MAX_BYTES * 1.4)); }
+    catch { res.writeHead(413); res.end("payload too large"); return; }
+
+    let body;
+    try { body = JSON.parse(raw.toString("utf8")); } catch { res.writeHead(400); res.end("bad json"); return; }
+
+    const match = /^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/=]+)$/i.exec(String(body.dataUrl || ""));
+    if (!match) { res.writeHead(400); res.end("expected a png/jpeg/webp data URL"); return; }
+
+    const declaredExt = match[1].toLowerCase() === "jpg" ? "jpeg" : match[1].toLowerCase();
+    const bytes = Buffer.from(match[2], "base64");
+    if (bytes.length === 0 || bytes.length > AVATAR_UPLOAD_MAX_BYTES) {
+      res.writeHead(413); res.end(`image must be under ${(AVATAR_UPLOAD_MAX_BYTES / 1024 / 1024).toFixed(1)} MB`); return;
+    }
+
+    // Не доверяем заявленному MIME — сверяем с реальными байтами файла.
+    const sniffedExt = sniffImageType(bytes);
+    if (!sniffedExt || sniffedExt !== declaredExt) {
+      res.writeHead(400); res.end("file content doesn't match declared image type"); return;
+    }
+
+    const name = session.player_name;
+    const entry = getProfile(name);
+    const oldUrl = entry.stats.customAvatarUrl;
+    const filename = `${crypto.randomUUID()}.${sniffedExt}`;
+    await fs.promises.writeFile(path.join(AVATARS_DIR, filename), bytes);
+    entry.stats.customAvatarUrl = `/avatars/${filename}`;
+    await persistProfile(name, entry);
+    if (oldUrl) removeAvatarFile(oldUrl); // подчищаем старый файл, чтобы не копился мусор на диске
+
+    sendJson(res, { ok: true, customAvatarUrl: entry.stats.customAvatarUrl });
+    return;
+  }
+
+  if (url.pathname === "/remove_avatar" && req.method === "POST") {
+    const session = await auth.getSession(req, db).catch(() => null);
+    if (!session) { res.writeHead(401); res.end("unauthorized"); return; }
+    const entry = getProfile(session.player_name);
+    if (entry.stats.customAvatarUrl) removeAvatarFile(entry.stats.customAvatarUrl);
+    entry.stats.customAvatarUrl = null;
+    await persistProfile(session.player_name, entry);
+    sendJson(res, { ok: true });
+    return;
+  }
+
+  if (url.pathname === "/report_avatar" && req.method === "POST") {
+    const session = await auth.getSession(req, db).catch(() => null);
+    if (!session) { res.writeHead(401); res.end("unauthorized"); return; }
+
+    let raw;
+    try { raw = await readBodyLimited(req, 2048); } catch { res.writeHead(413); res.end("payload too large"); return; }
+
+    let body;
+    try { body = JSON.parse(raw.toString("utf8")); } catch { res.writeHead(400); res.end("bad json"); return; }
+
+    const target = profileName(body.target);
+    if (!target) { res.writeHead(400); res.end("bad request"); return; }
+    if (target.toLowerCase() === session.player_name.toLowerCase()) {
+      res.writeHead(400); res.end("can't report yourself"); return;
+    }
+
+    await db.reportAvatar(session.player_name, target);
+    sendJson(res, { ok: true });
+    return;
+  }
+
   // ---- ADMIN API ----
   if (url.pathname.startsWith("/admin")) {
     const session = await auth.getSession(req, db).catch(() => null);
@@ -412,6 +500,32 @@ async function handleHttpRequest(req, res, url) {
       entry.coins = Math.max(0, Math.floor(Number(coins)));
       await persistProfile(name, entry);
       sendJson(res, { ok: true, coins: entry.coins });
+      return;
+    }
+
+    if (url.pathname === "/admin/avatar_reports" && req.method === "GET") {
+      const reports = await db.loadAvatarReports();
+      sendJson(res, reports.map((r) => ({
+        target: r.target_name,
+        reports: r.reports,
+        lastReportedAt: r.last_reported_at,
+        hasCustomAvatar: Boolean(getProfile(r.target_name).stats?.customAvatarUrl),
+      })));
+      return;
+    }
+
+    if (url.pathname === "/admin/reset_avatar" && req.method === "POST") {
+      let body = "";
+      req.on("data", (c) => (body += c));
+      await new Promise((r) => req.on("end", r));
+      const { name } = JSON.parse(body);
+      if (!name) { res.writeHead(400); res.end("bad request"); return; }
+      const entry = getProfile(name);
+      if (entry.stats.customAvatarUrl) removeAvatarFile(entry.stats.customAvatarUrl);
+      entry.stats.customAvatarUrl = null;
+      await persistProfile(name, entry);
+      await db.clearAvatarReports(name);
+      sendJson(res, { ok: true });
       return;
     }
 
@@ -991,6 +1105,7 @@ function normalizeProfile(raw) {
       playTimeMs: raw.stats?.playTimeMs || 0,
       sessionStart: raw.stats?.sessionStart || null,
       googlePicture: raw.stats?.googlePicture || null,
+      customAvatarUrl: raw.stats?.customAvatarUrl || null,
       battlePassScore: raw.stats?.battlePassScore || 0,
       battlePassClaimed: Array.isArray(raw.stats?.battlePassClaimed) ? [...raw.stats.battlePassClaimed] : [],
       battlePassUnlocked: Array.isArray(raw.stats?.battlePassUnlocked) ? [...raw.stats.battlePassUnlocked] : [],
@@ -1470,13 +1585,13 @@ function processBattlePassRewards(name, entry) {
 function getEnrichedLeaderboard() {
   return leaderboard.map((e, index) => {
     const prof = getProfile(e.name);
-    return { ...e, rank: index + 1, avatar: prof.avatar, googlePicture: prof.stats?.googlePicture || null, deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0, games: prof.stats?.games || 0, best: Math.max(e.score, prof.stats?.best || 0), coins: prof.coins || 0 };
+    return { ...e, rank: index + 1, avatar: prof.avatar, googlePicture: prof.stats?.googlePicture || null, customAvatarUrl: prof.stats?.customAvatarUrl || null, deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0, games: prof.stats?.games || 0, best: Math.max(e.score, prof.stats?.best || 0), coins: prof.coins || 0 };
   });
 }
 
 function getWealthLeaderboard() {
   return Object.entries(shopData)
-    .map(([name, prof]) => ({ name, coins: prof.coins || 0, score: prof.coins || 0, avatar: prof.avatar || "😎", googlePicture: prof.stats?.googlePicture || null, deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0, games: prof.stats?.games || 0, best: prof.stats?.best || 0 }))
+    .map(([name, prof]) => ({ name, coins: prof.coins || 0, score: prof.coins || 0, avatar: prof.avatar || "😎", googlePicture: prof.stats?.googlePicture || null, customAvatarUrl: prof.stats?.customAvatarUrl || null, deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0, games: prof.stats?.games || 0, best: prof.stats?.best || 0 }))
     .filter((e) => e.coins > 0)
     .sort((a, b) => b.coins - a.coins || a.name.localeCompare(b.name, "ru"))
     .slice(0, MAX_LEADERS)
@@ -1583,4 +1698,20 @@ function corsHeaders() {
 function sendJson(res, payload) {
   res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", ...corsHeaders() });
   res.end(JSON.stringify(payload));
+}
+
+// Читаем тело запроса с жёстким лимитом байт — иначе злоумышленник может
+// стримить сколько угодно данных и посадить память процесса.
+function readBodyLimited(req, maxBytes) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > maxBytes) { req.destroy(); reject(new Error("payload_too_large")); return; }
+      chunks.push(chunk);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks)));
+    req.on("error", reject);
+  });
 }

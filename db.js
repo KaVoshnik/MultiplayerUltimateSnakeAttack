@@ -98,6 +98,14 @@ async function init() {
     );
 
     CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires ON auth_sessions (expires_at);
+
+    CREATE TABLE IF NOT EXISTS avatar_reports (
+      id SERIAL PRIMARY KEY,
+      reporter_name VARCHAR(32) NOT NULL,
+      target_name VARCHAR(32) NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (reporter_name, target_name)
+    );
   `);
 
   await migratePlayersTable();
@@ -341,7 +349,7 @@ async function upsertLeaderboard(name, score) {
 }
 
 async function resetAll() {
-  await pool.query("TRUNCATE players, leaderboard, google_users, auth_sessions RESTART IDENTITY");
+  await pool.query("TRUNCATE players, leaderboard, google_users, auth_sessions, avatar_reports RESTART IDENTITY");
 }
 
 async function isAdmin(googleId) {
@@ -373,6 +381,30 @@ async function getAdminPlayerList() {
   return rows;
 }
 
+// Один жалобщик — одна жалоба на цель (ON CONFLICT игнорируем повторную).
+async function reportAvatar(reporterName, targetName) {
+  await pool.query(
+    `INSERT INTO avatar_reports (reporter_name, target_name)
+     VALUES ($1, $2)
+     ON CONFLICT (reporter_name, target_name) DO NOTHING`,
+    [reporterName, targetName],
+  );
+}
+
+async function loadAvatarReports() {
+  const { rows } = await pool.query(`
+    SELECT target_name, COUNT(*)::int AS reports, MAX(created_at) AS last_reported_at
+    FROM avatar_reports
+    GROUP BY target_name
+    ORDER BY reports DESC, last_reported_at DESC
+  `);
+  return rows;
+}
+
+async function clearAvatarReports(targetName) {
+  await pool.query("DELETE FROM avatar_reports WHERE target_name = $1", [targetName]);
+}
+
 async function close() {
   if (pool) await pool.end();
 }
@@ -390,6 +422,9 @@ module.exports = {
   isAdmin,
   setAdmin,
   getAdminPlayerList,
+  reportAvatar,
+  loadAvatarReports,
+  clearAvatarReports,
   findGoogleUser,
   findGoogleUserByPlayerName,
   findPlayerByGoogleId,

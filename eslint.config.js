@@ -47,6 +47,7 @@ const browserGlobals = {
   history: "readonly",
 
   Image: "readonly",
+  FileReader: "readonly",
 
   performance: "readonly",
   ResizeObserver: "readonly",

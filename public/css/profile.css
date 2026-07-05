@@ -217,6 +217,18 @@
   box-shadow: 0 0 12px rgba(61,232,138,.3);
 }
 
+.avatarUploadRow {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.avatarUploadRow .btn {
+  flex: 1;
+  min-width: 140px;
+}
+
 .statsGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
