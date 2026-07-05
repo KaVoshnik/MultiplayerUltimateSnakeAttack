@@ -26,6 +26,7 @@ const state = {
   wsAuthed: false,
   me: null,
   viewMode: false,
+  reporterLoggedIn: false,
 };
 
 const viewPlayerName = new URLSearchParams(location.search).get("player")?.trim() || "";
@@ -237,6 +238,17 @@ async function loadPublicProfile(name) {
   document.querySelector("#btnGoogleLogout")?.classList.add("hidden");
   document.querySelector(".accountBadge").textContent = "Публичный профиль";
 
+  // Своё состояние логина не выставляется в viewMode (чтобы не перепутать
+  // с данными просматриваемого профиля), поэтому для жалобы проверяем
+  // реальный статус отдельно, лёгким запросом.
+  try {
+    const meRes = await fetch("/api/me", { credentials: "same-origin" });
+    const me = await meRes.json();
+    state.reporterLoggedIn = Boolean(me.loggedIn);
+  } catch {
+    state.reporterLoggedIn = false;
+  }
+
   // В чужом профиле нет своих кнопок загрузки/удаления фото — только жалоба.
   document.querySelector(".avatarUploadRow")?.classList.add("hidden");
   if (btnReportAvatar) {
@@ -262,7 +274,7 @@ async function loadPublicProfile(name) {
 }
 
 async function reportAvatar(target) {
-  if (!state.loggedIn) {
+  if (!state.reporterLoggedIn) {
     showToast("Войди через Google, чтобы жаловаться на аватарки.");
     return;
   }
@@ -275,6 +287,7 @@ async function reportAvatar(target) {
       body: JSON.stringify({ target }),
     });
     if (res.ok) showToast("Спасибо, жалоба отправлена модераторам.");
+    else if (res.status === 401) showToast("Сессия истекла — войди через Google заново.");
     else showToast("Не получилось отправить жалобу.");
   } catch {
     showToast("Не получилось отправить жалобу.");
