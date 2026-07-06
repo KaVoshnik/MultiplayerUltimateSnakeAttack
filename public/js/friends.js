@@ -4,6 +4,8 @@ const friendsContent = document.querySelector("#friendsContent");
 const incomingList = document.querySelector("#incomingList");
 const friendsListEl = document.querySelector("#friendsList");
 const outgoingList = document.querySelector("#outgoingList");
+const friendsTopList = document.querySelector("#friendsTopList");
+const friendsTopEmpty = document.querySelector("#friendsTopEmpty");
 
 const incomingCount = document.querySelector("#incomingCount");
 const friendsCount = document.querySelector("#friendsCount");
@@ -25,17 +27,25 @@ function miniAvatarHtml(entry, className = "") {
   return `<span class="${className} lbAvatarEmoji">${entry.avatar || "😎"}</span>`;
 }
 
+// Бейдж стрика показываем только начиная с 2 дней подряд — на первый день
+// это просто шум, ничем не отличающийся от обычного захода.
+function streakBadgeHtml(streak) {
+  if (!streak || streak < 2) return "";
+  return `<span class="streakBadge" title="${streak} дней подряд">🔥${streak}</span>`;
+}
+
 function friendRow(entry, actionsHtml) {
   const li = document.createElement("li");
   li.className = "friendItem";
+  const statusText = entry.room ? "В комнате" : entry.online ? "В сети" : "Не в сети";
   li.innerHTML = `
     <div class="friendAvatarWrap">
       ${miniAvatarHtml(entry)}
       <span class="onlineDot ${entry.online ? "on" : ""}" title="${entry.online ? "В сети" : "Не в сети"}"></span>
     </div>
     <div class="friendInfo">
-      <div class="friendName">${escapeHtml(entry.name)}</div>
-      <div class="friendMeta">${entry.online ? "В сети" : "Не в сети"} · рекорд ${entry.best || 0}</div>
+      <div class="friendName">${escapeHtml(entry.name)} ${streakBadgeHtml(entry.streak)}</div>
+      <div class="friendMeta">${statusText} · рекорд ${entry.best || 0}</div>
     </div>
     <div class="friendActions">${actionsHtml}</div>
   `;
@@ -90,7 +100,14 @@ function renderLists(data) {
   }
 
   for (const entry of data.friends) {
-    const li = friendRow(entry, `<button type="button" class="actionBtn remove">Удалить</button>`);
+    let actions = `<button type="button" class="actionBtn remove">Удалить</button>`;
+    if (entry.room?.joinable) {
+      actions = `<button type="button" class="actionBtn accept join">Присоединиться</button>` + actions;
+    }
+    const li = friendRow(entry, actions);
+    li.querySelector(".join")?.addEventListener("click", () => {
+      location.href = `/rooms.html?code=${encodeURIComponent(entry.room.code)}`;
+    });
     li.querySelector(".remove").addEventListener("click", async () => {
       if (!confirm(`Удалить ${entry.name} из друзей?`)) return;
       if (await callFriendAction("/friends/remove", entry.name)) { showToast(`${entry.name} удалён из друзей`); loadFriends(); }
@@ -98,6 +115,25 @@ function renderLists(data) {
     });
     friendsListEl.append(li);
   }
+
+  friendsTopList.innerHTML = "";
+  const ranked = [...data.friends].sort((a, b) => (b.best || 0) - (a.best || 0));
+  friendsTopEmpty.classList.toggle("hidden", ranked.length > 0);
+  ranked.forEach((entry, index) => {
+    const li = document.createElement("li");
+    li.className = "friendItem";
+    li.innerHTML = `
+      <div class="friendAvatarWrap">
+        ${miniAvatarHtml(entry)}
+        <span class="onlineDot ${entry.online ? "on" : ""}"></span>
+      </div>
+      <div class="friendInfo">
+        <div class="friendName">#${index + 1} ${escapeHtml(entry.name)} ${streakBadgeHtml(entry.streak)}</div>
+        <div class="friendMeta">Рекорд: ${entry.best || 0}</div>
+      </div>
+    `;
+    friendsTopList.append(li);
+  });
 
   for (const entry of data.outgoing) {
     const li = friendRow(entry, `<button type="button" class="actionBtn cancel">Отменить</button>`);
@@ -144,7 +180,7 @@ async function runSearch(query) {
         row.className = "lbSearchRow";
         row.innerHTML = `
           ${miniAvatarHtml(p, "lbSearchAvatar")}
-          <span class="lbSearchName">${escapeHtml(p.name)}</span>
+          <span class="lbSearchName">${escapeHtml(p.name)} ${streakBadgeHtml(p.streak)}</span>
           <span class="lbSearchMeta">🎮 ${p.games || 0}</span>
           <button type="button" class="lbSearchAddBtn">Добавить</button>
         `;

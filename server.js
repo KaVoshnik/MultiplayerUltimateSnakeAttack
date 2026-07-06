@@ -182,6 +182,27 @@ function isPlayerOnline(name) {
   }
   return false;
 }
+
+function findSocketIdsByName(name) {
+  const lower = name.toLowerCase();
+  const ids = [];
+  for (const [id, clientName] of shopClients) {
+    if (clientName && clientName.toLowerCase() === lower) ids.push(id);
+  }
+  return ids;
+}
+
+// Возвращает { code, joinable } если игрок сейчас сидит в приватной комнате,
+// иначе null. Смотрим через все его открытые сокеты (может быть открыто
+// несколько вкладок).
+function getPlayerRoomInfo(name) {
+  for (const id of findSocketIdsByName(name)) {
+    const code = socketRoom.get(id);
+    const room = code && rooms.get(code);
+    if (room) return { code, joinable: room.canJoin() };
+  }
+  return null;
+}
 const socketSessions = new Map(); // socket id -> auth session
 let leaderboard = [];
 let tickCount = 0;
@@ -365,6 +386,7 @@ async function handleHttpRequest(req, res, url) {
     sendJson(res, {
       id: prof.id || null, name: key, coins: prof.coins, activeSkin: prof.activeSkin,
       avatar: prof.avatar, googlePicture: prof.stats?.googlePicture || null, customAvatarUrl: prof.stats?.customAvatarUrl || null,
+      streak: prof.stats?.streak || 0,
       stats: { games: prof.stats?.games || 0, deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0, best: prof.stats?.best || 0, playTimeMs: prof.stats?.playTimeMs || 0 },
       online: isPlayerOnline(key),
       friendStatus,
@@ -377,7 +399,7 @@ async function handleHttpRequest(req, res, url) {
       .filter(([name]) => !q || name.toLowerCase().includes(q))
       .map(([name, prof]) => {
         const p = normalizeProfile(prof);
-        return { name, avatar: p.avatar, googlePicture: p.stats?.googlePicture || null, customAvatarUrl: p.stats?.customAvatarUrl || null, games: p.stats.games || 0, deaths: p.stats.deaths || 0, best: p.stats.best || 0, coins: p.coins || 0, playTimeMs: p.stats.playTimeMs || 0 };
+        return { name, avatar: p.avatar, googlePicture: p.stats?.googlePicture || null, customAvatarUrl: p.stats?.customAvatarUrl || null, streak: p.stats?.streak || 0, games: p.stats.games || 0, deaths: p.stats.deaths || 0, best: p.stats.best || 0, coins: p.coins || 0, playTimeMs: p.stats.playTimeMs || 0 };
       })
       .sort((a, b) => a.name.localeCompare(b.name, "ru"))
       .slice(0, 50);
@@ -463,13 +485,16 @@ async function handleHttpRequest(req, res, url) {
 
     const enrich = (row, extraDate) => {
       const prof = getProfile(row.name);
+      const online = isPlayerOnline(row.name);
       return {
         name: row.name,
         avatar: prof.avatar,
         googlePicture: prof.stats?.googlePicture || null,
         customAvatarUrl: prof.stats?.customAvatarUrl || null,
         best: prof.stats?.best || 0,
-        online: isPlayerOnline(row.name),
+        streak: prof.stats?.streak || 0,
+        online,
+        room: online ? getPlayerRoomInfo(row.name) : null,
         since: extraDate ? row[extraDate] : undefined,
       };
     };
@@ -802,6 +827,7 @@ const asyncHandlers = {
   room_rejoin:  (id, msg) => handleRoomRejoin(id, msg),
   room_start:   (id, msg) => handleRoomStart(id, msg),
   room_leave:   (id, msg) => handleRoomLeave(id, msg),
+  room_invite:  (id, msg) => handleRoomInvite(id, msg),
 };
 
 // Синхронные хендлеры не требующие наличия player
@@ -1230,6 +1256,9 @@ function normalizeProfile(raw) {
       battlePassClaimed: Array.isArray(raw.stats?.battlePassClaimed) ? [...raw.stats.battlePassClaimed] : [],
       battlePassUnlocked: Array.isArray(raw.stats?.battlePassUnlocked) ? [...raw.stats.battlePassUnlocked] : [],
       activeNickColor: raw.stats?.activeNickColor || null,
+      streak: raw.stats?.streak || 0,
+      bestStreak: raw.stats?.bestStreak || 0,
+      lastStreakDate: raw.stats?.lastStreakDate || null,
     },
   };
   for (const id of entry.unlockedSkins) {
@@ -1258,10 +1287,24 @@ function persistLeaderboardEntry(name, score) {
   db.upsertLeaderboard(name, score).catch((err) => console.error("DB leaderboard:", err.message));
 }
 
+// Считаем стрик по календарным дням (UTC), идемпотентно в рамках одного дня —
+// startNewLife может дёргаться много раз за день (респауны), это не проблема.
+function touchDailyStreak(entry) {
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  if (entry.stats.lastStreakDate === today) return;
+  const oneDay = 24 * 60 * 60 * 1000;
+  const last = entry.stats.lastStreakDate;
+  const gapDays = last ? Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${last}T00:00:00Z`)) / oneDay) : null;
+  entry.stats.streak = gapDays === 1 ? (entry.stats.streak || 0) + 1 : 1;
+  entry.stats.bestStreak = Math.max(entry.stats.bestStreak || 0, entry.stats.streak);
+  entry.stats.lastStreakDate = today;
+}
+
 function startNewLife(name) {
   const entry = getProfile(name);
   entry.stats.games = (entry.stats.games || 0) + 1;
   entry.stats.sessionStart = Date.now();
+  touchDailyStreak(entry);
   shopData[name] = entry;
   profileIndexSet(name);
   persistProfile(name, entry);
@@ -1410,6 +1453,23 @@ async function handleRoomStart(id, message) {
 async function handleRoomLeave(id, message) {
   leaveRoom(id);
   send(id, { type: "room_left" });
+}
+
+async function handleRoomInvite(id, message) {
+  const session = socketSessions.get(id);
+  if (!session) { send(id, { type: "notice", text: "Войди через Google, чтобы приглашать друзей." }); return; }
+  const code = socketRoom.get(id);
+  if (!code || !rooms.has(code)) { send(id, { type: "notice", text: "Ты сейчас не в комнате." }); return; }
+  const targetName = profileName(message.name);
+  if (!targetName) return;
+  const status = await db.getFriendshipStatus(session.player_name, targetName).catch(() => "none");
+  if (status !== "friends") { send(id, { type: "notice", text: "Приглашать в комнату можно только друзей." }); return; }
+  const targetIds = findSocketIdsByName(targetName);
+  if (targetIds.length === 0) { send(id, { type: "notice", text: `${targetName} сейчас не в сети.` }); return; }
+  for (const targetId of targetIds) {
+    send(targetId, { type: "room_invite", from: session.player_name, code });
+  }
+  send(id, { type: "notice", text: `Приглашение отправлено игроку ${targetName}.` });
 }
 
 async function handleJoin(id, message) {
@@ -1705,13 +1765,13 @@ function processBattlePassRewards(name, entry) {
 function getEnrichedLeaderboard() {
   return leaderboard.map((e, index) => {
     const prof = getProfile(e.name);
-    return { ...e, rank: index + 1, avatar: prof.avatar, googlePicture: prof.stats?.googlePicture || null, customAvatarUrl: prof.stats?.customAvatarUrl || null, deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0, games: prof.stats?.games || 0, best: Math.max(e.score, prof.stats?.best || 0), coins: prof.coins || 0 };
+    return { ...e, rank: index + 1, avatar: prof.avatar, googlePicture: prof.stats?.googlePicture || null, customAvatarUrl: prof.stats?.customAvatarUrl || null, streak: prof.stats?.streak || 0, deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0, games: prof.stats?.games || 0, best: Math.max(e.score, prof.stats?.best || 0), coins: prof.coins || 0 };
   });
 }
 
 function getWealthLeaderboard() {
   return Object.entries(shopData)
-    .map(([name, prof]) => ({ name, coins: prof.coins || 0, score: prof.coins || 0, avatar: prof.avatar || "😎", googlePicture: prof.stats?.googlePicture || null, customAvatarUrl: prof.stats?.customAvatarUrl || null, deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0, games: prof.stats?.games || 0, best: prof.stats?.best || 0 }))
+    .map(([name, prof]) => ({ name, coins: prof.coins || 0, score: prof.coins || 0, avatar: prof.avatar || "😎", googlePicture: prof.stats?.googlePicture || null, customAvatarUrl: prof.stats?.customAvatarUrl || null, streak: prof.stats?.streak || 0, deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0, games: prof.stats?.games || 0, best: prof.stats?.best || 0 }))
     .filter((e) => e.coins > 0)
     .sort((a, b) => b.coins - a.coins || a.name.localeCompare(b.name, "ru"))
     .slice(0, MAX_LEADERS)
