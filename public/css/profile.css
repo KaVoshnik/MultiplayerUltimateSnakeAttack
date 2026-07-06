@@ -156,13 +156,15 @@
 
 .profilePreview,
 .profileForm,
-.profileStats {
+.profileStats,
+.profileAchievements {
   padding: 24px;
 }
 
 .profilePreview h2,
 .profileForm h2,
-.profileStats h2 {
+.profileStats h2,
+.profileAchievements h2 {
   margin: 0 0 16px;
   font-family: var(--font-display);
   font-size: .85rem;
@@ -275,4 +277,61 @@
   .googleBtn { width: 100%; }
   .profileGrid { grid-template-columns: 1fr; }
   .avatarGrid { grid-template-columns: repeat(4, 1fr); }
+}
+
+.profileAchievements h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.countPill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 11px;
+  background: rgba(61,232,138,.15);
+  color: var(--green);
+  font-size: .75rem;
+  font-weight: 700;
+}
+
+.achievementsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  gap: 10px;
+}
+
+.achBadge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 8px;
+  border-radius: 10px;
+  background: rgba(0,0,0,.25);
+  border: 1px solid var(--line);
+  text-align: center;
+}
+
+.achBadge .achIcon { font-size: 1.6rem; }
+
+.achBadge .achName {
+  font-size: .68rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.achBadge.locked {
+  opacity: .35;
+  filter: grayscale(1);
+}
+
+.achBadge .achDesc {
+  font-size: .6rem;
+  color: var(--muted);
+  line-height: 1.2;
 }
