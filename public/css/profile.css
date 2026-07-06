@@ -156,13 +156,15 @@
 
 .profilePreview,
 .profileForm,
-.profileStats {
+.profileStats,
+.profileAchievements {
   padding: 24px;
 }
 
 .profilePreview h2,
 .profileForm h2,
-.profileStats h2 {
+.profileStats h2,
+.profileAchievements h2 {
   margin: 0 0 16px;
   font-family: var(--font-display);
   font-size: .85rem;
@@ -281,7 +283,6 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 0 0 14px;
 }
 
 .countPill {
