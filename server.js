@@ -14,6 +14,7 @@ const foodMod = require("./lib/food");
 const gameConfig = require("./config/game");
 const bonusEffects = require("./lib/bonus-effects");
 const engine = require("./lib/engine");
+const achievementsMod = require("./lib/achievements");
 
 // ============================================================
 // CONSTANTS
@@ -393,6 +394,16 @@ async function handleHttpRequest(req, res, url) {
     });
     return;
   }
+
+  if (url.pathname === "/achievements") {
+    const name = profileName(url.searchParams.get("name") || "");
+    const key = name ? findCanonicalName(name) : null;
+    const unlocked = new Set(key ? (getProfile(key).stats?.unlockedAchievements || []) : []);
+    sendJson(res, achievementsMod.ACHIEVEMENTS.map((a) => ({
+      id: a.id, name: a.name, desc: a.desc, icon: a.icon, unlocked: unlocked.has(a.id),
+    })));
+    return;
+  }
   if (url.pathname === "/api/players") {
     const q = (url.searchParams.get("q") || "").trim().toLowerCase();
     const list = Object.entries(shopData)
@@ -537,6 +548,11 @@ async function handleHttpRequest(req, res, url) {
     const requester = profileName(body.name);
     if (!requester) { res.writeHead(400); res.end("bad request"); return; }
     await db.respondFriendRequest(session.player_name, requester, true);
+    for (const person of [session.player_name, requester]) {
+      const friendsCount = await db.listFriends(person).then((r) => r.length).catch(() => 0);
+      const entry = getProfile(person);
+      checkAchievements(person, entry, { friendsCount }).catch((err) => console.error("Achievements:", err.message));
+    }
     sendJson(res, { ok: true });
     return;
   }
@@ -580,6 +596,70 @@ async function handleHttpRequest(req, res, url) {
     if (!target) { res.writeHead(400); res.end("bad request"); return; }
     await db.removeFriend(session.player_name, target);
     sendJson(res, { ok: true });
+    return;
+  }
+
+  // ---- DAILY CHEST ----
+  if (url.pathname === "/daily_chest/status" && req.method === "GET") {
+    const session = await auth.getSession(req, db).catch(() => null);
+    if (!session) { res.writeHead(401); res.end("unauthorized"); return; }
+    const entry = getProfile(session.player_name);
+    const today = new Date().toISOString().slice(0, 10);
+    sendJson(res, {
+      available: Boolean(entry.stats.dailyChestAvailable && entry.stats.dailyChestDate === today),
+      streak: entry.stats.streak || 0,
+    });
+    return;
+  }
+
+  if (url.pathname === "/daily_chest/open" && req.method === "POST") {
+    const session = await auth.getSession(req, db).catch(() => null);
+    if (!session) { res.writeHead(401); res.end("unauthorized"); return; }
+    const name = session.player_name;
+    const entry = getProfile(name);
+    const today = new Date().toISOString().slice(0, 10);
+    if (!entry.stats.dailyChestAvailable || entry.stats.dailyChestDate !== today) {
+      res.writeHead(400); res.end("chest not available"); return;
+    }
+    entry.stats.dailyChestAvailable = false;
+
+    // Мини-сундук: чаще всего монеты (немного растут вместе со стриком),
+    // изредка новый скин, очень редко — джекпот.
+    const streakBonus = Math.min(30, (entry.stats.streak || 0) * 2);
+    const roll = Math.random();
+    let reward;
+    if (roll < 0.05) {
+      const amount = 200 + Math.floor(Math.random() * 201);
+      entry.coins = (entry.coins || 0) + amount;
+      reward = { type: "coins", amount, label: `Джекпот! +${amount} монет` };
+    } else if (roll < 0.20) {
+      const owned = new Set(entry.inventory);
+      const candidates = SHOP_CATALOG.filter((i) => i.category === "skin" && i.rarity === "common" && i.price > 0 && !owned.has(i.id));
+      if (candidates.length > 0) {
+        const item = candidates[Math.floor(Math.random() * candidates.length)];
+        entry.inventory.push(item.id);
+        reward = { type: "skin", skinId: item.id, skinName: item.name, label: `Новый скин: ${item.name}!` };
+      } else {
+        const amount = 30 + Math.floor(Math.random() * 51) + streakBonus;
+        entry.coins = (entry.coins || 0) + amount;
+        reward = { type: "coins", amount, label: `+${amount} монет` };
+      }
+    } else {
+      const amount = 30 + Math.floor(Math.random() * 51) + streakBonus;
+      entry.coins = (entry.coins || 0) + amount;
+      reward = { type: "coins", amount, label: `+${amount} монет` };
+    }
+
+    if (reward.type === "coins") {
+      for (const p of players.values()) {
+        if (p.name.toLowerCase() === name.toLowerCase()) p.coins = entry.coins;
+      }
+    }
+
+    shopData[name] = entry;
+    await persistProfile(name, entry);
+    const fresh = await checkAchievements(name, entry, {}).catch(() => []);
+    sendJson(res, { ok: true, reward, achievements: fresh.map((a) => ({ id: a.id, name: a.name, icon: a.icon })) });
     return;
   }
 
@@ -1259,6 +1339,9 @@ function normalizeProfile(raw) {
       streak: raw.stats?.streak || 0,
       bestStreak: raw.stats?.bestStreak || 0,
       lastStreakDate: raw.stats?.lastStreakDate || null,
+      unlockedAchievements: Array.isArray(raw.stats?.unlockedAchievements) ? [...raw.stats.unlockedAchievements] : [],
+      dailyChestAvailable: raw.stats?.dailyChestAvailable || false,
+      dailyChestDate: raw.stats?.dailyChestDate || null,
     },
   };
   for (const id of entry.unlockedSkins) {
@@ -1298,6 +1381,28 @@ function touchDailyStreak(entry) {
   entry.stats.streak = gapDays === 1 ? (entry.stats.streak || 0) + 1 : 1;
   entry.stats.bestStreak = Math.max(entry.stats.bestStreak || 0, entry.stats.streak);
   entry.stats.lastStreakDate = today;
+  entry.stats.dailyChestAvailable = true;
+  entry.stats.dailyChestDate = today;
+}
+
+function countOwnedSkins(entry) {
+  return entry.inventory.filter((id) => SHOP_CATALOG.some((i) => i.id === id && i.category === "skin")).length;
+}
+const TOTAL_SKINS_COUNT = SHOP_CATALOG.filter((i) => i.category === "skin").length;
+
+// Проверяет ачивки и, если что-то разблокировалось, персистит профиль и
+// толкает тост игроку (если у него сейчас открыт сокет).
+async function checkAchievements(name, entry, extraCtx = {}) {
+  const ctx = { skinsCount: countOwnedSkins(entry), totalSkins: TOTAL_SKINS_COUNT, ...extraCtx };
+  const fresh = achievementsMod.evaluateAchievements(entry, ctx);
+  if (fresh.length === 0) return fresh;
+  await persistProfile(name, entry);
+  for (const id of findSocketIdsByName(name)) {
+    for (const ach of fresh) {
+      send(id, { type: "achievement_unlocked", achievement: { id: ach.id, name: ach.name, desc: ach.desc, icon: ach.icon } });
+    }
+  }
+  return fresh;
 }
 
 function startNewLife(name) {
@@ -1308,6 +1413,7 @@ function startNewLife(name) {
   shopData[name] = entry;
   profileIndexSet(name);
   persistProfile(name, entry);
+  checkAchievements(name, entry).catch((err) => console.error("Achievements:", err.message));
 }
 
 function syncProfileCoins(name, entry) {
@@ -1555,6 +1661,7 @@ function buyItem(clientId, itemId, nameHint) {
   persistProfile(name, entry);
   equipItem(clientId, itemId, name);
   send(clientId, { type: "notice", text: `Куплено: ${item.name}!` });
+  checkAchievements(name, entry).catch((err) => console.error("Achievements:", err.message));
 }
 
 function equipItem(clientId, itemId, nameHint) {
@@ -1671,6 +1778,7 @@ function trackDeathStats(player) {
   shopData[player.name] = entry;
   persistProfile(player.name, entry);
   processBattlePassRewards(player.name, entry);
+  checkAchievements(player.name, entry).catch((err) => console.error("Achievements:", err.message));
 }
 
 function trackDisconnectStats(player) {
@@ -1712,6 +1820,7 @@ function awardKillCoins(killer, victim) {
   persistProfile(killer.name, entry);
   pushFeed("kill", `💰 ${killer.name}: +${KILL_REWARD_COINS} за убийство ${victim.name}`, killer.name);
   send(killer.id, { type: "notice", text: `+${KILL_REWARD_COINS} монет за убийство!` });
+  checkAchievements(killer.name, entry).catch((err) => console.error("Achievements:", err.message));
 }
 
 function processBattlePassRewards(name, entry) {

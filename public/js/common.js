@@ -68,6 +68,28 @@ function showToast(text) {
   setTimeout(() => toast.remove(), 3000);
 }
 
+// Отдельный, более заметный тост для разблокировки ачивки — держится дольше
+// обычного и с иконкой.
+function showAchievementToast(achievement) {
+  let wrap = document.querySelector(".toastWrap");
+  if (!wrap) {
+    wrap = document.createElement("div");
+    wrap.className = "toastWrap";
+    document.body.append(wrap);
+  }
+  const toast = document.createElement("div");
+  toast.className = "toast achievementToast";
+  toast.innerHTML = `
+    <span class="achToastIcon">${achievement.icon || "🏆"}</span>
+    <span class="achToastText">
+      <strong>Достижение разблокировано</strong>
+      <span>${escapeHtml(achievement.name)}</span>
+    </span>
+  `;
+  wrap.append(toast);
+  setTimeout(() => toast.remove(), 6000);
+}
+
 function markActiveNav() {
   const page = document.body.dataset.page;
   document.querySelectorAll(".siteNav .links a").forEach((link) => {

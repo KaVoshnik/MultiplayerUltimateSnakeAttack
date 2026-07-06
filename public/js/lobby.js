@@ -31,6 +31,7 @@ syncSessionUser({
       socket.send(JSON.stringify({ type: "shop_connect", name: me.name }));
     }
     loadFriendsBadge();
+    checkDailyChest();
   },
 }).then((me) => {
   if (me?.loggedIn) sessionUser = me;
@@ -49,6 +50,37 @@ async function loadFriendsBadge() {
     badge.classList.toggle("hidden", count === 0);
   } catch { /* тихо игнорируем — бейдж не критичен */ }
 }
+
+async function checkDailyChest() {
+  const banner = document.querySelector("#chestBanner");
+  if (!banner) return;
+  try {
+    const res = await fetch("/daily_chest/status", { credentials: "same-origin" });
+    if (!res.ok) return;
+    const data = await res.json();
+    banner.classList.toggle("hidden", !data.available);
+  } catch { /* тихо игнорируем — сундук не критичен */ }
+}
+
+document.querySelector("#chestBanner")?.addEventListener("click", async function openChest() {
+  const banner = this;
+  banner.disabled = true;
+  try {
+    const res = await fetch("/daily_chest/open", { method: "POST", credentials: "same-origin" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      showToast("Не получилось открыть сундук.");
+      banner.disabled = false;
+      return;
+    }
+    banner.classList.add("hidden");
+    showToast(`🎁 ${data.reward.label}`);
+    for (const ach of data.achievements || []) showAchievementToast(ach);
+  } catch {
+    showToast("Не получилось открыть сундук.");
+    banner.disabled = false;
+  }
+});
 
 // Matrix rain + particles hybrid
 const pCanvas = document.querySelector("#particles");
@@ -174,6 +206,7 @@ function connect() {
       }
     }
     if (msg.type === "room_invite") showInviteToast(msg.from, msg.code);
+    if (msg.type === "achievement_unlocked") showAchievementToast(msg.achievement);
   });
   socket.addEventListener("close", () => setTimeout(connect, 1500));
 }

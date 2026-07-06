@@ -52,6 +52,30 @@ function streakBadgeHtml(streak) {
   return ` <span class="streakBadge" title="${streak} дней подряд">🔥${streak}</span>`;
 }
 
+async function loadAchievements(name) {
+  const grid = document.querySelector("#achievementsGrid");
+  const countEl = document.querySelector("#achievementsCount");
+  if (!grid || !name) return;
+  try {
+    const res = await fetch(`/achievements?name=${encodeURIComponent(name)}`);
+    const list = await res.json();
+    grid.innerHTML = "";
+    const unlockedCount = list.filter((a) => a.unlocked).length;
+    if (countEl) countEl.textContent = `${unlockedCount}/${list.length}`;
+    for (const ach of list) {
+      const badge = document.createElement("div");
+      badge.className = `achBadge${ach.unlocked ? "" : " locked"}`;
+      badge.title = ach.desc;
+      badge.innerHTML = `
+        <span class="achIcon">${ach.icon}</span>
+        <span class="achName">${escapeHtml(ach.name)}</span>
+        <span class="achDesc">${escapeHtml(ach.desc)}</span>
+      `;
+      grid.append(badge);
+    }
+  } catch { /* тихо игнорируем — не критично для остального профиля */ }
+}
+
 // Приоритет: своя загруженная фотка > аватарка из Google > эмодзи-пресет.
 function applyAvatarVisuals({ customAvatarUrl, googlePicture, avatar }) {
   const customImg = document.querySelector("#accountCustomAvatar");
@@ -98,6 +122,7 @@ function renderAccount(me) {
     state.oldName = me.name;
     profileNameInput.value = me.name;
     setProfileEditable(true);
+    loadAchievements(me.name);
   } else {
     accountGuest?.classList.remove("hidden");
     accountUser?.classList.add("hidden");
@@ -170,6 +195,10 @@ function connect() {
     }
     if (msg.type === "notice") {
       showToast(msg.text);
+    }
+    if (msg.type === "achievement_unlocked") {
+      showAchievementToast(msg.achievement);
+      if (!state.viewMode) loadAchievements(state.oldName);
     }
   });
 }
@@ -279,6 +308,7 @@ async function loadPublicProfile(name) {
   renderEquipped();
   drawPreview();
   renderAvatars();
+  loadAchievements(data.name);
   return true;
 }
 
