@@ -72,6 +72,7 @@ const projectGlobals = {
   CustomSkins: "readonly",
 
   showToast: "readonly",
+  showAchievementToast: "readonly",
   escapeHtml: "readonly",
 
   getWebSocketUrl: "readonly",
