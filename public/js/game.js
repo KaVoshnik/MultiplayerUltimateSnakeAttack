@@ -797,8 +797,10 @@ function drawMinimap(view) {
 
   for (const boss of state.bosses) {
     const bs = boss.size || 1;
+    minimapCtx.globalAlpha = boss.intangible ? 0.4 : 1;
     minimapCtx.fillStyle = boss.phase === "enraged" ? "#ff3b2e" : boss.color || "#f66151";
     minimapCtx.fillRect(ox + boss.x * cell, oy + boss.y * cell, bs * cell, bs * cell);
+    minimapCtx.globalAlpha = 1;
   }
 
   for (const player of state.players) {
@@ -1037,6 +1039,26 @@ function drawBossTrails(view) {
 function drawBoss(view) {
   const me = state.players.find((p) => p.id === state.id);
   const myHeat = me?.heat || 0;
+  const t = Date.now() / 1000;
+
+  // Телеграф GLTCH: предупреждающая клетка перед телепорт-засадой
+  for (const boss of state.bosses) {
+    if (!boss.telegraph) continue;
+    if (!isInCameraView(boss.telegraph.x + 0.5, boss.telegraph.y + 0.5, view, 2)) continue;
+    const { cell, offsetX, offsetY } = view;
+    const tx = offsetX + boss.telegraph.x * cell;
+    const ty = offsetY + boss.telegraph.y * cell;
+    const blink = 0.35 + Math.abs(Math.sin(t * 10)) * 0.45;
+    ctx.save();
+    ctx.globalAlpha = blink;
+    ctx.strokeStyle = boss.color || "#2ecc71";
+    ctx.lineWidth = Math.max(2, cell * 0.08);
+    ctx.strokeRect(tx + cell * 0.08, ty + cell * 0.08, cell * 0.84, cell * 0.84);
+    ctx.fillStyle = boss.color || "#2ecc71";
+    ctx.globalAlpha = blink * 0.25;
+    ctx.fillRect(tx, ty, cell, cell);
+    ctx.restore();
+  }
 
   for (const boss of state.bosses) {
     const bossSize = boss.size || 1;
@@ -1047,8 +1069,8 @@ function drawBoss(view) {
     const size = bossSize * cell;
     const angry = boss.angry;
     const enraged = boss.phase === "enraged";
-    const t = Date.now() / 1000;
     ctx.save();
+    if (boss.intangible) ctx.globalAlpha = 0.35 + Math.abs(Math.sin(t * 5)) * 0.15;
     if (enraged) {
       ctx.shadowColor = "rgba(255,30,20,.95)";
       ctx.shadowBlur = cell * 1.1;
