@@ -206,7 +206,7 @@ function connect() {
       }
     }
     if (msg.type === "room_invite") showInviteToast(msg.from, msg.code);
-    if (msg.type === "achievement_unlocked") showAchievementToast(msg.achievement);
+    if (msg.type === "achievement_unlocked") { showAchievementToast(msg.achievement); SnakeAudio.play("achievement"); }
   });
   socket.addEventListener("close", () => setTimeout(connect, 1500));
 }
