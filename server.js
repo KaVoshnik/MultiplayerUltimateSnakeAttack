@@ -15,6 +15,7 @@ const gameConfig = require("./config/game");
 const bonusEffects = require("./lib/bonus-effects");
 const engine = require("./lib/engine");
 const achievementsMod = require("./lib/achievements");
+const { RateLimiterRegistry } = require("./lib/rate-limiter");
 
 // ============================================================
 // CONSTANTS
@@ -205,6 +206,7 @@ function getPlayerRoomInfo(name) {
   return null;
 }
 const socketSessions = new Map(); // socket id -> auth session
+const rateLimiters = new RateLimiterRegistry(); // socket id -> per-type token buckets (#19 anti-flood)
 let leaderboard = [];
 let tickCount = 0;
 let tickJournal = gameSync.createJournal();
@@ -797,6 +799,16 @@ server.on("upgrade", (req, socket) => {
 
   auth.getSession(req, db).then((session) => {
     if (session) {
+      // Один активный сокет на google_id: если тот же аккаунт уже подключён
+      // (другая вкладка/устройство) — выгоняем старую сессию, не оставляем дубль.
+      if (session.google_id) {
+        for (const [otherId, otherSession] of socketSessions) {
+          if (otherId !== id && otherSession.google_id === session.google_id) {
+            send(otherId, { type: "notice", text: "Вы вошли с другого устройства — это соединение закрыто." });
+            removeClient(otherId);
+          }
+        }
+      }
       socketSessions.set(id, session);
       send(id, { type: "auth_ready", name: session.player_name, googleId: session.google_id });
     }
@@ -879,6 +891,7 @@ function removeClient(id) {
   shopClients.delete(id);
   socketSessions.delete(id);
   clientAoi.delete(id);
+  rateLimiters.remove(id);
 
   // Уйти из комнаты если был в ней
   leaveRoom(id);
@@ -953,6 +966,18 @@ const playerHandlers = {
 
 function handleMessage(id, message) {
   const { type } = message;
+
+  // #19: rate-limit / anti-flood. Проверяем ДО диспетчеризации — превышающие лимит
+  // сообщения тихо дропаются (без ошибки клиенту, чтобы не давать обратную связь чит-скриптам),
+  // а при систематическом флуде (MAX_VIOLATIONS нарушений подряд в окне) — рвём соединение.
+  const rl = rateLimiters.check(id, type);
+  if (!rl.allowed) {
+    if (rl.shouldKick) {
+      send(id, { type: "notice", text: "Отключён за превышение лимита сообщений." });
+      removeClient(id);
+    }
+    return;
+  }
 
   if (asyncHandlers[type]) {
     asyncHandlers[type](id, message).catch((err) => console.error(`${type}:`, err.message));

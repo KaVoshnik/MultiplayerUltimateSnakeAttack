@@ -51,6 +51,7 @@ const state = {
   name: settings.name,
   feed: [],
   lastCombo: 0,
+  lastActiveBonus: null,
   wasAlive: true,
   personalBest: 0,
   bossRageSound: false,
@@ -414,6 +415,9 @@ function updateHud(me, prevScore = 0, prevCombo = 0) {
   }
 
   if (me?.activeBonus) {
+    if (me.activeBonus !== state.lastActiveBonus) {
+      SnakeAudio.play("bonus");
+    }
     const left = me.bonusExpires ? Math.max(0, Math.ceil((me.bonusExpires - Date.now()) / 1000)) : "";
     bonusActive.textContent = `${BONUS_LABELS[me.activeBonus] || "?"}${left ? ` ${left}s` : ""}`;
     bonusHud.classList.add("accent");
@@ -421,6 +425,7 @@ function updateHud(me, prevScore = 0, prevCombo = 0) {
     bonusActive.textContent = "—";
     bonusHud.classList.remove("accent");
   }
+  state.lastActiveBonus = me?.activeBonus || null;
 
   const nearestBoss = getNearestBoss(me?.snake?.[0]);
   if (nearestBoss) {
@@ -477,6 +482,7 @@ function renderFeed() {
   for (let i = items.length - 1; i >= 0; i -= 1) {
     const ev = items[i];
     if (have.has(ev.id)) continue;
+    if (ev.kind === "kill" && ev.playerName === state.name) SnakeAudio.play("kill");
     const li = document.createElement("li");
     li.className = ev.kind || "";
     if (i === 0) li.classList.add("feed-new");

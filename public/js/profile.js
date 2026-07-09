@@ -198,6 +198,7 @@ function connect() {
     }
     if (msg.type === "achievement_unlocked") {
       showAchievementToast(msg.achievement);
+      SnakeAudio.play("achievement");
       if (!state.viewMode) loadAchievements(state.oldName);
     }
   });
