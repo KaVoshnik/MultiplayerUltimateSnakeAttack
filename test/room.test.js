@@ -24,6 +24,14 @@ function cleanup(room) {
   if (room._ttlTimeout) clearTimeout(room._ttlTimeout);
 }
 
+test("_createPlayer: инвентарь еды инициализируется нулями по каждому виду хорошей еды", () => {
+  const room = makeRoom();
+  const skin = { id: "default", color: "#33d17a", headColor: "#ffffff" };
+  const player = room._createPlayer("p1", "Kirill", skin, {});
+  assert.deepEqual(player.inventory, { apple: 0, cherry: 0, grape: 0 });
+  cleanup(room);
+});
+
 test("genCode: генерирует код нужной длины из допустимых символов", () => {
   const code = genCode(9);
   assert.equal(code.length, 9);

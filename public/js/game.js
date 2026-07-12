@@ -13,6 +13,7 @@ const minimap = document.querySelector("#minimap");
 const minimapCtx = minimap?.getContext("2d");
 const bonusActive = document.querySelector("#bonusActive");
 const bonusHud = document.querySelector("#bonusHud");
+const inventoryVal = document.querySelector("#inventoryVal");
 const bossHud = document.querySelector("#bossHud");
 const bossName = document.querySelector("#bossName");
 const bossLabel = document.querySelector("#bossLabel");
@@ -52,6 +53,7 @@ const state = {
   feed: [],
   lastCombo: 0,
   lastActiveBonus: null,
+  inventory: null,
   wasAlive: true,
   personalBest: 0,
   bossRageSound: false,
@@ -265,6 +267,7 @@ function handleSnapshot(message) {
   const prevCombo = state.players.find((p) => p.id === state.id)?.combo || 0;
   const players = GameSyncClient.applySnapshot(state, message);
   applyRenderSnap(players);
+  if (message.inventory) { state.inventory = message.inventory; renderInventory(); }
   finishGameUpdate(prevScore, prevCombo);
 }
 
@@ -360,6 +363,10 @@ function connect() {
       renderFeed();
     }
     if (message.type === "notice") { showToast(message.text); SnakeAudio.play("feed"); }
+    if (message.type === "inventory") {
+      state.inventory = message.inventory;
+      renderInventory();
+    }
     if (message.type === "shop_update") {
       state.shopData = message.shopData;
       if (message.skins) state.skins = message.skins;
@@ -464,6 +471,15 @@ function updateHud(me, prevScore = 0, prevCombo = 0) {
       if (me.score >= state.personalBest) state.personalBest = me.score;
     }
   }
+}
+
+const INVENTORY_ICONS = { apple: "🍎", cherry: "🍒", grape: "🍇" };
+
+function renderInventory() {
+  if (!inventoryVal || !state.inventory) return;
+  inventoryVal.textContent = Object.entries(state.inventory)
+    .map(([kind, count]) => `${INVENTORY_ICONS[kind] || "?"}${count}`)
+    .join(" ");
 }
 
 function renderFeed() {
