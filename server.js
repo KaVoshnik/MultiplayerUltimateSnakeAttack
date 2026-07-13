@@ -697,6 +697,7 @@ async function handleHttpRequest(req, res, url) {
       const { name, value } = JSON.parse(body);
       if (!name) { res.writeHead(400); res.end("bad request"); return; }
       await db.setAdmin(name, Boolean(value));
+      await db.logAdminAction(session.player_name, value ? "grant_admin" : "revoke_admin", name, null);
       sendJson(res, { ok: true });
       return;
     }
@@ -713,6 +714,7 @@ async function handleHttpRequest(req, res, url) {
         res.writeHead(403); res.end("cannot delete superadmin"); return;
       }
       await db.deletePlayer(name);
+      await db.logAdminAction(session.player_name, "delete_player", name, null);
       sendJson(res, { ok: true });
       return;
     }
@@ -726,6 +728,7 @@ async function handleHttpRequest(req, res, url) {
       const entry = getProfile(name);
       entry.coins = Math.max(0, Math.floor(Number(coins)));
       await persistProfile(name, entry);
+      await db.logAdminAction(session.player_name, "set_coins", name, String(entry.coins));
       sendJson(res, { ok: true, coins: entry.coins });
       return;
     }
@@ -752,7 +755,90 @@ async function handleHttpRequest(req, res, url) {
       entry.stats.customAvatarUrl = null;
       await persistProfile(name, entry);
       await db.clearAvatarReports(name);
+      await db.logAdminAction(session.player_name, "reset_avatar", name, null);
       sendJson(res, { ok: true });
+      return;
+    }
+
+    // Мгновенно вышибает все активные сокеты игрока (все открытые вкладки),
+    // без ban — игрок сможет зайти обратно сразу же. closeSocket() (не голый
+    // removeClient()) — иначе TCP-соединение останется висеть и клиент сможет
+    // продолжать слать сообщения с чистого rate-limit бюджетом.
+    if (url.pathname === "/admin/kick" && req.method === "POST") {
+      let body = "";
+      req.on("data", (c) => (body += c));
+      await new Promise((r) => req.on("end", r));
+      const { name, reason } = JSON.parse(body);
+      if (!name) { res.writeHead(400); res.end("bad request"); return; }
+      const ids = findSocketIdsByName(name);
+      for (const socketId of ids) {
+        send(socketId, { type: "notice", text: reason ? `Вы отключены администратором: ${reason}` : "Вы отключены администратором." });
+        closeSocket(socketId);
+      }
+      await db.logAdminAction(session.player_name, "kick", name, reason || null);
+      sendJson(res, { ok: true, kicked: ids.length });
+      return;
+    }
+
+    // minutes не передан/пусто → перманентный бан.
+    if (url.pathname === "/admin/ban" && req.method === "POST") {
+      let body = "";
+      req.on("data", (c) => (body += c));
+      await new Promise((r) => req.on("end", r));
+      const { name, minutes, reason } = JSON.parse(body);
+      if (!name) { res.writeHead(400); res.end("bad request"); return; }
+      const target = await db.findGoogleUserByPlayerName(name).catch(() => null);
+      const superIds = (process.env.ADMIN_GOOGLE_IDS || "").split(",").map((s) => s.trim()).filter(Boolean);
+      if (target && superIds.includes(target.google_id)) {
+        res.writeHead(403); res.end("cannot ban superadmin"); return;
+      }
+      const mins = (minutes === undefined || minutes === null || minutes === "")
+        ? null
+        : Math.max(1, Math.floor(Number(minutes)));
+      await db.banPlayer(name, mins, reason || null, session.player_name);
+      const ids = findSocketIdsByName(name);
+      for (const socketId of ids) {
+        send(socketId, { type: "notice", text: reason ? `Вы забанены: ${reason}` : "Вы забанены администратором." });
+        closeSocket(socketId);
+      }
+      await db.logAdminAction(session.player_name, "ban", name, reason || (mins ? `${mins} мин` : "навсегда"));
+      sendJson(res, { ok: true, kicked: ids.length, permanent: mins === null });
+      return;
+    }
+
+    if (url.pathname === "/admin/unban" && req.method === "POST") {
+      let body = "";
+      req.on("data", (c) => (body += c));
+      await new Promise((r) => req.on("end", r));
+      const { name } = JSON.parse(body);
+      if (!name) { res.writeHead(400); res.end("bad request"); return; }
+      await db.unbanPlayer(name);
+      await db.logAdminAction(session.player_name, "unban", name, null);
+      sendJson(res, { ok: true });
+      return;
+    }
+
+    if (url.pathname === "/admin/bans" && req.method === "GET") {
+      const bans = await db.listActiveBans();
+      sendJson(res, bans.map((b) => ({
+        name: b.name,
+        bannedUntil: b.banned_until,
+        reason: b.reason,
+        bannedBy: b.banned_by,
+        createdAt: b.created_at,
+      })));
+      return;
+    }
+
+    if (url.pathname === "/admin/actions" && req.method === "GET") {
+      const actions = await db.getAdminActions(200);
+      sendJson(res, actions.map((a) => ({
+        adminName: a.admin_name,
+        action: a.action,
+        targetName: a.target_name,
+        reason: a.reason,
+        createdAt: a.created_at,
+      })));
       return;
     }
 
@@ -805,7 +891,7 @@ server.on("upgrade", (req, socket) => {
         for (const [otherId, otherSession] of socketSessions) {
           if (otherId !== id && otherSession.google_id === session.google_id) {
             send(otherId, { type: "notice", text: "Вы вошли с другого устройства — это соединение закрыто." });
-            removeClient(otherId);
+            closeSocket(otherId);
           }
         }
       }
@@ -906,6 +992,20 @@ function removeClient(id) {
   }
 }
 
+// removeClient() сам по себе только чистит серверные Map'ы — обработчик
+// socket.on("data", ...) остаётся привязан к живому сокету и продолжит дёргать
+// readFrames()/handleMessage() для уже "удалённого" клиента (с чистого листа
+// для rate-limiter, т.к. rateLimiters.remove(id) уже отработал). Поэтому там,
+// где мы сами разрываем соединение (rate-limit kick, admin kick/ban, дубль
+// сессии) — используем closeSocket(), а не голый removeClient().
+function closeSocket(id) {
+  const socket = sockets.get(id);
+  removeClient(id);
+  if (socket && !socket.destroyed) {
+    try { socket.end(); } catch { /* сокет уже в процессе закрытия — не критично */ }
+  }
+}
+
 // ============================================================
 // MESSAGE DISPATCHER
 // ============================================================
@@ -974,7 +1074,7 @@ function handleMessage(id, message) {
   if (!rl.allowed) {
     if (rl.shouldKick) {
       send(id, { type: "notice", text: "Отключён за превышение лимита сообщений." });
-      removeClient(id);
+      closeSocket(id);
     }
     return;
   }
@@ -1168,6 +1268,12 @@ function tick() {
         if (player.combo === 5 || player.combo === 10) {
           pushFeed("combo", `🔥 ${player.name}: COMBO ×${player.combo}!`, player.name);
         }
+        // Инвентарь копится в памяти живой змейки и разово синкается в
+        // персистентный профиль при смерти/дисконнекте (trackDeathStats /
+        // trackDisconnectStats) — не шлём отдельное сообщение на каждое яблоко.
+        if (player.inventory[eaten.kind] !== undefined && player.inventory[eaten.kind] < gameConfig.INVENTORY_CAP) {
+          player.inventory[eaten.kind] += 1;
+        }
       } else if (player.activeBonus === "shield") {
         player.activeBonus = null;
         broadcast({ type: "notice", text: `${player.name}: щит поглотил ${FOOD_TYPES[eaten.kind]?.label || "яд"}!` });
@@ -1290,6 +1396,7 @@ function createPlayer(id, name, skin) {
     coinsEarned: 0, beatPersonalBest: false, sessionMvp: false,
     activeBonus: null, bonusExpires: null,
     combo: 0, maxCombo: 0,
+    inventory: { ...shopEntry.stats.foodInventory },
     avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji, snakeHatId: cos.snakeHatId,
     nickColor: resolveNickColorHex(shopEntry),
     frozenUntil: Date.now() + SPAWN_FREEZE_MS,
@@ -1367,6 +1474,11 @@ function normalizeProfile(raw) {
       unlockedAchievements: Array.isArray(raw.stats?.unlockedAchievements) ? [...raw.stats.unlockedAchievements] : [],
       dailyChestAvailable: raw.stats?.dailyChestAvailable || false,
       dailyChestDate: raw.stats?.dailyChestDate || null,
+      // Персистентный инвентарь еды — живёт в аккаунте, не в одной жизни змейки.
+      foodInventory: {
+        ...Object.fromEntries(foodMod.GOOD_FOOD_KINDS.map((k) => [k, 0])),
+        ...(raw.stats?.foodInventory && typeof raw.stats.foodInventory === "object" ? raw.stats.foodInventory : {}),
+      },
     },
   };
   for (const id of entry.unlockedSkins) {
@@ -1476,9 +1588,28 @@ async function isNameTaken(name, exceptName = null) {
 
 async function resolvePlayName(id, requestedName) {
   const session = socketSessions.get(id);
-  if (session) return { ok: true, name: session.player_name };
-  const name = profileName(requestedName);
+  const name = session ? session.player_name : profileName(requestedName);
   if (!name) return { ok: false, text: "Укажи никнейм в профиле!" };
+
+  // try/catch, а не .catch() на цепочке промисов: если db.getActiveBan вообще
+  // не существует (например при частичном деплое — server.js уже новый,
+  // а db.js ещё старый), вызов кинет TypeError СИНХРОННО, до того как .catch
+  // успеет на что-то подписаться — и тогда join молча падает целиком для
+  // абсолютно всех, а не только для забаненных. Бан-система не должна иметь
+  // возможность уронить вход в игру всем остальным — fail-open с логом.
+  try {
+    const ban = await db.getActiveBan(name);
+    if (ban) {
+      const text = ban.banned_until
+        ? `Вы забанены до ${new Date(ban.banned_until).toLocaleString("ru-RU")}${ban.reason ? `. Причина: ${ban.reason}` : ""}`
+        : `Вы забанены навсегда${ban.reason ? `. Причина: ${ban.reason}` : ""}`;
+      return { ok: false, text };
+    }
+  } catch (err) {
+    console.error("resolvePlayName: ban check failed, failing open —", err.message);
+  }
+
+  if (session) return { ok: true, name };
   // Не блокируем имя если оно уже принадлежит этому сокету
   // (учитываем shopClients, players, и само переданное имя если профиль уже существует)
   const currentName = shopClients.get(id) || players.get(id)?.name || null;
@@ -1800,6 +1931,7 @@ function trackDeathStats(player) {
   const sessionTop = Math.max(player.score, ...rivalScores, 0);
   player.sessionMvp = player.score > 0 && player.score >= sessionTop;
   entry.stats.battlePassScore = (entry.stats.battlePassScore || 0) + (player.score || 0);
+  if (player.inventory) entry.stats.foodInventory = { ...player.inventory };
   shopData[player.name] = entry;
   persistProfile(player.name, entry);
   processBattlePassRewards(player.name, entry);
@@ -1816,6 +1948,7 @@ function trackDisconnectStats(player) {
     entry.stats.battlePassScore = (entry.stats.battlePassScore || 0) + player.score;
     processBattlePassRewards(player.name, entry);
   }
+  if (player.inventory) entry.stats.foodInventory = { ...player.inventory };
   shopData[player.name] = entry;
   persistProfile(player.name, entry);
 }

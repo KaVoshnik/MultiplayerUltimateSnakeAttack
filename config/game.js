@@ -12,6 +12,11 @@ const BAD_FOOD_RATIO = 0.32;
 // лобби (server.js) лимита нет.
 const MAX_PLAYERS = 16;
 
+// Инвентарь еды (#новое): сколько штук каждого вида хорошей еды можно
+// накопить всего на аккаунте. Персистентный ресурс (хранится в players.stats
+// JSONB, как и остальная статистика) — не сбрасывается между жизнями/сессиями.
+const INVENTORY_CAP = 99;
+
 // Загрузка своей аватарки: жёсткий предел на декодированный размер файла.
 const AVATAR_UPLOAD_MAX_BYTES = 1.5 * 1024 * 1024; // 1.5 МБ
 
@@ -34,6 +39,7 @@ module.exports = {
   DEFAULT_TICK_MS,
   BAD_FOOD_RATIO,
   MAX_PLAYERS,
+  INVENTORY_CAP,
   AVATAR_UPLOAD_MAX_BYTES,
   KILL_REWARD_COINS,
   BONUS_TYPES,
