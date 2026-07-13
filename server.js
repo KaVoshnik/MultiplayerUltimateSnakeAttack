@@ -208,6 +208,7 @@ function getPlayerRoomInfo(name) {
 const socketSessions = new Map(); // socket id -> auth session
 const rateLimiters = new RateLimiterRegistry(); // socket id -> per-type token buckets (#19 anti-flood)
 let leaderboard = [];
+const marketListings = new Map(); // id -> { id, sellerName, kind, quantity, pricePerUnit, createdAt }
 let tickCount = 0;
 let tickJournal = gameSync.createJournal();
 const clientAoi = new Map();
@@ -365,6 +366,10 @@ async function handleHttpRequest(req, res, url) {
   if (url.pathname === "/leaderboard") {
     const sort = url.searchParams.get("sort");
     sendJson(res, sort === "coins" ? getWealthLeaderboard() : getEnrichedLeaderboard());
+    return;
+  }
+  if (url.pathname === "/market") {
+    sendJson(res, getMarketPayload());
     return;
   }
   if (url.pathname === "/shop") {
@@ -1032,6 +1037,9 @@ const prePlayerHandlers = {
   equip_nick_color: (id, msg) => equipNickColor(id, msg.colorId, msg.name),
   buy_skin:         (id, msg) => buyItem(id, msg.skinId),
   equip_skin:       (id, msg) => equipItem(id, msg.skinId),
+  market_list:      (id, msg) => marketList(id, msg.kind, msg.quantity, msg.pricePerUnit, msg.name),
+  market_cancel:    (id, msg) => marketCancel(id, msg.listingId, msg.name),
+  market_buy:       (id, msg) => marketBuy(id, msg.listingId, msg.quantity, msg.name),
 };
 
 // Хендлеры требующие наличия player
@@ -1888,6 +1896,127 @@ function equipNickColor(clientId, colorId, nameHint) {
   sendShopPayload(clientId, name);
 }
 
+// ============================================================
+// РЫНОК ОБМЕНА ЕДОЙ
+// ============================================================
+// Источник правды — marketListings (in-memory, как leaderboard), БД только
+// персистит для выживания рестарта. Все операции полностью синхронны (без
+// await между чтением остатка/монет и записью) — гонка при одновременной
+// покупке одного лота двумя игроками исключена самой природой event loop.
+
+const MAX_LISTINGS_PER_PLAYER = 10;
+const MAX_LISTING_PRICE = 500; // за штуку — защита от абсурдных/спам-цен
+
+function getMarketPayload() {
+  return [...marketListings.values()]
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+    .map((l) => ({ id: l.id, sellerName: l.sellerName, kind: l.kind, quantity: l.quantity, pricePerUnit: l.pricePerUnit }));
+}
+
+function broadcastMarket() {
+  broadcast({ type: "market_update", listings: getMarketPayload() });
+}
+
+function marketList(clientId, kind, quantityRaw, priceRaw, nameHint) {
+  const name = resolveName(clientId, nameHint);
+  if (!name) return;
+  if (!foodMod.GOOD_FOOD_KINDS.includes(kind)) { send(clientId, { type: "notice", text: "Неверный вид еды." }); return; }
+
+  const quantity = Math.floor(Number(quantityRaw));
+  const pricePerUnit = Math.floor(Number(priceRaw));
+  if (!Number.isFinite(quantity) || quantity <= 0) { send(clientId, { type: "notice", text: "Некорректное количество." }); return; }
+  if (!Number.isFinite(pricePerUnit) || pricePerUnit <= 0 || pricePerUnit > MAX_LISTING_PRICE) {
+    send(clientId, { type: "notice", text: `Цена — от 1 до ${MAX_LISTING_PRICE} монет за штуку.` }); return;
+  }
+
+  const activeCount = [...marketListings.values()].filter((l) => l.sellerName.toLowerCase() === name.toLowerCase()).length;
+  if (activeCount >= MAX_LISTINGS_PER_PLAYER) {
+    send(clientId, { type: "notice", text: `Максимум ${MAX_LISTINGS_PER_PLAYER} лотов одновременно.` }); return;
+  }
+
+  const entry = getProfile(name);
+  const have = entry.stats.foodInventory[kind] || 0;
+  if (have < quantity) { send(clientId, { type: "notice", text: "Недостаточно еды для выставления." }); return; }
+
+  entry.stats.foodInventory[kind] = have - quantity;
+  shopData[name] = entry;
+  persistProfile(name, entry);
+
+  const listing = { id: crypto.randomUUID(), sellerName: name, kind, quantity, pricePerUnit, createdAt: new Date().toISOString() };
+  marketListings.set(listing.id, listing);
+  db.upsertFoodListing(listing).catch((err) => console.error("DB market list:", err.message));
+
+  send(clientId, { type: "notice", text: `Выставлено на продажу: ${quantity}×.` });
+  sendShopPayload(clientId, name);
+  broadcastMarket();
+}
+
+function marketCancel(clientId, listingId, nameHint) {
+  const name = resolveName(clientId, nameHint);
+  if (!name) return;
+  const listing = marketListings.get(listingId);
+  if (!listing) { send(clientId, { type: "notice", text: "Лот уже не существует." }); return; }
+  if (listing.sellerName.toLowerCase() !== name.toLowerCase()) { send(clientId, { type: "notice", text: "Это не твой лот." }); return; }
+
+  const entry = getProfile(name);
+  entry.stats.foodInventory[listing.kind] = (entry.stats.foodInventory[listing.kind] || 0) + listing.quantity;
+  shopData[name] = entry;
+  persistProfile(name, entry);
+
+  marketListings.delete(listingId);
+  db.deleteFoodListing(listingId).catch((err) => console.error("DB market cancel:", err.message));
+
+  send(clientId, { type: "notice", text: "Лот снят, еда вернулась в инвентарь." });
+  sendShopPayload(clientId, name);
+  broadcastMarket();
+}
+
+function marketBuy(clientId, listingId, quantityRaw, nameHint) {
+  const name = resolveName(clientId, nameHint);
+  if (!name) return;
+  const listing = marketListings.get(listingId);
+  if (!listing) { send(clientId, { type: "notice", text: "Лот уже раскупили." }); return; }
+  if (listing.sellerName.toLowerCase() === name.toLowerCase()) { send(clientId, { type: "notice", text: "Нельзя купить свой же лот." }); return; }
+
+  const qty = Math.min(Math.max(1, Math.floor(Number(quantityRaw) || 1)), listing.quantity);
+  const totalPrice = qty * listing.pricePerUnit;
+
+  const entry = getProfile(name);
+  syncProfileCoins(name, entry);
+  const coins = Number(entry.coins) || 0;
+  if (coins < totalPrice) { send(clientId, { type: "notice", text: "Недостаточно монет." }); return; }
+
+  entry.coins = coins - totalPrice;
+  entry.stats.foodInventory[listing.kind] = (entry.stats.foodInventory[listing.kind] || 0) + qty;
+  const buyerPlayer = players.get(clientId);
+  if (buyerPlayer) buyerPlayer.coins = entry.coins;
+  shopData[name] = entry;
+  persistProfile(name, entry);
+
+  listing.quantity -= qty;
+  if (listing.quantity <= 0) {
+    marketListings.delete(listing.id);
+    db.deleteFoodListing(listing.id).catch((err) => console.error("DB market buy (delete):", err.message));
+  } else {
+    db.upsertFoodListing(listing).catch((err) => console.error("DB market buy (update):", err.message));
+  }
+
+  const sellerEntry = getProfile(listing.sellerName);
+  sellerEntry.coins = (Number(sellerEntry.coins) || 0) + totalPrice;
+  shopData[listing.sellerName] = sellerEntry;
+  persistProfile(listing.sellerName, sellerEntry);
+  const sellerPlayer = [...players.values()].find((p) => p.name.toLowerCase() === listing.sellerName.toLowerCase());
+  if (sellerPlayer) sellerPlayer.coins = sellerEntry.coins;
+
+  send(clientId, { type: "notice", text: `Куплено: ${qty}× за ${totalPrice} монет!` });
+  sendShopPayload(clientId, name);
+  for (const sid of findSocketIdsByName(listing.sellerName)) {
+    send(sid, { type: "notice", text: `${name} купил у тебя ${qty}× за ${totalPrice} монет!` });
+    sendShopPayload(sid, listing.sellerName);
+  }
+  broadcastMarket();
+}
+
 function getPlayerCosmetics(name) {
   const entry = getProfile(name);
   const hatId = entry.equipped.snakeHat || null;
@@ -2054,8 +2183,15 @@ async function bootstrap() {
     await db.init();
     shopData = await db.loadAllPlayers();
     leaderboard = await db.loadLeaderboard(MAX_LEADERS);
+    const listingRows = await db.loadFoodListings();
+    for (const row of listingRows) {
+      marketListings.set(row.id, {
+        id: row.id, sellerName: row.seller_name, kind: row.kind,
+        quantity: row.quantity, pricePerUnit: row.price_per_unit, createdAt: row.created_at,
+      });
+    }
     rebuildProfileIndex();
-    console.log(`PostgreSQL: ${Object.keys(shopData).length} игроков, ${leaderboard.length} рекордов`);
+    console.log(`PostgreSQL: ${Object.keys(shopData).length} игроков, ${leaderboard.length} рекордов, ${marketListings.size} лотов рынка`);
   } catch (err) {
     console.error("PostgreSQL недоступен:", err.message);
     console.error("Проверь DATABASE_URL и что база запущена. Пример: npm run db:reset");

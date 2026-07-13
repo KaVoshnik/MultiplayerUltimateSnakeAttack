@@ -35,3 +35,45 @@
 }
 
 .invComingSoon h2 { color: var(--text); margin-bottom: 8px; font-size: 1rem; }
+
+.invMarket { margin-top: 20px; }
+.invMarket h2 { margin-bottom: 4px; }
+.invMarketHint { color: var(--muted); font-size: .85rem; margin-bottom: 16px; }
+.invMarketSubhead { font-size: .85rem; color: var(--muted); margin: 20px 0 8px; text-transform: uppercase; letter-spacing: .04em; }
+
+.invListForm {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.invListForm select,
+.invListForm input {
+  background: rgba(255,255,255,.04);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: .85rem;
+}
+
+.invListForm input[type="number"] { width: 100px; }
+.invListForm button:disabled { opacity: .4; cursor: not-allowed; }
+
+.invListingList { display: flex; flex-direction: column; gap: 8px; }
+
+.invListingRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: rgba(255,255,255,.02);
+}
+
+.invListingIcon { font-size: 1.4rem; }
+.invListingInfo { display: flex; flex-direction: column; flex: 1; gap: 2px; }
+.invListingSeller { font-size: .78rem; color: var(--muted); }
+.invListingRow .btn { margin-left: auto; }
