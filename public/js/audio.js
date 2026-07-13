@@ -87,6 +87,14 @@ const SnakeAudio = (() => {
       case "feed":
         tone(400, 0.05, "sine", 0.025, 500);
         break;
+      case "achievement":
+        tone(660, 0.1, "triangle", 0.06, 990);
+        setTimeout(() => tone(990, 0.16, "sine", 0.06, 1320), 90);
+        break;
+      case "kill":
+        tone(180, 0.1, "square", 0.07, 90);
+        tone(420, 0.08, "sawtooth", 0.05, 260);
+        break;
       default:
         break;
     }

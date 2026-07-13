@@ -15,6 +15,7 @@ const gameConfig = require("./config/game");
 const bonusEffects = require("./lib/bonus-effects");
 const engine = require("./lib/engine");
 const achievementsMod = require("./lib/achievements");
+const { RateLimiterRegistry } = require("./lib/rate-limiter");
 
 // ============================================================
 // CONSTANTS
@@ -205,7 +206,9 @@ function getPlayerRoomInfo(name) {
   return null;
 }
 const socketSessions = new Map(); // socket id -> auth session
+const rateLimiters = new RateLimiterRegistry(); // socket id -> per-type token buckets (#19 anti-flood)
 let leaderboard = [];
+const marketListings = new Map(); // id -> { id, sellerName, kind, quantity, pricePerUnit, createdAt }
 let tickCount = 0;
 let tickJournal = gameSync.createJournal();
 const clientAoi = new Map();
@@ -363,6 +366,10 @@ async function handleHttpRequest(req, res, url) {
   if (url.pathname === "/leaderboard") {
     const sort = url.searchParams.get("sort");
     sendJson(res, sort === "coins" ? getWealthLeaderboard() : getEnrichedLeaderboard());
+    return;
+  }
+  if (url.pathname === "/market") {
+    sendJson(res, getMarketPayload());
     return;
   }
   if (url.pathname === "/shop") {
@@ -695,6 +702,7 @@ async function handleHttpRequest(req, res, url) {
       const { name, value } = JSON.parse(body);
       if (!name) { res.writeHead(400); res.end("bad request"); return; }
       await db.setAdmin(name, Boolean(value));
+      await db.logAdminAction(session.player_name, value ? "grant_admin" : "revoke_admin", name, null);
       sendJson(res, { ok: true });
       return;
     }
@@ -711,6 +719,7 @@ async function handleHttpRequest(req, res, url) {
         res.writeHead(403); res.end("cannot delete superadmin"); return;
       }
       await db.deletePlayer(name);
+      await db.logAdminAction(session.player_name, "delete_player", name, null);
       sendJson(res, { ok: true });
       return;
     }
@@ -724,6 +733,7 @@ async function handleHttpRequest(req, res, url) {
       const entry = getProfile(name);
       entry.coins = Math.max(0, Math.floor(Number(coins)));
       await persistProfile(name, entry);
+      await db.logAdminAction(session.player_name, "set_coins", name, String(entry.coins));
       sendJson(res, { ok: true, coins: entry.coins });
       return;
     }
@@ -750,7 +760,90 @@ async function handleHttpRequest(req, res, url) {
       entry.stats.customAvatarUrl = null;
       await persistProfile(name, entry);
       await db.clearAvatarReports(name);
+      await db.logAdminAction(session.player_name, "reset_avatar", name, null);
       sendJson(res, { ok: true });
+      return;
+    }
+
+    // Мгновенно вышибает все активные сокеты игрока (все открытые вкладки),
+    // без ban — игрок сможет зайти обратно сразу же. closeSocket() (не голый
+    // removeClient()) — иначе TCP-соединение останется висеть и клиент сможет
+    // продолжать слать сообщения с чистого rate-limit бюджетом.
+    if (url.pathname === "/admin/kick" && req.method === "POST") {
+      let body = "";
+      req.on("data", (c) => (body += c));
+      await new Promise((r) => req.on("end", r));
+      const { name, reason } = JSON.parse(body);
+      if (!name) { res.writeHead(400); res.end("bad request"); return; }
+      const ids = findSocketIdsByName(name);
+      for (const socketId of ids) {
+        send(socketId, { type: "notice", text: reason ? `Вы отключены администратором: ${reason}` : "Вы отключены администратором." });
+        closeSocket(socketId);
+      }
+      await db.logAdminAction(session.player_name, "kick", name, reason || null);
+      sendJson(res, { ok: true, kicked: ids.length });
+      return;
+    }
+
+    // minutes не передан/пусто → перманентный бан.
+    if (url.pathname === "/admin/ban" && req.method === "POST") {
+      let body = "";
+      req.on("data", (c) => (body += c));
+      await new Promise((r) => req.on("end", r));
+      const { name, minutes, reason } = JSON.parse(body);
+      if (!name) { res.writeHead(400); res.end("bad request"); return; }
+      const target = await db.findGoogleUserByPlayerName(name).catch(() => null);
+      const superIds = (process.env.ADMIN_GOOGLE_IDS || "").split(",").map((s) => s.trim()).filter(Boolean);
+      if (target && superIds.includes(target.google_id)) {
+        res.writeHead(403); res.end("cannot ban superadmin"); return;
+      }
+      const mins = (minutes === undefined || minutes === null || minutes === "")
+        ? null
+        : Math.max(1, Math.floor(Number(minutes)));
+      await db.banPlayer(name, mins, reason || null, session.player_name);
+      const ids = findSocketIdsByName(name);
+      for (const socketId of ids) {
+        send(socketId, { type: "notice", text: reason ? `Вы забанены: ${reason}` : "Вы забанены администратором." });
+        closeSocket(socketId);
+      }
+      await db.logAdminAction(session.player_name, "ban", name, reason || (mins ? `${mins} мин` : "навсегда"));
+      sendJson(res, { ok: true, kicked: ids.length, permanent: mins === null });
+      return;
+    }
+
+    if (url.pathname === "/admin/unban" && req.method === "POST") {
+      let body = "";
+      req.on("data", (c) => (body += c));
+      await new Promise((r) => req.on("end", r));
+      const { name } = JSON.parse(body);
+      if (!name) { res.writeHead(400); res.end("bad request"); return; }
+      await db.unbanPlayer(name);
+      await db.logAdminAction(session.player_name, "unban", name, null);
+      sendJson(res, { ok: true });
+      return;
+    }
+
+    if (url.pathname === "/admin/bans" && req.method === "GET") {
+      const bans = await db.listActiveBans();
+      sendJson(res, bans.map((b) => ({
+        name: b.name,
+        bannedUntil: b.banned_until,
+        reason: b.reason,
+        bannedBy: b.banned_by,
+        createdAt: b.created_at,
+      })));
+      return;
+    }
+
+    if (url.pathname === "/admin/actions" && req.method === "GET") {
+      const actions = await db.getAdminActions(200);
+      sendJson(res, actions.map((a) => ({
+        adminName: a.admin_name,
+        action: a.action,
+        targetName: a.target_name,
+        reason: a.reason,
+        createdAt: a.created_at,
+      })));
       return;
     }
 
@@ -797,6 +890,16 @@ server.on("upgrade", (req, socket) => {
 
   auth.getSession(req, db).then((session) => {
     if (session) {
+      // Один активный сокет на google_id: если тот же аккаунт уже подключён
+      // (другая вкладка/устройство) — выгоняем старую сессию, не оставляем дубль.
+      if (session.google_id) {
+        for (const [otherId, otherSession] of socketSessions) {
+          if (otherId !== id && otherSession.google_id === session.google_id) {
+            send(otherId, { type: "notice", text: "Вы вошли с другого устройства — это соединение закрыто." });
+            closeSocket(otherId);
+          }
+        }
+      }
       socketSessions.set(id, session);
       send(id, { type: "auth_ready", name: session.player_name, googleId: session.google_id });
     }
@@ -879,6 +982,7 @@ function removeClient(id) {
   shopClients.delete(id);
   socketSessions.delete(id);
   clientAoi.delete(id);
+  rateLimiters.remove(id);
 
   // Уйти из комнаты если был в ней
   leaveRoom(id);
@@ -890,6 +994,20 @@ function removeClient(id) {
     players.delete(id);
     broadcastGameSync();
     broadcastPresence();
+  }
+}
+
+// removeClient() сам по себе только чистит серверные Map'ы — обработчик
+// socket.on("data", ...) остаётся привязан к живому сокету и продолжит дёргать
+// readFrames()/handleMessage() для уже "удалённого" клиента (с чистого листа
+// для rate-limiter, т.к. rateLimiters.remove(id) уже отработал). Поэтому там,
+// где мы сами разрываем соединение (rate-limit kick, admin kick/ban, дубль
+// сессии) — используем closeSocket(), а не голый removeClient().
+function closeSocket(id) {
+  const socket = sockets.get(id);
+  removeClient(id);
+  if (socket && !socket.destroyed) {
+    try { socket.end(); } catch { /* сокет уже в процессе закрытия — не критично */ }
   }
 }
 
@@ -919,6 +1037,9 @@ const prePlayerHandlers = {
   equip_nick_color: (id, msg) => equipNickColor(id, msg.colorId, msg.name),
   buy_skin:         (id, msg) => buyItem(id, msg.skinId),
   equip_skin:       (id, msg) => equipItem(id, msg.skinId),
+  market_list:      (id, msg) => marketList(id, msg.kind, msg.quantity, msg.pricePerUnit, msg.name),
+  market_cancel:    (id, msg) => marketCancel(id, msg.listingId, msg.name),
+  market_buy:       (id, msg) => marketBuy(id, msg.listingId, msg.quantity, msg.name),
 };
 
 // Хендлеры требующие наличия player
@@ -953,6 +1074,18 @@ const playerHandlers = {
 
 function handleMessage(id, message) {
   const { type } = message;
+
+  // #19: rate-limit / anti-flood. Проверяем ДО диспетчеризации — превышающие лимит
+  // сообщения тихо дропаются (без ошибки клиенту, чтобы не давать обратную связь чит-скриптам),
+  // а при систематическом флуде (MAX_VIOLATIONS нарушений подряд в окне) — рвём соединение.
+  const rl = rateLimiters.check(id, type);
+  if (!rl.allowed) {
+    if (rl.shouldKick) {
+      send(id, { type: "notice", text: "Отключён за превышение лимита сообщений." });
+      closeSocket(id);
+    }
+    return;
+  }
 
   if (asyncHandlers[type]) {
     asyncHandlers[type](id, message).catch((err) => console.error(`${type}:`, err.message));
@@ -1143,6 +1276,12 @@ function tick() {
         if (player.combo === 5 || player.combo === 10) {
           pushFeed("combo", `🔥 ${player.name}: COMBO ×${player.combo}!`, player.name);
         }
+        // Инвентарь копится в памяти живой змейки и разово синкается в
+        // персистентный профиль при смерти/дисконнекте (trackDeathStats /
+        // trackDisconnectStats) — не шлём отдельное сообщение на каждое яблоко.
+        if (player.inventory[eaten.kind] !== undefined && player.inventory[eaten.kind] < gameConfig.INVENTORY_CAP) {
+          player.inventory[eaten.kind] += 1;
+        }
       } else if (player.activeBonus === "shield") {
         player.activeBonus = null;
         broadcast({ type: "notice", text: `${player.name}: щит поглотил ${FOOD_TYPES[eaten.kind]?.label || "яд"}!` });
@@ -1265,6 +1404,7 @@ function createPlayer(id, name, skin) {
     coinsEarned: 0, beatPersonalBest: false, sessionMvp: false,
     activeBonus: null, bonusExpires: null,
     combo: 0, maxCombo: 0,
+    inventory: { ...shopEntry.stats.foodInventory },
     avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji, snakeHatId: cos.snakeHatId,
     nickColor: resolveNickColorHex(shopEntry),
     frozenUntil: Date.now() + SPAWN_FREEZE_MS,
@@ -1342,6 +1482,11 @@ function normalizeProfile(raw) {
       unlockedAchievements: Array.isArray(raw.stats?.unlockedAchievements) ? [...raw.stats.unlockedAchievements] : [],
       dailyChestAvailable: raw.stats?.dailyChestAvailable || false,
       dailyChestDate: raw.stats?.dailyChestDate || null,
+      // Персистентный инвентарь еды — живёт в аккаунте, не в одной жизни змейки.
+      foodInventory: {
+        ...Object.fromEntries(foodMod.GOOD_FOOD_KINDS.map((k) => [k, 0])),
+        ...(raw.stats?.foodInventory && typeof raw.stats.foodInventory === "object" ? raw.stats.foodInventory : {}),
+      },
     },
   };
   for (const id of entry.unlockedSkins) {
@@ -1451,9 +1596,28 @@ async function isNameTaken(name, exceptName = null) {
 
 async function resolvePlayName(id, requestedName) {
   const session = socketSessions.get(id);
-  if (session) return { ok: true, name: session.player_name };
-  const name = profileName(requestedName);
+  const name = session ? session.player_name : profileName(requestedName);
   if (!name) return { ok: false, text: "Укажи никнейм в профиле!" };
+
+  // try/catch, а не .catch() на цепочке промисов: если db.getActiveBan вообще
+  // не существует (например при частичном деплое — server.js уже новый,
+  // а db.js ещё старый), вызов кинет TypeError СИНХРОННО, до того как .catch
+  // успеет на что-то подписаться — и тогда join молча падает целиком для
+  // абсолютно всех, а не только для забаненных. Бан-система не должна иметь
+  // возможность уронить вход в игру всем остальным — fail-open с логом.
+  try {
+    const ban = await db.getActiveBan(name);
+    if (ban) {
+      const text = ban.banned_until
+        ? `Вы забанены до ${new Date(ban.banned_until).toLocaleString("ru-RU")}${ban.reason ? `. Причина: ${ban.reason}` : ""}`
+        : `Вы забанены навсегда${ban.reason ? `. Причина: ${ban.reason}` : ""}`;
+      return { ok: false, text };
+    }
+  } catch (err) {
+    console.error("resolvePlayName: ban check failed, failing open —", err.message);
+  }
+
+  if (session) return { ok: true, name };
   // Не блокируем имя если оно уже принадлежит этому сокету
   // (учитываем shopClients, players, и само переданное имя если профиль уже существует)
   const currentName = shopClients.get(id) || players.get(id)?.name || null;
@@ -1732,6 +1896,127 @@ function equipNickColor(clientId, colorId, nameHint) {
   sendShopPayload(clientId, name);
 }
 
+// ============================================================
+// РЫНОК ОБМЕНА ЕДОЙ
+// ============================================================
+// Источник правды — marketListings (in-memory, как leaderboard), БД только
+// персистит для выживания рестарта. Все операции полностью синхронны (без
+// await между чтением остатка/монет и записью) — гонка при одновременной
+// покупке одного лота двумя игроками исключена самой природой event loop.
+
+const MAX_LISTINGS_PER_PLAYER = 10;
+const MAX_LISTING_PRICE = 500; // за штуку — защита от абсурдных/спам-цен
+
+function getMarketPayload() {
+  return [...marketListings.values()]
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+    .map((l) => ({ id: l.id, sellerName: l.sellerName, kind: l.kind, quantity: l.quantity, pricePerUnit: l.pricePerUnit }));
+}
+
+function broadcastMarket() {
+  broadcast({ type: "market_update", listings: getMarketPayload() });
+}
+
+function marketList(clientId, kind, quantityRaw, priceRaw, nameHint) {
+  const name = resolveName(clientId, nameHint);
+  if (!name) return;
+  if (!foodMod.GOOD_FOOD_KINDS.includes(kind)) { send(clientId, { type: "notice", text: "Неверный вид еды." }); return; }
+
+  const quantity = Math.floor(Number(quantityRaw));
+  const pricePerUnit = Math.floor(Number(priceRaw));
+  if (!Number.isFinite(quantity) || quantity <= 0) { send(clientId, { type: "notice", text: "Некорректное количество." }); return; }
+  if (!Number.isFinite(pricePerUnit) || pricePerUnit <= 0 || pricePerUnit > MAX_LISTING_PRICE) {
+    send(clientId, { type: "notice", text: `Цена — от 1 до ${MAX_LISTING_PRICE} монет за штуку.` }); return;
+  }
+
+  const activeCount = [...marketListings.values()].filter((l) => l.sellerName.toLowerCase() === name.toLowerCase()).length;
+  if (activeCount >= MAX_LISTINGS_PER_PLAYER) {
+    send(clientId, { type: "notice", text: `Максимум ${MAX_LISTINGS_PER_PLAYER} лотов одновременно.` }); return;
+  }
+
+  const entry = getProfile(name);
+  const have = entry.stats.foodInventory[kind] || 0;
+  if (have < quantity) { send(clientId, { type: "notice", text: "Недостаточно еды для выставления." }); return; }
+
+  entry.stats.foodInventory[kind] = have - quantity;
+  shopData[name] = entry;
+  persistProfile(name, entry);
+
+  const listing = { id: crypto.randomUUID(), sellerName: name, kind, quantity, pricePerUnit, createdAt: new Date().toISOString() };
+  marketListings.set(listing.id, listing);
+  db.upsertFoodListing(listing).catch((err) => console.error("DB market list:", err.message));
+
+  send(clientId, { type: "notice", text: `Выставлено на продажу: ${quantity}×.` });
+  sendShopPayload(clientId, name);
+  broadcastMarket();
+}
+
+function marketCancel(clientId, listingId, nameHint) {
+  const name = resolveName(clientId, nameHint);
+  if (!name) return;
+  const listing = marketListings.get(listingId);
+  if (!listing) { send(clientId, { type: "notice", text: "Лот уже не существует." }); return; }
+  if (listing.sellerName.toLowerCase() !== name.toLowerCase()) { send(clientId, { type: "notice", text: "Это не твой лот." }); return; }
+
+  const entry = getProfile(name);
+  entry.stats.foodInventory[listing.kind] = (entry.stats.foodInventory[listing.kind] || 0) + listing.quantity;
+  shopData[name] = entry;
+  persistProfile(name, entry);
+
+  marketListings.delete(listingId);
+  db.deleteFoodListing(listingId).catch((err) => console.error("DB market cancel:", err.message));
+
+  send(clientId, { type: "notice", text: "Лот снят, еда вернулась в инвентарь." });
+  sendShopPayload(clientId, name);
+  broadcastMarket();
+}
+
+function marketBuy(clientId, listingId, quantityRaw, nameHint) {
+  const name = resolveName(clientId, nameHint);
+  if (!name) return;
+  const listing = marketListings.get(listingId);
+  if (!listing) { send(clientId, { type: "notice", text: "Лот уже раскупили." }); return; }
+  if (listing.sellerName.toLowerCase() === name.toLowerCase()) { send(clientId, { type: "notice", text: "Нельзя купить свой же лот." }); return; }
+
+  const qty = Math.min(Math.max(1, Math.floor(Number(quantityRaw) || 1)), listing.quantity);
+  const totalPrice = qty * listing.pricePerUnit;
+
+  const entry = getProfile(name);
+  syncProfileCoins(name, entry);
+  const coins = Number(entry.coins) || 0;
+  if (coins < totalPrice) { send(clientId, { type: "notice", text: "Недостаточно монет." }); return; }
+
+  entry.coins = coins - totalPrice;
+  entry.stats.foodInventory[listing.kind] = (entry.stats.foodInventory[listing.kind] || 0) + qty;
+  const buyerPlayer = players.get(clientId);
+  if (buyerPlayer) buyerPlayer.coins = entry.coins;
+  shopData[name] = entry;
+  persistProfile(name, entry);
+
+  listing.quantity -= qty;
+  if (listing.quantity <= 0) {
+    marketListings.delete(listing.id);
+    db.deleteFoodListing(listing.id).catch((err) => console.error("DB market buy (delete):", err.message));
+  } else {
+    db.upsertFoodListing(listing).catch((err) => console.error("DB market buy (update):", err.message));
+  }
+
+  const sellerEntry = getProfile(listing.sellerName);
+  sellerEntry.coins = (Number(sellerEntry.coins) || 0) + totalPrice;
+  shopData[listing.sellerName] = sellerEntry;
+  persistProfile(listing.sellerName, sellerEntry);
+  const sellerPlayer = [...players.values()].find((p) => p.name.toLowerCase() === listing.sellerName.toLowerCase());
+  if (sellerPlayer) sellerPlayer.coins = sellerEntry.coins;
+
+  send(clientId, { type: "notice", text: `Куплено: ${qty}× за ${totalPrice} монет!` });
+  sendShopPayload(clientId, name);
+  for (const sid of findSocketIdsByName(listing.sellerName)) {
+    send(sid, { type: "notice", text: `${name} купил у тебя ${qty}× за ${totalPrice} монет!` });
+    sendShopPayload(sid, listing.sellerName);
+  }
+  broadcastMarket();
+}
+
 function getPlayerCosmetics(name) {
   const entry = getProfile(name);
   const hatId = entry.equipped.snakeHat || null;
@@ -1775,6 +2060,7 @@ function trackDeathStats(player) {
   const sessionTop = Math.max(player.score, ...rivalScores, 0);
   player.sessionMvp = player.score > 0 && player.score >= sessionTop;
   entry.stats.battlePassScore = (entry.stats.battlePassScore || 0) + (player.score || 0);
+  if (player.inventory) entry.stats.foodInventory = { ...player.inventory };
   shopData[player.name] = entry;
   persistProfile(player.name, entry);
   processBattlePassRewards(player.name, entry);
@@ -1791,6 +2077,7 @@ function trackDisconnectStats(player) {
     entry.stats.battlePassScore = (entry.stats.battlePassScore || 0) + player.score;
     processBattlePassRewards(player.name, entry);
   }
+  if (player.inventory) entry.stats.foodInventory = { ...player.inventory };
   shopData[player.name] = entry;
   persistProfile(player.name, entry);
 }
@@ -1896,8 +2183,15 @@ async function bootstrap() {
     await db.init();
     shopData = await db.loadAllPlayers();
     leaderboard = await db.loadLeaderboard(MAX_LEADERS);
+    const listingRows = await db.loadFoodListings();
+    for (const row of listingRows) {
+      marketListings.set(row.id, {
+        id: row.id, sellerName: row.seller_name, kind: row.kind,
+        quantity: row.quantity, pricePerUnit: row.price_per_unit, createdAt: row.created_at,
+      });
+    }
     rebuildProfileIndex();
-    console.log(`PostgreSQL: ${Object.keys(shopData).length} игроков, ${leaderboard.length} рекордов`);
+    console.log(`PostgreSQL: ${Object.keys(shopData).length} игроков, ${leaderboard.length} рекордов, ${marketListings.size} лотов рынка`);
   } catch (err) {
     console.error("PostgreSQL недоступен:", err.message);
     console.error("Проверь DATABASE_URL и что база запущена. Пример: npm run db:reset");

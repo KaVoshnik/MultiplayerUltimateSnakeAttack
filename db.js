@@ -119,6 +119,37 @@ async function init() {
 
     CREATE INDEX IF NOT EXISTS idx_friendships_requester ON friendships (requester_name);
     CREATE INDEX IF NOT EXISTS idx_friendships_target ON friendships (target_name);
+
+    CREATE TABLE IF NOT EXISTS bans (
+      name_lower VARCHAR(32) PRIMARY KEY,
+      name VARCHAR(32) NOT NULL,
+      banned_until TIMESTAMPTZ,
+      reason TEXT,
+      banned_by VARCHAR(32),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS admin_actions (
+      id SERIAL PRIMARY KEY,
+      admin_name VARCHAR(32) NOT NULL,
+      action VARCHAR(32) NOT NULL,
+      target_name VARCHAR(32) NOT NULL,
+      reason TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_admin_actions_created ON admin_actions (created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS food_listings (
+      id UUID PRIMARY KEY,
+      seller_name VARCHAR(32) NOT NULL,
+      kind VARCHAR(16) NOT NULL,
+      quantity INTEGER NOT NULL,
+      price_per_unit INTEGER NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_food_listings_seller ON food_listings (seller_name);
   `);
 
   await migratePlayersTable();
@@ -370,7 +401,7 @@ async function upsertLeaderboard(name, score) {
 }
 
 async function resetAll() {
-  await pool.query("TRUNCATE players, leaderboard, google_users, auth_sessions, avatar_reports, friendships RESTART IDENTITY");
+  await pool.query("TRUNCATE players, leaderboard, google_users, auth_sessions, avatar_reports, friendships, bans, admin_actions, food_listings RESTART IDENTITY");
 }
 
 async function isAdmin(googleId) {
@@ -400,6 +431,78 @@ async function getAdminPlayerList() {
     ORDER BY p.updated_at DESC
   `);
   return rows;
+}
+
+// minutes === null означает перманентный бан (banned_until остаётся NULL).
+async function banPlayer(name, minutes, reason, adminName) {
+  const bannedUntil = minutes ? new Date(Date.now() + minutes * 60_000) : null;
+  await pool.query(
+    `INSERT INTO bans (name_lower, name, banned_until, reason, banned_by)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (name_lower) DO UPDATE
+       SET name = $2, banned_until = $3, reason = $4, banned_by = $5, created_at = NOW()`,
+    [name.toLowerCase(), name, bannedUntil, reason || null, adminName],
+  );
+}
+
+async function unbanPlayer(name) {
+  await pool.query("DELETE FROM bans WHERE name_lower = $1", [name.toLowerCase()]);
+}
+
+// Возвращает активный бан (ещё не истёкший или перманентный) либо null.
+async function getActiveBan(name) {
+  const { rows } = await pool.query(
+    `SELECT * FROM bans WHERE name_lower = $1 AND (banned_until IS NULL OR banned_until > NOW()) LIMIT 1`,
+    [name.toLowerCase()],
+  );
+  return rows[0] || null;
+}
+
+async function listActiveBans() {
+  const { rows } = await pool.query(
+    `SELECT * FROM bans WHERE banned_until IS NULL OR banned_until > NOW() ORDER BY created_at DESC`,
+  );
+  return rows;
+}
+
+async function logAdminAction(adminName, action, targetName, reason) {
+  await pool.query(
+    `INSERT INTO admin_actions (admin_name, action, target_name, reason) VALUES ($1, $2, $3, $4)`,
+    [adminName, action, targetName, reason || null],
+  );
+}
+
+async function getAdminActions(limit = 200) {
+  const { rows } = await pool.query(
+    `SELECT * FROM admin_actions ORDER BY created_at DESC LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+
+// ---- Рынок обмена едой ----
+// Источник правды во время работы сервера — in-memory Map в server.js (как и
+// leaderboard); эти функции только персистят его на диск, чтобы лоты
+// переживали рестарт. ID генерируется на сервере (crypto.randomUUID())
+// синхронно, до похода в БД — поэтому запись сюда всегда fire-and-forget,
+// без ожидания перед тем как показать лот другим игрокам.
+
+async function loadFoodListings() {
+  const { rows } = await pool.query("SELECT * FROM food_listings ORDER BY created_at ASC");
+  return rows;
+}
+
+async function upsertFoodListing(listing) {
+  await pool.query(
+    `INSERT INTO food_listings (id, seller_name, kind, quantity, price_per_unit, created_at)
+     VALUES ($1::uuid, $2, $3, $4, $5, $6)
+     ON CONFLICT (id) DO UPDATE SET quantity = EXCLUDED.quantity`,
+    [listing.id, listing.sellerName, listing.kind, listing.quantity, listing.pricePerUnit, listing.createdAt],
+  );
+}
+
+async function deleteFoodListing(id) {
+  await pool.query("DELETE FROM food_listings WHERE id = $1::uuid", [id]);
 }
 
 // Один жалобщик — одна жалоба на цель (ON CONFLICT игнорируем повторную).
@@ -555,6 +658,15 @@ module.exports = {
   isAdmin,
   setAdmin,
   getAdminPlayerList,
+  banPlayer,
+  unbanPlayer,
+  getActiveBan,
+  listActiveBans,
+  logAdminAction,
+  getAdminActions,
+  loadFoodListings,
+  upsertFoodListing,
+  deleteFoodListing,
   reportAvatar,
   loadAvatarReports,
   clearAvatarReports,

@@ -173,6 +173,7 @@ module.exports = [
       "public/js/battlepass.js",
       "public/js/leaderboard.js",
       "public/js/friends.js",
+      "public/js/inventory.js",
     ],
 
     languageOptions: {
