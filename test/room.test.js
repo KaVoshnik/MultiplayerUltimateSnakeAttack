@@ -13,7 +13,7 @@ function makeRoom(opts = {}) {
   const room = new Room({ code: "TEST123", hostId: "p1", isPublic: false, ...opts });
   room.send = () => {};
   room.broadcast = () => {};
-  room.getProfile = () => ({ activeSkin: "default", coins: 0 });
+  room.getProfile = () => ({ activeSkin: "default", coins: 0, stats: { foodInventory: { apple: 0, cherry: 0, grape: 0 } } });
   room.getSkinDef = () => ({ id: "default", color: "#33d17a" });
   room.getPlayerCosmetics = () => ({});
   return room;

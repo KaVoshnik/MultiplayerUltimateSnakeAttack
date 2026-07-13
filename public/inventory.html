@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Инвентарь — Ultimate Snake Attack</title>
+  <link rel="stylesheet" href="css/common.css" />
+  <link rel="stylesheet" href="css/pages.css" />
+  <link rel="stylesheet" href="css/inventory.css" />
+</head>
+<body data-page="inventory">
+  <nav class="siteNav">
+    <a href="/" class="brand">← ЛОББИ</a>
+    <div class="links">
+      <a href="/" data-page="lobby">Лобби</a>
+      <a href="/game.html" data-page="game">Игра</a>
+      <a href="/shop.html" data-page="shop">Магазин</a>
+      <a href="/profile.html" data-page="profile">Профиль</a>
+      <a href="/inventory.html" data-page="inventory" class="active">Инвентарь</a>
+      <a href="/leaderboard.html" data-page="leaderboard">Рекорды</a>
+      <a href="/friends.html" data-page="friends">Друзья</a>
+    </div>
+  </nav>
+
+  <main class="pageWrap invPage">
+    <header class="pageHeader">
+      <h1>🎒 ИНВЕНТАРЬ</h1>
+      <p>Еда, которую ты собрал за все забеги. Копится на аккаунте — не сгорает после смерти.</p>
+    </header>
+
+    <div class="invLoginGate" id="invLoginGate">
+      <p>Инвентарь привязан к аккаунту — войди через Google, чтобы прогресс не терялся.</p>
+      <a class="btn googleBtn" href="/auth/google?return_to=/inventory.html">Войти через Google</a>
+    </div>
+
+    <section class="glass pageCard invGrid hidden" id="invGrid"></section>
+
+    <section class="glass pageCard invComingSoon hidden" id="invComingSoon">
+      <h2>Что с этим делать?</h2>
+      <p>Скоро здесь появится крафт баффов на забег — из того, что ты собрал сам или выменял у других игроков. Пока еда просто копится, жди обновления 👀</p>
+    </section>
+  </main>
+
+  <script src="js/common.js"></script>
+  <script src="js/inventory.js"></script>
+</body>
+</html>

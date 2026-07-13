@@ -1108,13 +1108,7 @@ function buildSyncCtx() {
 
 function sendSnapshot(clientId) {
   const snap = gameSync.buildSnapshot(buildSyncCtx(), clientId);
-  if (!snap) return;
-  // snap уходит ТОЛЬКО этому клиенту (в отличие от pm/delta, которые видят
-  // все в AOI) — поэтому можно безопасно подмешать личный инвентарь прямо
-  // сюда, не заводя отдельный broadcast-канал для приватных данных.
-  const self = players.get(clientId);
-  if (self) snap.inventory = self.inventory;
-  send(clientId, snap);
+  if (snap) send(clientId, snap);
 }
 
 function broadcastGameSync() {
@@ -1274,12 +1268,11 @@ function tick() {
         if (player.combo === 5 || player.combo === 10) {
           pushFeed("combo", `🔥 ${player.name}: COMBO ×${player.combo}!`, player.name);
         }
-        // Инвентарь — отдельный ресурс поверх счёта, не влияет на него.
-        // Личное дело каждого игрока, поэтому шлём не через общий AOI-broadcast
-        // (pm), а напрямую только этому сокету.
+        // Инвентарь копится в памяти живой змейки и разово синкается в
+        // персистентный профиль при смерти/дисконнекте (trackDeathStats /
+        // trackDisconnectStats) — не шлём отдельное сообщение на каждое яблоко.
         if (player.inventory[eaten.kind] !== undefined && player.inventory[eaten.kind] < gameConfig.INVENTORY_CAP) {
           player.inventory[eaten.kind] += 1;
-          send(player.id, { type: "inventory", inventory: player.inventory });
         }
       } else if (player.activeBonus === "shield") {
         player.activeBonus = null;
@@ -1403,7 +1396,7 @@ function createPlayer(id, name, skin) {
     coinsEarned: 0, beatPersonalBest: false, sessionMvp: false,
     activeBonus: null, bonusExpires: null,
     combo: 0, maxCombo: 0,
-    inventory: Object.fromEntries(foodMod.GOOD_FOOD_KINDS.map((k) => [k, 0])),
+    inventory: { ...shopEntry.stats.foodInventory },
     avatar: cos.avatar, snakeHatEmoji: cos.snakeHatEmoji, snakeHatId: cos.snakeHatId,
     nickColor: resolveNickColorHex(shopEntry),
     frozenUntil: Date.now() + SPAWN_FREEZE_MS,
@@ -1481,6 +1474,11 @@ function normalizeProfile(raw) {
       unlockedAchievements: Array.isArray(raw.stats?.unlockedAchievements) ? [...raw.stats.unlockedAchievements] : [],
       dailyChestAvailable: raw.stats?.dailyChestAvailable || false,
       dailyChestDate: raw.stats?.dailyChestDate || null,
+      // Персистентный инвентарь еды — живёт в аккаунте, не в одной жизни змейки.
+      foodInventory: {
+        ...Object.fromEntries(foodMod.GOOD_FOOD_KINDS.map((k) => [k, 0])),
+        ...(raw.stats?.foodInventory && typeof raw.stats.foodInventory === "object" ? raw.stats.foodInventory : {}),
+      },
     },
   };
   for (const id of entry.unlockedSkins) {
@@ -1593,12 +1591,22 @@ async function resolvePlayName(id, requestedName) {
   const name = session ? session.player_name : profileName(requestedName);
   if (!name) return { ok: false, text: "Укажи никнейм в профиле!" };
 
-  const ban = await db.getActiveBan(name).catch(() => null);
-  if (ban) {
-    const text = ban.banned_until
-      ? `Вы забанены до ${new Date(ban.banned_until).toLocaleString("ru-RU")}${ban.reason ? `. Причина: ${ban.reason}` : ""}`
-      : `Вы забанены навсегда${ban.reason ? `. Причина: ${ban.reason}` : ""}`;
-    return { ok: false, text };
+  // try/catch, а не .catch() на цепочке промисов: если db.getActiveBan вообще
+  // не существует (например при частичном деплое — server.js уже новый,
+  // а db.js ещё старый), вызов кинет TypeError СИНХРОННО, до того как .catch
+  // успеет на что-то подписаться — и тогда join молча падает целиком для
+  // абсолютно всех, а не только для забаненных. Бан-система не должна иметь
+  // возможность уронить вход в игру всем остальным — fail-open с логом.
+  try {
+    const ban = await db.getActiveBan(name);
+    if (ban) {
+      const text = ban.banned_until
+        ? `Вы забанены до ${new Date(ban.banned_until).toLocaleString("ru-RU")}${ban.reason ? `. Причина: ${ban.reason}` : ""}`
+        : `Вы забанены навсегда${ban.reason ? `. Причина: ${ban.reason}` : ""}`;
+      return { ok: false, text };
+    }
+  } catch (err) {
+    console.error("resolvePlayName: ban check failed, failing open —", err.message);
   }
 
   if (session) return { ok: true, name };
@@ -1923,6 +1931,7 @@ function trackDeathStats(player) {
   const sessionTop = Math.max(player.score, ...rivalScores, 0);
   player.sessionMvp = player.score > 0 && player.score >= sessionTop;
   entry.stats.battlePassScore = (entry.stats.battlePassScore || 0) + (player.score || 0);
+  if (player.inventory) entry.stats.foodInventory = { ...player.inventory };
   shopData[player.name] = entry;
   persistProfile(player.name, entry);
   processBattlePassRewards(player.name, entry);
@@ -1939,6 +1948,7 @@ function trackDisconnectStats(player) {
     entry.stats.battlePassScore = (entry.stats.battlePassScore || 0) + player.score;
     processBattlePassRewards(player.name, entry);
   }
+  if (player.inventory) entry.stats.foodInventory = { ...player.inventory };
   shopData[player.name] = entry;
   persistProfile(player.name, entry);
 }
