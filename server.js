@@ -1199,7 +1199,7 @@ function tick() {
     anyBossOccupies: (pt) => bossMod.anyBossOccupies(bosses, pt),
   });
 
-  if (tickCount % (bosses.some((b) => b.enragedTicks > 0) ? 3 : BOSS_MOVE_EVERY) === 0) {
+  if (tickCount % (bosses.some((b) => b.enragedTicks > 0) ? 2 : BOSS_MOVE_EVERY) === 0) {
     bossMod.moveBosses({
       bosses, players, food, tickCount, GRID,
       avoidCells: pathCells,
