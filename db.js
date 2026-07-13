@@ -139,6 +139,17 @@ async function init() {
     );
 
     CREATE INDEX IF NOT EXISTS idx_admin_actions_created ON admin_actions (created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS food_listings (
+      id UUID PRIMARY KEY,
+      seller_name VARCHAR(32) NOT NULL,
+      kind VARCHAR(16) NOT NULL,
+      quantity INTEGER NOT NULL,
+      price_per_unit INTEGER NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_food_listings_seller ON food_listings (seller_name);
   `);
 
   await migratePlayersTable();
@@ -390,7 +401,7 @@ async function upsertLeaderboard(name, score) {
 }
 
 async function resetAll() {
-  await pool.query("TRUNCATE players, leaderboard, google_users, auth_sessions, avatar_reports, friendships, bans, admin_actions RESTART IDENTITY");
+  await pool.query("TRUNCATE players, leaderboard, google_users, auth_sessions, avatar_reports, friendships, bans, admin_actions, food_listings RESTART IDENTITY");
 }
 
 async function isAdmin(googleId) {
@@ -467,6 +478,31 @@ async function getAdminActions(limit = 200) {
     [limit],
   );
   return rows;
+}
+
+// ---- Рынок обмена едой ----
+// Источник правды во время работы сервера — in-memory Map в server.js (как и
+// leaderboard); эти функции только персистят его на диск, чтобы лоты
+// переживали рестарт. ID генерируется на сервере (crypto.randomUUID())
+// синхронно, до похода в БД — поэтому запись сюда всегда fire-and-forget,
+// без ожидания перед тем как показать лот другим игрокам.
+
+async function loadFoodListings() {
+  const { rows } = await pool.query("SELECT * FROM food_listings ORDER BY created_at ASC");
+  return rows;
+}
+
+async function upsertFoodListing(listing) {
+  await pool.query(
+    `INSERT INTO food_listings (id, seller_name, kind, quantity, price_per_unit, created_at)
+     VALUES ($1::uuid, $2, $3, $4, $5, $6)
+     ON CONFLICT (id) DO UPDATE SET quantity = EXCLUDED.quantity`,
+    [listing.id, listing.sellerName, listing.kind, listing.quantity, listing.pricePerUnit, listing.createdAt],
+  );
+}
+
+async function deleteFoodListing(id) {
+  await pool.query("DELETE FROM food_listings WHERE id = $1::uuid", [id]);
 }
 
 // Один жалобщик — одна жалоба на цель (ON CONFLICT игнорируем повторную).
@@ -628,6 +664,9 @@ module.exports = {
   listActiveBans,
   logAdminAction,
   getAdminActions,
+  loadFoodListings,
+  upsertFoodListing,
+  deleteFoodListing,
   reportAvatar,
   loadAvatarReports,
   clearAvatarReports,

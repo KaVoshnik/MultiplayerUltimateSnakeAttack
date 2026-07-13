@@ -35,9 +35,26 @@
 
     <section class="glass pageCard invGrid hidden" id="invGrid"></section>
 
-    <section class="glass pageCard invComingSoon hidden" id="invComingSoon">
-      <h2>Что с этим делать?</h2>
-      <p>Скоро здесь появится крафт баффов на забег — из того, что ты собрал сам или выменял у других игроков. Пока еда просто копится, жди обновления 👀</p>
+    <section class="glass pageCard invMarket hidden" id="invMarket">
+      <h2>🏪 Рынок</h2>
+      <p class="invMarketHint">Продай лишнюю еду другим игрокам или купи то, чего не хватает.</p>
+
+      <form class="invListForm" id="invListForm">
+        <select id="invListKind"></select>
+        <input type="number" id="invListQty" min="1" placeholder="Кол-во" required />
+        <input type="number" id="invListPrice" min="1" max="500" placeholder="Цена/шт 🪙" required />
+        <button type="submit" class="btn primary small">Выставить</button>
+      </form>
+
+      <h3 class="invMarketSubhead">Мои лоты</h3>
+      <div class="invListingList" id="invMyListings">
+        <div class="emptyState">Нет активных лотов.</div>
+      </div>
+
+      <h3 class="invMarketSubhead">Все лоты</h3>
+      <div class="invListingList" id="invAllListings">
+        <div class="emptyState">Рынок пока пуст.</div>
+      </div>
     </section>
   </main>
 
