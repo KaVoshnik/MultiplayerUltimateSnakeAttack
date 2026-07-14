@@ -1,7 +1,9 @@
 const FOOD_META = {
-  apple:  { icon: "🍎", label: "Яблоко" },
-  cherry: { icon: "🍒", label: "Вишня" },
-  grape:  { icon: "🍇", label: "Виноград" },
+  apple:     { icon: "🍎", label: "Яблоко" },
+  cherry:    { icon: "🍒", label: "Вишня" },
+  grape:     { icon: "🍇", label: "Виноград" },
+  pineapple: { icon: "🍍", label: "Ананас" },
+  coconut:   { icon: "🥥", label: "Кокос" },
 };
 
 const state = { loggedIn: false, name: "", socket: null, foodInventory: {}, listings: [] };

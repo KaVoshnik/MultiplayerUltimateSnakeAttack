@@ -2,16 +2,16 @@
  * Client-side apply for snapshot + delta (Level 2 net).
  */
 const GameSyncClient = (() => {
-  const FOOD_KINDS = {
-    apple: true, cherry: true, grape: true,
-    rotten: true, spider: true, mushroom: true, bone: true,
+  // Очки продублированы с server-side lib/food.js FOOD_TYPES — держать в синхроне.
+  const GOOD_FOOD_POINTS = {
+    apple: 6, cherry: 7, grape: 6, pineapple: 12, coconut: 20,
   };
 
   function expandFood(compact) {
     const [x, y, kind] = compact;
-    const good = kind === "apple" || kind === "cherry" || kind === "grape";
-    const points = kind === "cherry" ? 7 : 6;
-    return { x, y, kind, good, points: good ? points : 0 };
+    const good = Object.prototype.hasOwnProperty.call(GOOD_FOOD_POINTS, kind);
+    const points = good ? GOOD_FOOD_POINTS[kind] : 0;
+    return { x, y, kind, good, points };
   }
 
   function expandBonus(compact) {

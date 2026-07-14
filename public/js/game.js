@@ -191,7 +191,10 @@ window.addEventListener("resize", resizeCanvas);
 if (window.ResizeObserver) new ResizeObserver(resizeCanvas).observe(canvasStage);
 resizeCanvas();
 
+const GOOD_KINDS = ["apple", "cherry", "grape", "pineapple", "coconut"];
+
 function isGoodFood(item) {
+  if (item.kind) return GOOD_KINDS.includes(item.kind);
   return item.good === true || item.value === 6 || item.value === 7;
 }
 
@@ -959,6 +962,24 @@ function drawFoodShape(kind, cx, cy, r, cell) {
           ctx.fill();
         }
       }
+      break;
+    case "pineapple":
+      ctx.fillStyle = "#e8b23d";
+      roundRect(cx - r * 0.55, cy - r * 0.35, r * 1.1, r * 1.15, r * 0.3); ctx.fill();
+      ctx.strokeStyle = "#c98f1f"; ctx.lineWidth = Math.max(1, cell * 0.03);
+      ctx.beginPath(); ctx.moveTo(cx - r * 0.5, cy - r * 0.1); ctx.lineTo(cx + r * 0.5, cy + r * 0.3); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx - r * 0.5, cy + r * 0.3); ctx.lineTo(cx + r * 0.5, cy - r * 0.1); ctx.stroke();
+      ctx.fillStyle = "#3de88a";
+      ctx.beginPath(); ctx.moveTo(cx, cy - r * 0.9); ctx.lineTo(cx - r * 0.25, cy - r * 1.35); ctx.lineTo(cx, cy - r * 1.05); ctx.lineTo(cx + r * 0.25, cy - r * 1.35); ctx.closePath(); ctx.fill();
+      break;
+    case "coconut":
+      ctx.fillStyle = "#4a3222";
+      ctx.beginPath(); ctx.arc(cx, cy, r * 0.9, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#f5f0e1";
+      ctx.beginPath(); ctx.arc(cx - r * 0.1, cy - r * 0.1, r * 0.35, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "#6b4a30"; ctx.lineWidth = Math.max(1, cell * 0.03);
+      ctx.beginPath(); ctx.moveTo(cx, cy - r * 0.7); ctx.lineTo(cx, cy + r * 0.7); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx - r * 0.6, cy - r * 0.35); ctx.lineTo(cx + r * 0.6, cy + r * 0.35); ctx.stroke();
       break;
     case "rotten":
       ctx.fillStyle = "#6b7c3d";
