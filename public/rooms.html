@@ -390,7 +390,7 @@
         panel.innerHTML = '<div class="invite-empty">Загрузка…</div>';
         try {
           var res = await fetch("/friends", { credentials: "same-origin" });
-          if (!res.ok) { panel.innerHTML = '<div class="invite-empty">Войди через Google в профиле, чтобы приглашать друзей.</div>'; return; }
+          if (!res.ok) { panel.innerHTML = '<div class="invite-empty">Войди в аккаунт в профиле, чтобы приглашать друзей.</div>'; return; }
           var data = await res.json();
           if (!data.friends.length) { panel.innerHTML = '<div class="invite-empty">Пока нет друзей — добавь на странице «Друзья».</div>'; return; }
           panel.innerHTML = "";
@@ -398,7 +398,6 @@
             var row = document.createElement("div");
             row.className = "invite-row";
             var avaHtml = f.customAvatarUrl ? '<img class="ava" src="' + escapeHtml(f.customAvatarUrl) + '" />' :
-              f.googlePicture ? '<img class="ava" src="' + escapeHtml(f.googlePicture) + '" />' :
               '<span class="ava">' + (f.avatar || "😎") + '</span>';
             row.innerHTML = avaHtml +
               '<span class="dot ' + (f.online ? "on" : "") + '"></span>' +

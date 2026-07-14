@@ -393,7 +393,7 @@ async function handleHttpRequest(req, res, url) {
     }
     sendJson(res, {
       id: prof.id || null, name: key, coins: prof.coins, activeSkin: prof.activeSkin,
-      avatar: prof.avatar, googlePicture: prof.stats?.googlePicture || null, customAvatarUrl: prof.stats?.customAvatarUrl || null,
+      avatar: prof.avatar, customAvatarUrl: prof.stats?.customAvatarUrl || null,
       streak: prof.stats?.streak || 0,
       stats: { games: prof.stats?.games || 0, deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0, best: prof.stats?.best || 0, playTimeMs: prof.stats?.playTimeMs || 0 },
       online: isPlayerOnline(key),
@@ -417,7 +417,7 @@ async function handleHttpRequest(req, res, url) {
       .filter(([name]) => !q || name.toLowerCase().includes(q))
       .map(([name, prof]) => {
         const p = normalizeProfile(prof);
-        return { name, avatar: p.avatar, googlePicture: p.stats?.googlePicture || null, customAvatarUrl: p.stats?.customAvatarUrl || null, streak: p.stats?.streak || 0, games: p.stats.games || 0, deaths: p.stats.deaths || 0, best: p.stats.best || 0, coins: p.coins || 0, playTimeMs: p.stats.playTimeMs || 0 };
+        return { name, avatar: p.avatar, customAvatarUrl: p.stats?.customAvatarUrl || null, streak: p.stats?.streak || 0, games: p.stats.games || 0, deaths: p.stats.deaths || 0, best: p.stats.best || 0, coins: p.coins || 0, playTimeMs: p.stats.playTimeMs || 0 };
       })
       .sort((a, b) => a.name.localeCompare(b.name, "ru"))
       .slice(0, 50);
@@ -507,7 +507,6 @@ async function handleHttpRequest(req, res, url) {
       return {
         name: row.name,
         avatar: prof.avatar,
-        googlePicture: prof.stats?.googlePicture || null,
         customAvatarUrl: prof.stats?.customAvatarUrl || null,
         best: prof.stats?.best || 0,
         streak: prof.stats?.streak || 0,
@@ -675,7 +674,7 @@ async function handleHttpRequest(req, res, url) {
   // не находит подходящий под-роут и улетает в 404 в конце блока.
   if (url.pathname.startsWith("/admin/")) {
     const session = await auth.getSession(req, db).catch(() => null);
-    const adminOk  = session && await db.isAdmin(session.google_id).catch(() => false);
+    const adminOk  = session && await db.isAdmin(session.player_name).catch(() => false);
     if (!adminOk) {
       res.writeHead(403, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "forbidden" }));
@@ -685,13 +684,31 @@ async function handleHttpRequest(req, res, url) {
     if (url.pathname === "/admin/players" && req.method === "GET") {
       const rows = await db.getAdminPlayerList();
       sendJson(res, rows.map((p) => ({
-        name: p.name, googleId: p.google_id || null,
+        name: p.name,
         coins: p.coins, isAdmin: p.is_admin,
         bestScore: p.best_score || 0,
         games: p.stats?.games || 0,
         deaths: p.stats?.deaths || 0,
         updatedAt: p.updated_at,
       })));
+      return;
+    }
+
+    // Разовая ссылка восстановления доступа для старых (Google-эпохи) аккаунтов
+    // без пароля. Выдавать только после ручной проверки, что обратился реальный
+    // владелец ника (скриншот профиля, совпадающая статистика и т.п.).
+    if (url.pathname === "/admin/create_claim_link" && req.method === "POST") {
+      let body = "";
+      req.on("data", (c) => (body += c));
+      await new Promise((r) => req.on("end", r));
+      const { name } = JSON.parse(body);
+      if (!name) { res.writeHead(400); res.end("bad request"); return; }
+      const target = await db.findPlayerByName(name).catch(() => null);
+      if (!target) { res.writeHead(404); res.end("player not found"); return; }
+      const { token, expiresAt } = await db.createClaimToken(target.name, session.player_name);
+      await db.logAdminAction(session.player_name, "create_claim_link", target.name, null);
+      const base = getRequestOrigin(req).http.replace(/\/$/, "");
+      sendJson(res, { ok: true, token, url: `${base}/profile.html?claim=${token}`, expiresAt });
       return;
     }
 
@@ -713,9 +730,8 @@ async function handleHttpRequest(req, res, url) {
       await new Promise((r) => req.on("end", r));
       const { name } = JSON.parse(body);
       if (!name) { res.writeHead(400); res.end("bad request"); return; }
-      const target = await db.findGoogleUserByPlayerName(name).catch(() => null);
-      const superIds = (process.env.ADMIN_GOOGLE_IDS || "").split(",").map((s) => s.trim()).filter(Boolean);
-      if (target && superIds.includes(target.google_id)) {
+      const superNames = (process.env.ADMIN_USERNAMES || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+      if (superNames.includes(name.toLowerCase())) {
         res.writeHead(403); res.end("cannot delete superadmin"); return;
       }
       await db.deletePlayer(name);
@@ -792,9 +808,8 @@ async function handleHttpRequest(req, res, url) {
       await new Promise((r) => req.on("end", r));
       const { name, minutes, reason } = JSON.parse(body);
       if (!name) { res.writeHead(400); res.end("bad request"); return; }
-      const target = await db.findGoogleUserByPlayerName(name).catch(() => null);
-      const superIds = (process.env.ADMIN_GOOGLE_IDS || "").split(",").map((s) => s.trim()).filter(Boolean);
-      if (target && superIds.includes(target.google_id)) {
+      const superNames = (process.env.ADMIN_USERNAMES || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+      if (superNames.includes(name.toLowerCase())) {
         res.writeHead(403); res.end("cannot ban superadmin"); return;
       }
       const mins = (minutes === undefined || minutes === null || minutes === "")
@@ -848,7 +863,7 @@ async function handleHttpRequest(req, res, url) {
     }
 
     if (url.pathname === "/admin/me" && req.method === "GET") {
-      sendJson(res, { name: session.player_name, googleId: session.google_id });
+      sendJson(res, { name: session.player_name });
       return;
     }
 
@@ -890,18 +905,18 @@ server.on("upgrade", (req, socket) => {
 
   auth.getSession(req, db).then((session) => {
     if (session) {
-      // Один активный сокет на google_id: если тот же аккаунт уже подключён
+      // Один активный сокет на аккаунт: если тот же логин уже подключён
       // (другая вкладка/устройство) — выгоняем старую сессию, не оставляем дубль.
-      if (session.google_id) {
+      if (session.player_name) {
         for (const [otherId, otherSession] of socketSessions) {
-          if (otherId !== id && otherSession.google_id === session.google_id) {
+          if (otherId !== id && otherSession.player_name.toLowerCase() === session.player_name.toLowerCase()) {
             send(otherId, { type: "notice", text: "Вы вошли с другого устройства — это соединение закрыто." });
             closeSocket(otherId);
           }
         }
       }
       socketSessions.set(id, session);
-      send(id, { type: "auth_ready", name: session.player_name, googleId: session.google_id });
+      send(id, { type: "auth_ready", name: session.player_name });
     }
   }).catch(() => { });
 
@@ -1457,7 +1472,6 @@ function defaultShopEntry() {
 function normalizeProfile(raw) {
   const entry = {
     id: raw.id || null,
-    googleId: raw.googleId || raw.google_id || null,
     coins: Number(raw.coins) || 0,
     unlockedSkins: raw.unlockedSkins || ["default"],
     activeSkin: raw.activeSkin || "default",
@@ -1471,7 +1485,6 @@ function normalizeProfile(raw) {
       best: raw.stats?.best || 0,
       playTimeMs: raw.stats?.playTimeMs || 0,
       sessionStart: raw.stats?.sessionStart || null,
-      googlePicture: raw.stats?.googlePicture || null,
       customAvatarUrl: raw.stats?.customAvatarUrl || null,
       battlePassScore: raw.stats?.battlePassScore || 0,
       battlePassClaimed: Array.isArray(raw.stats?.battlePassClaimed) ? [...raw.stats.battlePassClaimed] : [],
@@ -1623,7 +1636,7 @@ async function resolvePlayName(id, requestedName) {
   // (учитываем shopClients, players, и само переданное имя если профиль уже существует)
   const currentName = shopClients.get(id) || players.get(id)?.name || null;
   const exceptName  = currentName || (profileIndex.has(name.toLowerCase()) ? name : null);
-  if (await isNameTaken(name, exceptName)) return { ok: false, text: "Это имя уже занято! Войди через Google в профиле." };
+  if (await isNameTaken(name, exceptName)) return { ok: false, text: "Это имя уже занято." };
   return { ok: true, name };
 }
 
@@ -1728,7 +1741,7 @@ async function handleRoomLeave(id, message) {
 
 async function handleRoomInvite(id, message) {
   const session = socketSessions.get(id);
-  if (!session) { send(id, { type: "notice", text: "Войди через Google, чтобы приглашать друзей." }); return; }
+  if (!session) { send(id, { type: "notice", text: "Войди в аккаунт, чтобы приглашать друзей." }); return; }
   const code = socketRoom.get(id);
   if (!code || !rooms.has(code)) { send(id, { type: "notice", text: "Ты сейчас не в комнате." }); return; }
   const targetName = profileName(message.name);
@@ -1762,14 +1775,13 @@ async function saveProfile(clientId, message) {
   const session = socketSessions.get(clientId);
   const newName = profileName(message.name);
   if (!newName) { send(clientId, { type: "notice", text: "Никнейм не может быть пустым!" }); return; }
-  if (!session) { send(clientId, { type: "notice", text: "Войди через Google, чтобы редактировать профиль." }); return; }
+  if (!session) { send(clientId, { type: "notice", text: "Войди в аккаунт, чтобы редактировать профиль." }); return; }
 
   const oldName = session.player_name;
   const avatar = AVATAR_PRESETS.includes(message.avatar) ? message.avatar : "😎";
   let entry = getProfile(oldName);
   entry.avatar = avatar;
   syncProfileCoins(oldName, entry);
-  if (session.google_id) entry.googleId = session.google_id;
   if (!entry.id) await persistProfile(oldName, entry);
 
   if (oldName.toLowerCase() !== newName.toLowerCase()) {
@@ -1784,11 +1796,9 @@ async function saveProfile(clientId, message) {
     profileIndexSet(newName);
     session.player_name = newName;
     socketSessions.set(clientId, session);
-    await db.updateGoogleUserPlayerName(session.google_id, newName);
     await db.renamePlayer(oldName, newName, entry);
   } else {
     syncProfileCoins(newName, entry);
-    if (session.google_id) entry.googleId = session.google_id;
     shopData[newName] = entry;
     await persistProfile(newName, entry);
   }
@@ -2162,13 +2172,13 @@ function processBattlePassRewards(name, entry) {
 function getEnrichedLeaderboard() {
   return leaderboard.map((e, index) => {
     const prof = getProfile(e.name);
-    return { ...e, rank: index + 1, avatar: prof.avatar, googlePicture: prof.stats?.googlePicture || null, customAvatarUrl: prof.stats?.customAvatarUrl || null, streak: prof.stats?.streak || 0, deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0, games: prof.stats?.games || 0, best: Math.max(e.score, prof.stats?.best || 0), coins: prof.coins || 0 };
+    return { ...e, rank: index + 1, avatar: prof.avatar, customAvatarUrl: prof.stats?.customAvatarUrl || null, streak: prof.stats?.streak || 0, deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0, games: prof.stats?.games || 0, best: Math.max(e.score, prof.stats?.best || 0), coins: prof.coins || 0 };
   });
 }
 
 function getWealthLeaderboard() {
   return Object.entries(shopData)
-    .map(([name, prof]) => ({ name, coins: prof.coins || 0, score: prof.coins || 0, avatar: prof.avatar || "😎", googlePicture: prof.stats?.googlePicture || null, customAvatarUrl: prof.stats?.customAvatarUrl || null, streak: prof.stats?.streak || 0, deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0, games: prof.stats?.games || 0, best: prof.stats?.best || 0 }))
+    .map(([name, prof]) => ({ name, coins: prof.coins || 0, score: prof.coins || 0, avatar: prof.avatar || "😎", customAvatarUrl: prof.stats?.customAvatarUrl || null, streak: prof.stats?.streak || 0, deaths: prof.stats?.deaths ?? prof.stats?.losses ?? 0, games: prof.stats?.games || 0, best: prof.stats?.best || 0 }))
     .filter((e) => e.coins > 0)
     .sort((a, b) => b.coins - a.coins || a.name.localeCompare(b.name, "ru"))
     .slice(0, MAX_LEADERS)
@@ -2210,15 +2220,9 @@ async function bootstrap() {
     setInterval(broadcastPresence, 5000);
     setInterval(pingClients, 25000);
     setInterval(() => db.cleanupAuthSessions().catch(() => { }), 60 * 60 * 1000);
+    setInterval(() => db.cleanupClaimTokens().catch(() => { }), 60 * 60 * 1000);
 
-    if (auth.isGoogleAuthEnabled()) {
-      const sampleRedirect = process.env.GOOGLE_REDIRECT_URI
-        || (process.env.PUBLIC_URL ? `${process.env.PUBLIC_URL.replace(/\/$/, "")}/auth/google/callback` : "(из запроса)");
-      console.log("Google OAuth: включён");
-      console.log(`Google OAuth redirect: ${sampleRedirect}`);
-    } else {
-      console.log("Google OAuth: выключен (заполни GOOGLE_CLIENT_ID/SECRET в .env)");
-    }
+    console.log("Авторизация: локальный логин/пароль (без внешних провайдеров)");
     console.log(`Snake Attack → http://localhost:${PORT}`);
     for (const address of getLanAddresses()) console.log(`LAN → http://${address}:${PORT}`);
   });
