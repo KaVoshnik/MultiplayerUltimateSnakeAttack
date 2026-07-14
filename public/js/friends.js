@@ -23,7 +23,6 @@ let searchTimer = null;
 
 function miniAvatarHtml(entry, className = "") {
   if (entry.customAvatarUrl) return `<img class="${className} lbAvatarImg" src="${escapeHtml(entry.customAvatarUrl)}" alt="" />`;
-  if (entry.googlePicture) return `<img class="${className} lbAvatarImg" src="${escapeHtml(entry.googlePicture)}" alt="" referrerpolicy="no-referrer" />`;
   return `<span class="${className} lbAvatarEmoji">${entry.avatar || "😎"}</span>`;
 }
 
@@ -188,7 +187,7 @@ async function runSearch(query) {
           location.href = `/profile.html?player=${encodeURIComponent(p.name)}`;
         });
         row.querySelector(".lbSearchAddBtn").addEventListener("click", async () => {
-          if (!loggedIn) { showToast("Войди через Google, чтобы добавлять друзей."); return; }
+          if (!loggedIn) { showToast("Войди в аккаунт, чтобы добавлять друзей."); return; }
           const res2 = await fetch("/friends/request", {
             method: "POST",
             headers: { "Content-Type": "application/json" },

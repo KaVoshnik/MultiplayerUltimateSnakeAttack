@@ -76,22 +76,17 @@ async function loadAchievements(name) {
   } catch { /* тихо игнорируем — не критично для остального профиля */ }
 }
 
-// Приоритет: своя загруженная фотка > аватарка из Google > эмодзи-пресет.
-function applyAvatarVisuals({ customAvatarUrl, googlePicture, avatar }) {
+// Приоритет: своя загруженная фотка > эмодзи-пресет.
+function applyAvatarVisuals({ customAvatarUrl, avatar }) {
   const customImg = document.querySelector("#accountCustomAvatar");
-  const googleImg = document.querySelector("#accountGoogleAvatar");
   const emojiEl = document.querySelector("#accountAvatarEmoji");
 
   customImg?.classList.add("hidden");
-  googleImg?.classList.add("hidden");
   emojiEl?.classList.add("hidden");
 
   if (customAvatarUrl && customImg) {
     customImg.src = customAvatarUrl;
     customImg.classList.remove("hidden");
-  } else if (googlePicture && googleImg) {
-    googleImg.src = googlePicture;
-    googleImg.classList.remove("hidden");
   } else if (emojiEl) {
     emojiEl.textContent = avatar || "😎";
     emojiEl.classList.remove("hidden");
@@ -101,21 +96,16 @@ function applyAvatarVisuals({ customAvatarUrl, googlePicture, avatar }) {
 }
 
 function renderAccount(me) {
-  const loginBtn = document.querySelector("#btnGoogleLogin");
   if (me.loggedIn) {
     accountGuest?.classList.add("hidden");
     accountUser?.classList.remove("hidden");
-    loginBtn?.classList.add("hidden");
 
     const displayName = document.querySelector("#accountDisplayName");
-    const emailEl = document.querySelector("#accountEmail");
 
     if (displayName) displayName.innerHTML = `${escapeHtml(me.name)}${streakBadgeHtml(me.shopData?.stats?.streak)}`;
-    if (emailEl) emailEl.textContent = me.email || "";
 
     applyAvatarVisuals({
       customAvatarUrl: me.shopData?.stats?.customAvatarUrl,
-      googlePicture: me.picture || me.shopData?.stats?.googlePicture,
       avatar: me.shopData?.avatar,
     });
 
@@ -126,7 +116,6 @@ function renderAccount(me) {
   } else {
     accountGuest?.classList.remove("hidden");
     accountUser?.classList.add("hidden");
-    loginBtn?.classList.remove("hidden");
     setProfileEditable(false);
     profileNameInput.value = "";
   }
@@ -180,7 +169,7 @@ function connect() {
     if (msg.type === "profile_saved") {
       if (msg.name) {
         state.oldName = msg.name;
-        SnakeStore.save({ name: msg.name, google: true, playerId: msg.playerId || state.me?.playerId || null });
+        SnakeStore.save({ name: msg.name, loggedIn: true, playerId: msg.playerId || state.me?.playerId || null });
         profileNameInput.value = msg.name;
         const displayName = document.querySelector("#accountDisplayName");
         if (displayName) displayName.textContent = msg.name;
@@ -262,7 +251,7 @@ async function loadPublicProfile(name) {
     avatar: data.avatar,
     equipped: data.equipped || {},
     inventory: data.inventory || [],
-    stats: { ...data.stats, googlePicture: data.googlePicture, customAvatarUrl: data.customAvatarUrl },
+    stats: { ...data.stats, customAvatarUrl: data.customAvatarUrl },
   };
   state.selectedAvatar = data.avatar || "😎";
   state.oldName = data.name;
@@ -272,8 +261,6 @@ async function loadPublicProfile(name) {
 
   accountGuest?.classList.add("hidden");
   accountUser?.classList.remove("hidden");
-  document.querySelector("#btnGoogleLogin")?.classList.add("hidden");
-  document.querySelector("#btnGoogleLogout")?.classList.add("hidden");
   document.querySelector(".accountBadge").textContent = "Публичный профиль";
 
   // Своё состояние логина не выставляется в viewMode (чтобы не перепутать
@@ -296,12 +283,10 @@ async function loadPublicProfile(name) {
   renderFriendButton(data.name, data.friendStatus);
 
   const displayName = document.querySelector("#accountDisplayName");
-  const emailEl = document.querySelector("#accountEmail");
 
   if (displayName) displayName.innerHTML = `${escapeHtml(data.name)}${streakBadgeHtml(data.streak)}`;
-  if (emailEl) emailEl.textContent = `Игр: ${data.stats?.games || 0} · Смертей: ${data.stats?.deaths || 0}`;
 
-  applyAvatarVisuals({ customAvatarUrl: data.customAvatarUrl, googlePicture: data.googlePicture, avatar: data.avatar });
+  applyAvatarVisuals({ customAvatarUrl: data.customAvatarUrl, avatar: data.avatar });
   btnRemoveCustomAvatar?.classList.add("hidden"); // не своё фото — удалять его отсюда нельзя
 
   document.title = `${data.name} — Профиль`;
@@ -392,7 +377,7 @@ async function friendPost(path, name) {
 
 async function reportAvatar(target) {
   if (!state.reporterLoggedIn) {
-    showToast("Войди через Google, чтобы жаловаться на аватарки.");
+    showToast("Войди в аккаунт, чтобы жаловаться на аватарки.");
     return;
   }
   btnReportAvatar.disabled = true;
@@ -404,7 +389,7 @@ async function reportAvatar(target) {
       body: JSON.stringify({ target }),
     });
     if (res.ok) showToast("Спасибо, жалоба отправлена модераторам.");
-    else if (res.status === 401) showToast("Сессия истекла — войди через Google заново.");
+    else if (res.status === 401) showToast("Сессия истекла — войди заново.");
     else showToast("Не получилось отправить жалобу.");
   } catch {
     showToast("Не получилось отправить жалобу.");
@@ -453,7 +438,7 @@ avatarUploadInput?.addEventListener("change", async () => {
       return;
     }
     if (state.shopData) state.shopData.stats = { ...state.shopData.stats, customAvatarUrl: data.customAvatarUrl };
-    applyAvatarVisuals({ customAvatarUrl: data.customAvatarUrl, googlePicture: state.shopData?.stats?.googlePicture, avatar: state.selectedAvatar });
+    applyAvatarVisuals({ customAvatarUrl: data.customAvatarUrl, avatar: state.selectedAvatar });
     showToast("Фото обновлено!");
   } catch {
     showToast("Не получилось загрузить фото.");
@@ -468,7 +453,7 @@ btnRemoveCustomAvatar?.addEventListener("click", async () => {
     const res = await fetch("/remove_avatar", { method: "POST", credentials: "include" });
     if (res.ok) {
       if (state.shopData) state.shopData.stats = { ...state.shopData.stats, customAvatarUrl: null };
-      applyAvatarVisuals({ customAvatarUrl: null, googlePicture: state.shopData?.stats?.googlePicture, avatar: state.selectedAvatar });
+      applyAvatarVisuals({ customAvatarUrl: null, avatar: state.selectedAvatar });
       showToast("Фото удалено.");
     } else {
       showToast("Не получилось удалить фото.");
@@ -586,7 +571,7 @@ function roundRect(c, x, y, w, h, r) {
 
 saveBtn.addEventListener("click", () => {
   if (!state.loggedIn) {
-    showToast("Сначала войди через Google!");
+    showToast("Сначала войди в аккаунт!");
     return;
   }
   if (!state.wsAuthed) {
@@ -620,7 +605,7 @@ async function boot() {
       state.shopData = loginMe.shopData || state.shopData;
       SnakeStore.save({
         name: loginMe.name,
-        google: true,
+        loggedIn: true,
         playerId: loginMe.playerId || loginMe.shopData?.id || null,
       });
       renderAccount(loginMe);

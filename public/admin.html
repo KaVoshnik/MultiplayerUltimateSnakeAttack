@@ -201,7 +201,7 @@
   <div class="adminWrap">
     <div id="forbidden" class="forbidden" style="display:none">
       <h2>⛔ Нет доступа</h2>
-      <p>Войди через Google как администратор.</p>
+      <p>Войди в аккаунт с правами администратора.</p>
       <a href="/" style="color:#62a0ea">← На главную</a>
     </div>
 
@@ -300,7 +300,7 @@
       for (const p of players) {
         const tr = document.createElement("tr");
         tr.innerHTML = `
-          <td><strong>${escHtml(p.name)}</strong>${p.googleId ? " 🔗" : ""}</td>
+          <td><strong>${escHtml(p.name)}</strong></td>
           <td>
             <input class="coinsInput" type="number" value="${p.coins}" min="0" data-name="${escHtml(p.name)}" />
             <button class="actionBtn" onclick="setCoins('${escHtml(p.name)}', this)">✓</button>
@@ -311,6 +311,7 @@
           <td style="color:#aaa;font-size:11px">${formatDate(p.updatedAt)}</td>
           <td>${p.isAdmin ? '<span class="adminBadgeRow">ADMIN</span>' : "игрок"}</td>
           <td style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="actionBtn" onclick="createClaimLink('${escHtml(p.name)}')">Ссылка восстановления</button>
             ${p.name !== myName ? `
               <button class="actionBtn ${p.isAdmin ? "danger" : "success"}" onclick="toggleAdmin('${escHtml(p.name)}', ${p.isAdmin})">
                 ${p.isAdmin ? "Снять админа" : "Дать админа"}
@@ -325,6 +326,18 @@
 
     function escHtml(s) {
       return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+
+    // Выдаём только после ручной проверки, что обратился реальный владелец
+    // ника (старый аккаунт без пароля — с Google-эпохи).
+    async function createClaimLink(name) {
+      if (!confirm(`Выдать ссылку восстановления доступа для ${name}? Убедись, что это точно владелец ника.`)) return;
+      const res = await api("/admin/create_claim_link", "POST", { name });
+      if (res?.url) {
+        await navigator.clipboard.writeText(res.url).catch(() => { });
+        showToast(`Ссылка для ${name} скопирована в буфер (действует 7 дней)`);
+        prompt(`Ссылка для ${name} (действует 7 дней):`, res.url);
+      }
     }
 
     async function toggleAdmin(name, current) {

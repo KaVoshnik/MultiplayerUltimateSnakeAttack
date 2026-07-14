@@ -1,32 +1,15 @@
+"use strict";
+
+// Локальная авторизация по логину/паролю. Никаких внешних провайдеров
+// (Google/Яндекс/VK и т.п.) — всё живёт на нашем сервере, никуда не уходит.
+
 const crypto = require("crypto");
 
 const SESSION_COOKIE = "snake_session";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const pendingStates = new Map();
-const pendingReturns = new Map();
+const SCRYPT_KEYLEN = 64;
 
-function getGoogleConfig() {
-  return {
-    clientId: process.env.GOOGLE_CLIENT_ID || "",
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
-    sessionSecret: process.env.SESSION_SECRET || "",
-    publicUrl: (process.env.PUBLIC_URL || "").replace(/\/$/, ""),
-    redirectUri: (process.env.GOOGLE_REDIRECT_URI || "").replace(/\/$/, ""),
-  };
-}
-
-function resolveRedirectUri(req, ctx) {
-  const cfg = getGoogleConfig();
-  if (cfg.redirectUri) return cfg.redirectUri;
-  if (cfg.publicUrl) return `${cfg.publicUrl}/auth/google/callback`;
-  const origin = ctx.getRequestOrigin(req).http.replace(/\/$/, "");
-  return `${origin}/auth/google/callback`;
-}
-
-function isGoogleAuthEnabled() {
-  const { clientId, clientSecret, sessionSecret } = getGoogleConfig();
-  return Boolean(clientId && clientSecret && sessionSecret);
-}
+const NAME_RE = /^[\p{L}\p{N}_ ]{2,16}$/u;
 
 function parseCookies(req) {
   const out = {};
@@ -56,31 +39,45 @@ function clearSessionCookie(res, req) {
   res.setHeader("Set-Cookie", `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`);
 }
 
-function createState(returnTo = "/profile.html") {
-  const state = crypto.randomBytes(16).toString("hex");
-  pendingStates.set(state, Date.now() + 10 * 60 * 1000);
-  const safe = returnTo.startsWith("/") && !returnTo.startsWith("//") ? returnTo : "/profile.html";
-  pendingReturns.set(state, safe);
-  return state;
+// --- Пароли: соль + scrypt, храним как "salt:hash" (hex). Без внешних зависимостей. ---
+
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = crypto.scryptSync(password, salt, SCRYPT_KEYLEN).toString("hex");
+  return `${salt}:${hash}`;
 }
 
-function consumeState(state) {
-  const expires = pendingStates.get(state);
-  const returnTo = pendingReturns.get(state) || "/profile.html";
-  pendingStates.delete(state);
-  pendingReturns.delete(state);
-  if (!expires || expires < Date.now()) return null;
-  return returnTo;
+function verifyPassword(password, stored) {
+  if (!stored || !stored.includes(":")) return false;
+  const [salt, hash] = stored.split(":");
+  const candidate = crypto.scryptSync(password, salt, SCRYPT_KEYLEN);
+  const expected = Buffer.from(hash, "hex");
+  if (candidate.length !== expected.length) return false;
+  return crypto.timingSafeEqual(candidate, expected);
 }
 
-function cleanupStates() {
-  const now = Date.now();
-  for (const [state, expires] of pendingStates) {
-    if (expires < now) {
-      pendingStates.delete(state);
-      pendingReturns.delete(state);
-    }
-  }
+async function readJsonBody(req, maxBytes = 4096) {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    let bytes = 0;
+    req.on("data", (chunk) => {
+      bytes += chunk.length;
+      if (bytes > maxBytes) {
+        reject(new Error("payload_too_large"));
+        req.destroy();
+        return;
+      }
+      body += chunk;
+    });
+    req.on("end", () => {
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch {
+        reject(new Error("invalid_json"));
+      }
+    });
+    req.on("error", reject);
+  });
 }
 
 async function getSession(req, db) {
@@ -89,213 +86,150 @@ async function getSession(req, db) {
   return db.getAuthSession(token);
 }
 
-async function ensureGooglePlayer(ctx, googleUser) {
-  const existing = await ctx.db.findGoogleUser(googleUser.sub);
-  if (existing) {
-    let row = await ctx.db.findPlayerByGoogleId(googleUser.sub);
-    if (!row) {
-      const entry = ctx.getProfile(existing.player_name);
-      entry.googleId = googleUser.sub;
-      ctx.shopData[existing.player_name] = entry;
-      await ctx.persistProfile(existing.player_name, entry);
-    } else {
-      const entry = ctx.getProfile(row.name);
-      entry.id = row.id;
-      entry.googleId = googleUser.sub;
-      ctx.shopData[row.name] = entry;
-      await ctx.persistProfile(row.name, entry);
-    }
-    return existing.player_name;
-  }
-
-  const base = ctx.cleanName(googleUser.name || googleUser.email?.split("@")[0] || "Snake");
-  let playerName = base;
-  for (let i = 0; i < 50; i += 1) {
-    const candidate = i === 0 ? base : ctx.cleanName(`${base.slice(0, 12)}${i + 1}`);
-    const taken = await ctx.db.isPlayerNameTaken(candidate);
-    if (!taken) {
-      playerName = candidate;
-      break;
-    }
-  }
-
-  await ctx.db.linkGoogleUser({
-    googleId: googleUser.sub,
-    playerName,
-    email: googleUser.email || "",
-    displayName: googleUser.name || playerName,
-    pictureUrl: googleUser.picture || "",
-  });
-
-  if (!ctx.shopData[playerName]) {
-    const entry = ctx.defaultShopEntry();
-    entry.googleId = googleUser.sub;
-    entry.stats = { ...(entry.stats || {}), googlePicture: googleUser.picture || null };
-    ctx.shopData[playerName] = entry;
-    await ctx.persistProfile(playerName, entry);
-  } else {
-    const entry = ctx.getProfile(playerName);
-    let changed = false;
-    if (!entry.googleId) {
-      entry.googleId = googleUser.sub;
-      changed = true;
-    }
-    if (googleUser.picture && entry.stats?.googlePicture !== googleUser.picture) {
-      entry.stats = { ...(entry.stats || {}), googlePicture: googleUser.picture };
-      changed = true;
-    }
-    if (changed) {
-      ctx.shopData[playerName] = entry;
-      await ctx.persistProfile(playerName, entry);
-    }
-  }
-
-  return playerName;
+async function startSession(res, req, db, playerName) {
+  const token = crypto.randomBytes(32).toString("hex");
+  await db.createAuthSession(token, playerName);
+  setSessionCookie(res, token, req);
 }
 
-async function exchangeCode(code, redirectUri) {
-  const { clientId, clientSecret } = getGoogleConfig();
-  const body = new URLSearchParams({
-    code,
-    client_id: clientId,
-    client_secret: clientSecret,
-    redirect_uri: redirectUri,
-    grant_type: "authorization_code",
-  });
-  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
-  });
-  const tokens = await tokenRes.json();
-  if (!tokenRes.ok || !tokens.access_token) {
-    throw new Error(tokens.error_description || tokens.error || "token_exchange_failed");
+function validateCredentials(name, password) {
+  if (typeof name !== "string" || !NAME_RE.test(name.trim())) {
+    return "Ник: 2–16 символов (буквы, цифры, пробел, _)";
   }
-
-  const userRes = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
-    headers: { Authorization: `Bearer ${tokens.access_token}` },
-  });
-  const user = await userRes.json();
-  const googleId = user.sub || user.id;
-  if (!userRes.ok || !googleId) {
-    console.error("Google OAuth userinfo:", userRes.status, JSON.stringify(user));
-    throw new Error("userinfo_failed");
+  if (typeof password !== "string" || password.length < 6 || password.length > 128) {
+    return "Пароль: от 6 символов";
   }
-  return { ...user, sub: googleId };
+  return null;
 }
 
 async function handleRequest(req, res, url, ctx) {
-  if (!isGoogleAuthEnabled()) {
-    if (url.pathname === "/auth/config") {
-      ctx.sendJson(res, { enabled: false });
-      return true;
-    }
-    if (url.pathname.startsWith("/auth/")) {
-      res.writeHead(503, { "Content-Type": "text/plain; charset=utf-8" });
-      res.end("Google OAuth не настроен");
-      return true;
-    }
-    return false;
-  }
-
-  const redirectUri = resolveRedirectUri(req, ctx);
+  const { db, sendJson } = ctx;
 
   if (url.pathname === "/auth/config") {
-    ctx.sendJson(res, { enabled: true, redirectUri });
+    sendJson(res, { enabled: true, mode: "local" });
     return true;
   }
 
   if (url.pathname === "/api/me") {
-    const session = await getSession(req, ctx.db);
+    const session = await getSession(req, db).catch(() => null);
     if (!session) {
-      ctx.sendJson(res, { loggedIn: false });
+      sendJson(res, { loggedIn: false });
       return true;
     }
     const profile = ctx.getProfile(session.player_name);
-    ctx.sendJson(res, {
+    sendJson(res, {
       loggedIn: true,
       playerId: profile.id || null,
       name: session.player_name,
-      email: session.email,
-      picture: profile.stats?.googlePicture || session.picture_url || null,
+      customAvatarUrl: profile.stats?.customAvatarUrl || null,
       shopData: profile,
     });
     return true;
   }
 
-  if (url.pathname === "/auth/google" && req.method === "GET") {
-    const returnTo = url.searchParams.get("return_to") || "/profile.html";
-    const state = createState(returnTo);
-    const params = new URLSearchParams({
-      client_id: getGoogleConfig().clientId,
-      redirect_uri: redirectUri,
-      response_type: "code",
-      scope: "openid email profile",
-      state,
-      access_type: "online",
-      prompt: "select_account",
-    });
-    res.writeHead(302, { Location: `https://accounts.google.com/o/oauth2/v2/auth?${params}` });
-    res.end();
+  if (url.pathname === "/auth/register" && req.method === "POST") {
+    let payload;
+    try {
+      payload = await readJsonBody(req);
+    } catch {
+      res.writeHead(400); res.end("bad request"); return true;
+    }
+    const name = String(payload.name || "").trim();
+    const password = String(payload.password || "");
+    const error = validateCredentials(name, password);
+    if (error) { sendJson(res, { ok: false, error }); return true; }
+
+    const taken = await db.isPlayerNameTaken(name).catch(() => true);
+    if (taken) { sendJson(res, { ok: false, error: "Этот ник уже занят" }); return true; }
+
+    try {
+      const passwordHash = hashPassword(password);
+      const row = await db.createPlayerAccount(name, passwordHash);
+      const entry = ctx.defaultShopEntry();
+      entry.id = row.id;
+      ctx.shopData[name] = entry;
+      await ctx.persistProfile(name, entry);
+      await startSession(res, req, db, name);
+      sendJson(res, { ok: true, name });
+    } catch (err) {
+      console.error("Register:", err.message);
+      sendJson(res, { ok: false, error: "Не получилось создать аккаунт" });
+    }
     return true;
   }
 
-  if (url.pathname === "/auth/google/callback" && req.method === "GET") {
-    const error = url.searchParams.get("error");
-    if (error) {
-      res.writeHead(302, { Location: "/profile.html?auth_error=" + encodeURIComponent(error) });
-      res.end();
+  if (url.pathname === "/auth/login" && req.method === "POST") {
+    let payload;
+    try {
+      payload = await readJsonBody(req);
+    } catch {
+      res.writeHead(400); res.end("bad request"); return true;
+    }
+    const name = String(payload.name || "").trim();
+    const password = String(payload.password || "");
+    if (!name || !password) { sendJson(res, { ok: false, error: "Введите ник и пароль" }); return true; }
+
+    const row = await db.findPlayerByName(name).catch(() => null);
+    if (!row || !verifyPassword(password, row.password_hash)) {
+      sendJson(res, { ok: false, error: "Неверный ник или пароль" });
+      return true;
+    }
+    await startSession(res, req, db, row.name);
+    sendJson(res, { ok: true, name: row.name });
+    return true;
+  }
+
+  if (url.pathname === "/auth/claim" && req.method === "POST") {
+    let payload;
+    try {
+      payload = await readJsonBody(req);
+    } catch {
+      res.writeHead(400); res.end("bad request"); return true;
+    }
+    const token = String(payload.token || "").trim();
+    const password = String(payload.password || "");
+    if (!token) { sendJson(res, { ok: false, error: "Нет токена" }); return true; }
+    if (password.length < 6 || password.length > 128) {
+      sendJson(res, { ok: false, error: "Пароль: от 6 символов" });
       return true;
     }
 
-    const code = url.searchParams.get("code");
-    const state = url.searchParams.get("state");
-    const returnTo = state ? consumeState(state) : null;
-    if (!code || !returnTo) {
-      res.writeHead(302, { Location: "/profile.html?auth_error=invalid_state" });
-      res.end();
+    const playerName = await db.consumeClaimToken(token).catch(() => null);
+    if (!playerName) {
+      sendJson(res, { ok: false, error: "Ссылка недействительна или уже использована" });
       return true;
     }
 
     try {
-      const googleUser = await exchangeCode(code, redirectUri);
-      const playerName = await ensureGooglePlayer(ctx, googleUser);
-      const token = crypto.randomBytes(32).toString("hex");
-      await ctx.db.createAuthSession(token, {
-        googleId: googleUser.sub,
-        playerName,
-        email: googleUser.email || "",
-        pictureUrl: googleUser.picture || "",
-      });
-      setSessionCookie(res, token, req);
-      const sep = returnTo.includes("?") ? "&" : "?";
-      res.writeHead(302, { Location: `${returnTo}${sep}auth=ok` });
-      res.end();
+      await db.setPlayerPassword(playerName, hashPassword(password));
+      await startSession(res, req, db, playerName);
+      sendJson(res, { ok: true, name: playerName });
     } catch (err) {
-      console.error("Google OAuth:", err.message);
-      res.writeHead(302, { Location: "/profile.html?auth_error=oauth_failed" });
-      res.end();
+      console.error("Claim:", err.message);
+      sendJson(res, { ok: false, error: "Не получилось задать пароль" });
     }
     return true;
   }
 
   if (url.pathname === "/auth/logout" && (req.method === "GET" || req.method === "POST")) {
     const token = parseCookies(req)[SESSION_COOKIE];
-    if (token) await ctx.db.deleteAuthSession(token);
+    if (token) await db.deleteAuthSession(token);
     clearSessionCookie(res, req);
-    res.writeHead(302, { Location: "/" });
-    res.end();
+    if (req.method === "GET") {
+      res.writeHead(302, { Location: "/" });
+      res.end();
+    } else {
+      sendJson(res, { ok: true });
+    }
     return true;
   }
 
   return false;
 }
 
-setInterval(cleanupStates, 5 * 60 * 1000);
-
 module.exports = {
-  isGoogleAuthEnabled,
   getSession,
   handleRequest,
-  resolveRedirectUri,
+  hashPassword,
+  verifyPassword,
 };
