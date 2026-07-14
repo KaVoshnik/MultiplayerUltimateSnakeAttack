@@ -48,7 +48,7 @@ const BATTLE_PASS_SCORE_STEP = 1000;
 const BATTLE_PASS_MAX_TIER = 60;
 
 const { FOOD_TYPES } = foodMod;
-const { BOSS_SPAWN_BUFFER, BOSS_MOVE_EVERY } = bossMod;
+const { BOSS_SPAWN_BUFFER } = bossMod;
 
 const BATTLE_PASS_NICK_COLORS = [
   { id: "bp_gold", label: "Золото", color: "#ffd166", tier: 1 },
@@ -1199,25 +1199,26 @@ function tick() {
     anyBossOccupies: (pt) => bossMod.anyBossOccupies(bosses, pt),
   });
 
-  if (tickCount % (bosses.some((b) => b.enragedTicks > 0) ? 2 : BOSS_MOVE_EVERY) === 0) {
-    bossMod.moveBosses({
-      bosses, players, food, tickCount, GRID,
-      avoidCells: pathCells,
-      pushFeed, broadcast, killPlayer,
-      pushFoodItem: (item) => { food.push(item); tickJournal.foodAdded.push(gameSync.compactFood(item)); },
-      removeFoodAt: (item) => {
-        const idx = food.findIndex((f) => f.x === item.x && f.y === item.y);
-        if (idx >= 0) {
-          food.splice(idx, 1);
-          tickJournal.foodRemoved.push([item.x, item.y]);
-        }
-      },
-      createBadFood: foodMod.createBadFood,
-      insideGrid: (pt) => foodMod.insideGrid(pt, GRID),
-      pointKey: foodMod.pointKey,
-    });
-    tickJournal.bossesChanged = true;
-  }
+  // Раньше вызов troттлился общим модулем (что заставляло ярость ОДНОГО
+  // босса ускорять ВСЕХ). Теперь moveBosses вызывается каждый тик, а
+  // скорость каждого конкретного босса считается независимо внутри неё.
+  bossMod.moveBosses({
+    bosses, players, food, tickCount, GRID,
+    avoidCells: pathCells,
+    pushFeed, broadcast, killPlayer,
+    pushFoodItem: (item) => { food.push(item); tickJournal.foodAdded.push(gameSync.compactFood(item)); },
+    removeFoodAt: (item) => {
+      const idx = food.findIndex((f) => f.x === item.x && f.y === item.y);
+      if (idx >= 0) {
+        food.splice(idx, 1);
+        tickJournal.foodRemoved.push([item.x, item.y]);
+      }
+    },
+    createBadFood: foodMod.createBadFood,
+    insideGrid: (pt) => foodMod.insideGrid(pt, GRID),
+    pointKey: foodMod.pointKey,
+  });
+  tickJournal.bossesChanged = true;
 
   bonusEffects.tickBonusEffects(players);
   occupancyRebuild();
