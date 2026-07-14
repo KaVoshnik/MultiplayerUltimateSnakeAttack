@@ -24,28 +24,48 @@
 
   <main class="pageWrap profilePage">
     <section class="glass profileAccount" id="profileAccount">
+      <div class="accountGuest hidden" id="accountClaim">
+        <div class="accountGuestText">
+          <h1>Восстановление доступа</h1>
+          <p>Твой аккаунт раньше был привязан к Google. Задай пароль один раз — и заходи по нему.</p>
+        </div>
+        <form class="authForm" id="claimForm">
+          <input id="claimPassword" type="password" minlength="6" maxlength="128" placeholder="Новый пароль" autocomplete="new-password" required />
+          <div class="authFormActions">
+            <button type="submit" class="btn primary">Задать пароль и войти</button>
+          </div>
+          <p class="authFormError hidden" id="claimFormError"></p>
+        </form>
+      </div>
+
       <div class="accountGuest" id="accountGuest">
         <div class="accountGuestText">
           <h1>Твой профиль</h1>
-          <p>Войди через Google — сохраним прогресс, монеты и уникальный никнейм.</p>
+          <p>Войди или зарегистрируйся — сохраним прогресс, монеты и уникальный никнейм.</p>
         </div>
-        <a class="btn googleBtn" id="btnGoogleLogin" href="/auth/google?return_to=/profile.html">Войти через Google</a>
+        <form class="authForm" id="authForm">
+          <input id="authName" maxlength="16" placeholder="Ник" autocomplete="username" required />
+          <input id="authPassword" type="password" minlength="6" maxlength="128" placeholder="Пароль" autocomplete="current-password" required />
+          <div class="authFormActions">
+            <button type="submit" class="btn primary" id="btnLogin">Войти</button>
+            <button type="button" class="btn ghost" id="btnRegister">Зарегистрироваться</button>
+          </div>
+          <p class="authFormError hidden" id="authFormError"></p>
+        </form>
       </div>
 
       <div class="accountUser hidden" id="accountUser">
         <div class="accountUserMain">
           <div class="accountAvatarWrap" id="accountAvatarWrap">
             <span class="accountAvatarEmoji" id="accountAvatarEmoji">😎</span>
-            <img class="accountAvatarImg hidden" id="accountGoogleAvatar" alt="" referrerpolicy="no-referrer" />
             <img class="accountAvatarImg hidden" id="accountCustomAvatar" alt="" />
           </div>
           <div class="accountUserInfo">
             <h1 id="accountDisplayName">Игрок</h1>
-            <p class="accountEmail" id="accountEmail"></p>
-            <span class="accountBadge">Google аккаунт</span>
+            <span class="accountBadge">Аккаунт</span>
           </div>
         </div>
-        <button type="button" class="btn ghost" id="btnGoogleLogout">Выйти</button>
+        <button type="button" class="btn ghost" id="btnLogout">Выйти</button>
         <button type="button" class="btn primary hidden" id="btnFriendAction">Добавить в друзья</button>
         <button type="button" class="btn ghost hidden" id="btnReportAvatar">Пожаловаться на аватар</button>
       </div>
@@ -77,7 +97,7 @@
         <button type="button" class="btn primary" id="saveProfile" style="width:100%;margin-top:20px" disabled>
           СОХРАНИТЬ ИЗМЕНЕНИЯ
         </button>
-        <p class="profileHint hidden" id="profileLoginHint">Войди через Google, чтобы менять ник и аватар.</p>
+        <p class="profileHint hidden" id="profileLoginHint">Войди в аккаунт, чтобы менять ник и аватар.</p>
       </section>
 
       <section class="glass profileStats">

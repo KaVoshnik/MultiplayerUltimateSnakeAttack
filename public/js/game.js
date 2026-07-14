@@ -22,7 +22,7 @@ const deathReason = document.querySelector("#deathReason");
 const deathStats = document.querySelector("#deathStats");
 
 const settings = SnakeStore.load();
-if (!settings.name || !settings.google) {
+if (!settings.name || !settings.loggedIn) {
   location.href = "/profile.html";
 }
 

@@ -23,7 +23,7 @@ syncSessionUser({
     settings.name = me.name;
     SnakeStore.save({
       name: me.name,
-      google: true,
+      loggedIn: true,
       playerId: me.playerId || me.shopData?.id || null,
       showStats: SnakeStore.load().showStats,
     });
@@ -152,12 +152,12 @@ document.querySelector("#saveSettings").addEventListener("click", () => {
 function goPlay() {
   const name = sessionUser?.name || SnakeStore.getName();
   if (!name || !sessionUser?.loggedIn) {
-    showToast("Войди через Google в профиле!");
+    showToast("Войди в аккаунт в профиле!");
     location.href = "/profile.html";
     return;
   }
   SnakeAudio.play("ui");
-  SnakeStore.save({ name, audio: SnakeAudio.isEnabled(), google: true, showStats: SnakeStore.load().showStats });
+  SnakeStore.save({ name, audio: SnakeAudio.isEnabled(), loggedIn: true, showStats: SnakeStore.load().showStats });
   location.href = "/game.html";
 }
 

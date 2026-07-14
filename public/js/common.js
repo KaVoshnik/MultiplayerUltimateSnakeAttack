@@ -135,12 +135,9 @@ function updateUserBar(shopData, name) {
   const nameEl = document.querySelector("#userName");
   const coinsEl = document.querySelector("#headerCoins");
   const customUrl = shopData?.stats?.customAvatarUrl;
-  const picture = shopData?.stats?.googlePicture;
   if (avatarEl) {
     if (customUrl) {
       avatarEl.innerHTML = `<img src="${escapeHtml(customUrl)}" alt="" class="userAvatarImg" />`;
-    } else if (picture) {
-      avatarEl.innerHTML = `<img src="${escapeHtml(picture)}" alt="" class="userAvatarImg" referrerpolicy="no-referrer" />`;
     } else {
       avatarEl.textContent = shopData?.avatar || "😎";
     }
@@ -159,7 +156,7 @@ async function syncSessionUser(options = {}) {
   if (me.loggedIn) {
     SnakeStore.save({
       name: me.name,
-      google: true,
+      loggedIn: true,
       playerId: me.playerId || me.shopData?.id || null,
     });
     updateUserBar(me.shopData || {}, me.name);
@@ -170,65 +167,131 @@ async function syncSessionUser(options = {}) {
   return me;
 }
 
-async function initProfileAuth(options = {}) {
-  const loginBtn = document.querySelector("#btnGoogleLogin");
-  const logoutBtn = document.querySelector("#btnGoogleLogout");
-  const accountGuest = document.querySelector("#accountGuest");
-  const accountUser = document.querySelector("#accountUser");
-
-  let config = { enabled: false };
-  try {
-    const res = await fetch("/auth/config");
-    config = await res.json();
-  } catch { /* offline */ }
-
-  if (!config.enabled) {
-    accountGuest?.classList.add("hidden");
-    showToast("Google OAuth не настроен на сервере");
-    return { loggedIn: false };
-  }
-
-  let me = { loggedIn: false };
-  try {
-    const res = await fetch("/api/me", { credentials: "same-origin" });
-    me = await res.json();
-  } catch { /* ignore */ }
-
-  if (me.loggedIn) {
-    SnakeStore.save({
-      name: me.name,
-      google: true,
-      playerId: me.playerId || me.shopData?.id || null,
-    });
-    loginBtn?.classList.add("hidden");
-    accountGuest?.classList.add("hidden");
-    accountUser?.classList.remove("hidden");
-    options.onLogin?.(me);
-  } else {
-    loginBtn?.classList.remove("hidden");
-    accountGuest?.classList.remove("hidden");
-    accountUser?.classList.add("hidden");
-    options.onLogout?.();
-  }
-
-  logoutBtn?.addEventListener("click", () => {
-    location.href = "/auth/logout";
+async function postJson(url, data) {
+  const res = await fetch(url, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
   });
-
-  handleAuthQueryParams();
-  return me;
+  let body = {};
+  try { body = await res.json(); } catch { /* ignore */ }
+  return { ok: res.ok && body.ok !== false, status: res.status, body };
 }
 
-function handleAuthQueryParams() {
-  const params = new URLSearchParams(location.search);
-  if (params.get("auth") === "ok") {
-    showToast("Вход через Google выполнен!");
-    history.replaceState({}, "", location.pathname);
+async function initProfileAuth(options = {}) {
+  const accountGuest = document.querySelector("#accountGuest");
+  const accountUser = document.querySelector("#accountUser");
+  const authForm = document.querySelector("#authForm");
+  const authNameInput = document.querySelector("#authName");
+  const authPasswordInput = document.querySelector("#authPassword");
+  const authError = document.querySelector("#authFormError");
+  const btnRegister = document.querySelector("#btnRegister");
+  const logoutBtn = document.querySelector("#btnLogout");
+
+  const accountClaim = document.querySelector("#accountClaim");
+  const claimForm = document.querySelector("#claimForm");
+  const claimPasswordInput = document.querySelector("#claimPassword");
+  const claimError = document.querySelector("#claimFormError");
+  const claimToken = new URLSearchParams(location.search).get("claim");
+
+  function showAuthError(text) {
+    if (!authError) { showToast(text); return; }
+    authError.textContent = text;
+    authError.classList.remove("hidden");
   }
-  if (params.get("auth_error")) {
-    showToast("Не удалось войти через Google");
-    history.replaceState({}, "", location.pathname);
+
+  async function applySession(me) {
+    if (me.loggedIn) {
+      SnakeStore.save({
+        name: me.name,
+        loggedIn: true,
+        playerId: me.playerId || me.shopData?.id || null,
+      });
+      accountGuest?.classList.add("hidden");
+      accountClaim?.classList.add("hidden");
+      accountUser?.classList.remove("hidden");
+      options.onLogin?.(me);
+    } else if (claimToken) {
+      accountGuest?.classList.add("hidden");
+      accountClaim?.classList.remove("hidden");
+      accountUser?.classList.add("hidden");
+      options.onLogout?.();
+    } else {
+      accountGuest?.classList.remove("hidden");
+      accountClaim?.classList.add("hidden");
+      accountUser?.classList.add("hidden");
+      options.onLogout?.();
+    }
   }
+
+  async function fetchMe() {
+    let me = { loggedIn: false };
+    try {
+      const res = await fetch("/api/me", { credentials: "same-origin" });
+      me = await res.json();
+    } catch { /* ignore */ }
+    return me;
+  }
+
+  async function doLogin() {
+    const name = authNameInput?.value.trim();
+    const password = authPasswordInput?.value || "";
+    if (!name || !password) { showAuthError("Введите ник и пароль"); return; }
+    authError?.classList.add("hidden");
+    const { ok, body } = await postJson("/auth/login", { name, password });
+    if (!ok) { showAuthError(body.error || "Не удалось войти"); return; }
+    await applySession(await fetchMe());
+  }
+
+  async function doRegister() {
+    const name = authNameInput?.value.trim();
+    const password = authPasswordInput?.value || "";
+    if (!name || !password) { showAuthError("Введите ник и пароль"); return; }
+    authError?.classList.add("hidden");
+    const { ok, body } = await postJson("/auth/register", { name, password });
+    if (!ok) { showAuthError(body.error || "Не удалось зарегистрироваться"); return; }
+    await applySession(await fetchMe());
+  }
+
+  async function doClaim() {
+    const password = claimPasswordInput?.value || "";
+    if (!password) { claimError?.classList.remove("hidden"); return; }
+    claimError?.classList.add("hidden");
+    const { ok, body } = await postJson("/auth/claim", { token: claimToken, password });
+    if (!ok) {
+      if (claimError) {
+        claimError.textContent = body.error || "Не удалось задать пароль";
+        claimError.classList.remove("hidden");
+      } else {
+        showToast(body.error || "Не удалось задать пароль");
+      }
+      return;
+    }
+    history.replaceState({}, "", location.pathname);
+    showToast("Пароль задан — теперь заходи по нему");
+    await applySession(await fetchMe());
+  }
+
+  authForm?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    doLogin();
+  });
+  btnRegister?.addEventListener("click", doRegister);
+  claimForm?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    doClaim();
+  });
+
+  logoutBtn?.addEventListener("click", async () => {
+    await fetch("/auth/logout", { method: "POST", credentials: "same-origin" }).catch(() => { });
+    SnakeStore.save({ loggedIn: false });
+    location.reload();
+  });
+
+  const me = await fetchMe();
+  await applySession(me);
+  return me;
 }
 
 /** @deprecated use initProfileAuth on profile page or syncSessionUser elsewhere */
