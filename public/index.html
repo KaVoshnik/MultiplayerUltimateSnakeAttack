@@ -12,8 +12,11 @@
   <canvas id="particles" class="particlesCanvas" aria-hidden="true"></canvas>
 
   <header class="menuHeader cascade" style="--i:0">
-    <div class="menuBrand">
-      <span class="brandGlow">ULTIMATE SNAKE ATTACK</span>
+    <div class="menuBrand" id="menuBrand" title="Ultimate Snake Attack">
+      <span class="brandMark" data-icon-key="brand-mark">
+        <img src="img/icons/brand-mark.png" alt="" class="iconImg" />
+        <span class="iconFallback">🐍</span>
+      </span>
     </div>
     <div class="userBar" id="userBar" role="button" tabindex="0" title="Открыть профиль">
       <span class="coinPill">🪙 <strong id="headerCoins">0</strong></span>
@@ -38,7 +41,10 @@
     </div>
 
     <button type="button" class="chestBanner hidden" id="chestBanner">
-      <span class="chestIcon">🎁</span>
+      <span class="chestIcon" data-icon-key="chest">
+        <img src="img/icons/chest.png" alt="" class="iconImg" />
+        <span class="iconFallback">🎁</span>
+      </span>
       <span class="chestText">
         <strong>Ежедневный сундук ждёт!</strong>
         <span>Открой, чтобы получить награду</span>
@@ -48,46 +54,87 @@
 
     <nav class="menuGrid">
       <button type="button" class="menuBtn cascade playBtn" style="--i:2" id="btnPlay">
-        <span class="menuBtnIcon">▶</span>
+        <span class="menuBtnIcon" data-icon-key="play">
+          <img src="img/icons/play.png" alt="" class="iconImg" />
+          <span class="iconFallback">▶</span>
+        </span>
         <span class="menuBtnLabel">ИГРАТЬ</span>
       </button>
-      <a href="/rooms.html" class="menuBtn cascade" style="--i:3">
-        <span class="menuBtnIcon">🚪</span>
-        <span class="menuBtnLabel">КОМНАТЫ</span>
-      </a>
-      <a href="/shop.html" class="menuBtn cascade" style="--i:4">
-        <span class="menuBtnIcon">🛒</span>
+      <a href="/shop.html" class="menuBtn cascade" style="--i:3">
+        <span class="menuBtnIcon" data-icon-key="shop">
+          <img src="img/icons/shop.png" alt="" class="iconImg" />
+          <span class="iconFallback">🛒</span>
+        </span>
         <span class="menuBtnLabel">МАГАЗИН</span>
       </a>
-      <a href="/battlepass.html" class="menuBtn cascade" style="--i:5">
-        <span class="menuBtnIcon">🎖</span>
+      <a href="/battlepass.html" class="menuBtn cascade" style="--i:4">
+        <span class="menuBtnIcon" data-icon-key="battlepass">
+          <img src="img/icons/battlepass.png" alt="" class="iconImg" />
+          <span class="iconFallback">🎖</span>
+        </span>
         <span class="menuBtnLabel">ПРОПУСК</span>
       </a>
-      <a href="/profile.html" class="menuBtn cascade" style="--i:6">
-        <span class="menuBtnIcon">👤</span>
-        <span class="menuBtnLabel">ПРОФИЛЬ</span>
-      </a>
-      <a href="/inventory.html" class="menuBtn cascade" style="--i:6">
-        <span class="menuBtnIcon">🎒</span>
-        <span class="menuBtnLabel">ИНВЕНТАРЬ</span>
-      </a>
-      <a href="/friends.html" class="menuBtn cascade" style="--i:6" id="btnFriends">
-        <span class="menuBtnIcon">🧑‍🤝‍🧑</span>
+      <a href="/friends.html" class="menuBtn cascade" style="--i:5" id="btnFriends">
+        <span class="menuBtnIcon" data-icon-key="friends">
+          <img src="img/icons/friends.png" alt="" class="iconImg" />
+          <span class="iconFallback">🧑‍🤝‍🧑</span>
+        </span>
         <span class="menuBtnLabel">ДРУЗЬЯ</span>
         <span class="menuBtnBadge hidden" id="friendsBadge">0</span>
       </a>
-      <a href="/leaderboard.html" class="menuBtn cascade" style="--i:7">
-        <span class="menuBtnIcon">🏆</span>
+      <a href="/leaderboard.html" class="menuBtn cascade" style="--i:6">
+        <span class="menuBtnIcon" data-icon-key="leaderboard">
+          <img src="img/icons/leaderboard.png" alt="" class="iconImg" />
+          <span class="iconFallback">🏆</span>
+        </span>
         <span class="menuBtnLabel">ЛИДЕРЫ</span>
       </a>
-      <button type="button" class="menuBtn cascade" style="--i:8" id="btnSettings">
-        <span class="menuBtnIcon">⚙️</span>
+      <button type="button" class="menuBtn cascade" style="--i:7" id="btnSettings">
+        <span class="menuBtnIcon" data-icon-key="settings">
+          <img src="img/icons/settings.png" alt="" class="iconImg" />
+          <span class="iconFallback">⚙️</span>
+        </span>
         <span class="menuBtnLabel">НАСТРОЙКИ</span>
       </button>
     </nav>
   </main>
 
-  <footer class="menuFooter cascade" style="--i:7">dastogram.ru · 2026</footer>
+  <footer class="menuFooter cascade" style="--i:8">dastogram.ru · 2026</footer>
+
+  <!-- PLAY MODAL -->
+  <div class="modalOverlay hidden" id="playModal">
+    <div class="modalBox glass">
+      <h2>КАК ИГРАТЬ?</h2>
+
+      <div class="playOptions">
+        <button type="button" class="playOption" id="playOnlineBtn">
+          <span class="playOptionIcon" data-icon-key="play-online">
+            <img src="img/icons/play-online.png" alt="" class="iconImg" />
+            <span class="iconFallback">🌐</span>
+          </span>
+          <span class="playOptionText">
+            <strong>Играть онлайн</strong>
+            <span id="playOnlineCount">Подключение...</span>
+          </span>
+        </button>
+
+        <button type="button" class="playOption" id="playRoomBtn">
+          <span class="playOptionIcon" data-icon-key="play-room">
+            <img src="img/icons/play-room.png" alt="" class="iconImg" />
+            <span class="iconFallback">🚪</span>
+          </span>
+          <span class="playOptionText">
+            <strong>Играть в комнате</strong>
+            <span>Своя комната или вход по коду</span>
+          </span>
+        </button>
+      </div>
+
+      <div class="modalActions">
+        <button type="button" class="btn ghost" id="closePlayModal">Закрыть</button>
+      </div>
+    </div>
+  </div>
 
   <!-- SETTINGS MODAL -->
   <div class="modalOverlay hidden" id="settingsModal">
@@ -116,6 +163,7 @@
   <div class="toastWrap"></div>
   <script src="js/common.js"></script>
   <script src="js/audio.js"></script>
+  <script src="js/icons.js"></script>
   <script src="js/lobby.js"></script>
 </body>
 </html>

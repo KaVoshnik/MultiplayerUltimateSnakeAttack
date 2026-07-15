@@ -161,7 +161,29 @@ function goPlay() {
   location.href = "/game.html";
 }
 
-document.querySelector("#btnPlay").addEventListener("click", goPlay);
+function goToRooms() {
+  const name = sessionUser?.name || SnakeStore.getName();
+  if (!name || !sessionUser?.loggedIn) {
+    showToast("Войди в аккаунт в профиле!");
+    location.href = "/profile.html";
+    return;
+  }
+  SnakeAudio.play("ui");
+  location.href = "/rooms.html";
+}
+
+// ---- Play modal (Играть онлайн / Играть в комнате) ----
+const playModal = document.querySelector("#playModal");
+
+document.querySelector("#btnPlay").addEventListener("click", () => {
+  SnakeAudio.play("ui");
+  playModal.classList.remove("hidden");
+});
+document.querySelector("#closePlayModal").addEventListener("click", () => {
+  playModal.classList.add("hidden");
+});
+document.querySelector("#playOnlineBtn").addEventListener("click", goPlay);
+document.querySelector("#playRoomBtn").addEventListener("click", goToRooms);
 
 document.querySelector("#userBar")?.addEventListener("click", () => {
   location.href = "/profile.html";
@@ -191,19 +213,21 @@ function connect() {
       updateUserBar(shopData, sessionUser?.name || SnakeStore.getName());
     }
     if (msg.type === "presence") {
-      document.querySelector("#onlineCount").textContent =
-        `${msg.players} в сети · ${msg.alive} в бою`;
+      const text = `${msg.players} в сети · ${msg.alive} в бою`;
+      document.querySelector("#onlineCount").textContent = text;
+      const modalCount = document.querySelector("#playOnlineCount");
+      if (modalCount) modalCount.textContent = text;
     }
     if (msg.type === "feed" && msg.feed?.[0]) {
       setLiveFeed(msg.feed[0].text);
     }
     if (msg.type === "hello") {
-      if (msg.presence) {
-        document.querySelector("#onlineCount").textContent =
-          `${msg.presence.players} в сети · ${msg.presence.alive} в бою`;
-      } else {
-        document.querySelector("#onlineCount").textContent = "Сервер онлайн";
-      }
+      const text = msg.presence
+        ? `${msg.presence.players} в сети · ${msg.presence.alive} в бою`
+        : "Сервер онлайн";
+      document.querySelector("#onlineCount").textContent = text;
+      const modalCount = document.querySelector("#playOnlineCount");
+      if (modalCount) modalCount.textContent = text;
     }
     if (msg.type === "room_invite") showInviteToast(msg.from, msg.code);
     if (msg.type === "achievement_unlocked") { showAchievementToast(msg.achievement); SnakeAudio.play("achievement"); }
