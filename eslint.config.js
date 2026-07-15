@@ -141,6 +141,7 @@ module.exports = [
       "public/js/custom-skins.js",
       "public/js/game-sync.js",
       "public/js/common.js",
+      "public/js/icons.js",
     ],
 
     languageOptions: {
