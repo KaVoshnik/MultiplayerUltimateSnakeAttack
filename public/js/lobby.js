@@ -34,7 +34,12 @@ syncSessionUser({
     checkDailyChest();
   },
 }).then((me) => {
-  if (me?.loggedIn) sessionUser = me;
+  if (me?.loggedIn) {
+    sessionUser = me;
+  } else {
+    const body = document.querySelector("#friendsPanelBody");
+    if (body) body.innerHTML = `<div class="sidePanelEmpty">Войди в аккаунт, чтобы видеть друзей онлайн.</div>`;
+  }
   connect();
 });
 
@@ -48,8 +53,76 @@ async function loadFriendsBadge() {
     const count = data.incoming?.length || 0;
     badge.textContent = String(count);
     badge.classList.toggle("hidden", count === 0);
+    renderFriendsPanel(data);
   } catch { /* тихо игнорируем — бейдж не критичен */ }
 }
+
+function panelAvatarHtml(entry) {
+  if (entry.customAvatarUrl) return `<img src="${escapeHtml(entry.customAvatarUrl)}" alt="" />`;
+  return entry.avatar || "😎";
+}
+
+function renderFriendsPanel(data) {
+  const body = document.querySelector("#friendsPanelBody");
+  if (!body) return;
+  const list = (data.friends || []).slice().sort((a, b) => (b.online ? 1 : 0) - (a.online ? 1 : 0));
+  if (!list.length) {
+    body.innerHTML = `<div class="sidePanelEmpty">Пока нет друзей — загляни в раздел «Друзья», чтобы найти команду.</div>`;
+    return;
+  }
+  const top = list.slice(0, 6);
+  body.innerHTML = top.map((entry) => `
+    <div class="sidePanelRow" data-name="${escapeHtml(entry.name)}">
+      <div class="sidePanelAvatarWrap">
+        <span class="sidePanelAvatar">${panelAvatarHtml(entry)}</span>
+        <span class="sidePanelDot ${entry.online ? "on" : ""}"></span>
+      </div>
+      <div class="sidePanelInfo">
+        <span class="sidePanelName">${escapeHtml(entry.name)}</span>
+        <span class="sidePanelMeta">${entry.room ? "В комнате" : entry.online ? "В сети" : "Не в сети"}</span>
+      </div>
+    </div>
+  `).join("");
+  body.querySelectorAll(".sidePanelRow").forEach((row) => {
+    row.addEventListener("click", () => {
+      location.href = `/profile.html?player=${encodeURIComponent(row.dataset.name)}`;
+    });
+  });
+}
+
+async function loadLeaderboardPanel() {
+  const body = document.querySelector("#leaderboardPanelBody");
+  if (!body) return;
+  try {
+    const res = await fetch("/leaderboard");
+    if (!res.ok) return;
+    const entries = await res.json();
+    const top = entries.slice(0, 6);
+    if (!top.length) {
+      body.innerHTML = `<div class="sidePanelEmpty">Таблица пока пуста.</div>`;
+      return;
+    }
+    body.innerHTML = top.map((entry, i) => `
+      <div class="sidePanelRow rank-${i + 1}" data-name="${escapeHtml(entry.name)}">
+        <span class="sidePanelRank">${i + 1}</span>
+        <span class="sidePanelAvatar">${panelAvatarHtml(entry)}</span>
+        <div class="sidePanelInfo">
+          <span class="sidePanelName">${escapeHtml(entry.name)}</span>
+          <span class="sidePanelMeta">${entry.best ?? entry.score ?? 0} очков</span>
+        </div>
+      </div>
+    `).join("");
+    body.querySelectorAll(".sidePanelRow").forEach((row) => {
+      row.addEventListener("click", () => {
+        location.href = `/profile.html?player=${encodeURIComponent(row.dataset.name)}`;
+      });
+    });
+  } catch {
+    body.innerHTML = `<div class="sidePanelEmpty">Не удалось загрузить.</div>`;
+  }
+}
+
+loadLeaderboardPanel();
 
 async function checkDailyChest() {
   const banner = document.querySelector("#chestBanner");
