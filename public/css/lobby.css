@@ -172,7 +172,15 @@
   gap: 8px;
 }
 
-.sidePanelIcon { font-size: 1rem; }
+.sidePanelIcon {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
 
 .sidePanelTitle {
   font-family: var(--font-display);
@@ -455,7 +463,7 @@
 
 .menuGrid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(140px, 180px));
+  grid-template-columns: repeat(2, minmax(160px, 220px));
   gap: 14px;
   max-width: 580px;
   width: 100%;
@@ -506,7 +514,7 @@
 }
 
 .menuBtn.playBtn {
-  grid-column: span 3;
+  grid-column: span 2;
   min-height: 72px;
   flex-direction: row;
   background: linear-gradient(135deg, rgba(61, 232, 138, 0.2), rgba(61, 232, 138, 0.05));
