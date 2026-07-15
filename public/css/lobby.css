@@ -463,9 +463,9 @@
 
 .menuGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(160px, 220px));
+  grid-template-columns: repeat(4, minmax(110px, 145px));
   gap: 14px;
-  max-width: 580px;
+  max-width: 610px;
   width: 100%;
 }
 
@@ -476,8 +476,8 @@
   align-items: center;
   justify-content: center;
   gap: 10px;
-  min-height: 110px;
-  padding: 20px 16px;
+  min-height: 96px;
+  padding: 16px 10px;
   border: 1px solid var(--panel-border);
   border-radius: 14px;
   background: rgba(8, 12, 18, 0.75);
@@ -514,7 +514,7 @@
 }
 
 .menuBtn.playBtn {
-  grid-column: span 2;
+  grid-column: span 4;
   min-height: 72px;
   flex-direction: row;
   background: linear-gradient(135deg, rgba(61, 232, 138, 0.2), rgba(61, 232, 138, 0.05));
