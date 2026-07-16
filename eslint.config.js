@@ -87,6 +87,8 @@ const projectGlobals = {
   syncSessionUser: "readonly",
 
   RARITY_LABELS: "readonly",
+
+  I18N: "readonly",
 };
 
 
@@ -150,6 +152,34 @@ module.exports = [
 
       globals: {
         ...browserGlobals,
+        I18N: "readonly",
+      },
+    },
+
+    rules: {
+      "no-unused-vars": [
+        "warn",
+        {
+          argsIgnorePattern: "^_",
+        },
+      ],
+    },
+  },
+
+
+  // i18n module itself — declares the I18N global, doesn't consume it
+  {
+    files: [
+      "public/js/i18n.js",
+    ],
+
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "script",
+
+      globals: {
+        ...browserGlobals,
+        CustomEvent: "readonly",
       },
     },
 

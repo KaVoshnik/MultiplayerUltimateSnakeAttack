@@ -15,6 +15,27 @@ if (showStatsToggle) {
 }
 updateUserBar(shopData, settings.name);
 
+// ---- Language switch ----
+function refreshLangButtons() {
+  const lang = I18N.getLang();
+  document.querySelectorAll(".langBtn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.lang === lang);
+  });
+}
+document.querySelectorAll(".langBtn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    SnakeAudio.play("ui");
+    I18N.setLang(btn.dataset.lang);
+    refreshLangButtons();
+  });
+});
+refreshLangButtons();
+window.addEventListener("i18n:change", () => {
+  refreshLangButtons();
+  loadLeaderboardPanel();
+  loadFriendsBadge();
+});
+
 syncSessionUser({
   shopData,
   onLogin(me) {
@@ -38,7 +59,7 @@ syncSessionUser({
     sessionUser = me;
   } else {
     const body = document.querySelector("#friendsPanelBody");
-    if (body) body.innerHTML = `<div class="sidePanelEmpty">Войди в аккаунт, чтобы видеть друзей онлайн.</div>`;
+    if (body) body.innerHTML = `<div class="sidePanelEmpty">${I18N.t("lobby.friendsLoginRequired")}</div>`;
   }
   connect();
 });
@@ -67,7 +88,7 @@ function renderFriendsPanel(data) {
   if (!body) return;
   const list = (data.friends || []).slice().sort((a, b) => (b.online ? 1 : 0) - (a.online ? 1 : 0));
   if (!list.length) {
-    body.innerHTML = `<div class="sidePanelEmpty">Пока нет друзей — загляни в раздел «Друзья», чтобы найти команду.</div>`;
+    body.innerHTML = `<div class="sidePanelEmpty">${I18N.t("lobby.noFriends")}</div>`;
     return;
   }
   const top = list.slice(0, 6);
@@ -79,7 +100,7 @@ function renderFriendsPanel(data) {
       </div>
       <div class="sidePanelInfo">
         <span class="sidePanelName">${escapeHtml(entry.name)}</span>
-        <span class="sidePanelMeta">${entry.room ? "В комнате" : entry.online ? "В сети" : "Не в сети"}</span>
+        <span class="sidePanelMeta">${entry.room ? I18N.t("lobby.inRoom") : entry.online ? I18N.t("lobby.online") : I18N.t("lobby.offline")}</span>
       </div>
     </div>
   `).join("");
@@ -99,7 +120,7 @@ async function loadLeaderboardPanel() {
     const entries = await res.json();
     const top = entries.slice(0, 6);
     if (!top.length) {
-      body.innerHTML = `<div class="sidePanelEmpty">Таблица пока пуста.</div>`;
+      body.innerHTML = `<div class="sidePanelEmpty">${I18N.t("lobby.leaderboardEmpty")}</div>`;
       return;
     }
     body.innerHTML = top.map((entry, i) => `
@@ -108,7 +129,7 @@ async function loadLeaderboardPanel() {
         <span class="sidePanelAvatar">${panelAvatarHtml(entry)}</span>
         <div class="sidePanelInfo">
           <span class="sidePanelName">${escapeHtml(entry.name)}</span>
-          <span class="sidePanelMeta">${entry.best ?? entry.score ?? 0} очков</span>
+          <span class="sidePanelMeta">${I18N.t("lobby.points", { n: entry.best ?? entry.score ?? 0 })}</span>
         </div>
       </div>
     `).join("");
@@ -118,7 +139,7 @@ async function loadLeaderboardPanel() {
       });
     });
   } catch {
-    body.innerHTML = `<div class="sidePanelEmpty">Не удалось загрузить.</div>`;
+    body.innerHTML = `<div class="sidePanelEmpty">${I18N.t("common.loadError")}</div>`;
   }
 }
 
@@ -142,7 +163,7 @@ document.querySelector("#chestBanner")?.addEventListener("click", async function
     const res = await fetch("/daily_chest/open", { method: "POST", credentials: "same-origin" });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.ok) {
-      showToast("Не получилось открыть сундук.");
+      showToast(I18N.t("lobby.chestError"));
       banner.disabled = false;
       return;
     }
@@ -150,7 +171,7 @@ document.querySelector("#chestBanner")?.addEventListener("click", async function
     showToast(`🎁 ${data.reward.label}`);
     for (const ach of data.achievements || []) showAchievementToast(ach);
   } catch {
-    showToast("Не получилось открыть сундук.");
+    showToast(I18N.t("lobby.chestError"));
     banner.disabled = false;
   }
 });
@@ -206,9 +227,10 @@ drawMatrix();
 window.addEventListener("resize", resizeParticles);
 document.body.addEventListener("pointerdown", () => { SnakeAudio.ensure(); SnakeAudio.startAmbient(); }, { once: true });
 
-// Settings — только звук
+// Settings — звук, статистика и язык
 document.querySelector("#btnSettings").addEventListener("click", () => {
   if (showStatsToggle) showStatsToggle.checked = Boolean(SnakeStore.load().showStats);
+  refreshLangButtons();
   settingsModal.classList.remove("hidden");
 });
 document.querySelector("#closeSettings").addEventListener("click", () => settingsModal.classList.add("hidden"));
@@ -219,13 +241,13 @@ document.querySelector("#saveSettings").addEventListener("click", () => {
     showStats: showStatsToggle?.checked ?? false,
   });
   settingsModal.classList.add("hidden");
-  showToast("Настройки сохранены!");
+  showToast(I18N.t("lobby.settingsSaved"));
 });
 
 function goPlay() {
   const name = sessionUser?.name || SnakeStore.getName();
   if (!name || !sessionUser?.loggedIn) {
-    showToast("Войди в аккаунт в профиле!");
+    showToast(I18N.t("lobby.loginRequired"));
     location.href = "/profile.html";
     return;
   }
@@ -237,7 +259,7 @@ function goPlay() {
 function goToRooms() {
   const name = sessionUser?.name || SnakeStore.getName();
   if (!name || !sessionUser?.loggedIn) {
-    showToast("Войди в аккаунт в профиле!");
+    showToast(I18N.t("lobby.loginRequired"));
     location.href = "/profile.html";
     return;
   }
@@ -270,6 +292,11 @@ function setLiveFeed(text) {
 
 // Socket
 let socket = null;
+let lastPresence = null;
+
+function presenceText(players, alive) {
+  return I18N.t("lobby.presence", { players, alive });
+}
 
 function connect() {
   socket = new WebSocket(getWebSocketUrl());
@@ -286,7 +313,8 @@ function connect() {
       updateUserBar(shopData, sessionUser?.name || SnakeStore.getName());
     }
     if (msg.type === "presence") {
-      const text = `${msg.players} в сети · ${msg.alive} в бою`;
+      lastPresence = { players: msg.players, alive: msg.alive };
+      const text = presenceText(msg.players, msg.alive);
       document.querySelector("#onlineCount").textContent = text;
       const modalCount = document.querySelector("#playOnlineCount");
       if (modalCount) modalCount.textContent = text;
@@ -295,9 +323,10 @@ function connect() {
       setLiveFeed(msg.feed[0].text);
     }
     if (msg.type === "hello") {
+      lastPresence = msg.presence ? { players: msg.presence.players, alive: msg.presence.alive } : null;
       const text = msg.presence
-        ? `${msg.presence.players} в сети · ${msg.presence.alive} в бою`
-        : "Сервер онлайн";
+        ? presenceText(msg.presence.players, msg.presence.alive)
+        : I18N.t("lobby.serverOnline");
       document.querySelector("#onlineCount").textContent = text;
       const modalCount = document.querySelector("#playOnlineCount");
       if (modalCount) modalCount.textContent = text;
@@ -307,6 +336,15 @@ function connect() {
   });
   socket.addEventListener("close", () => setTimeout(connect, 1500));
 }
+
+window.addEventListener("i18n:change", () => {
+  if (!lastPresence) return;
+  const text = presenceText(lastPresence.players, lastPresence.alive);
+  const onlineEl = document.querySelector("#onlineCount");
+  if (onlineEl) onlineEl.textContent = text;
+  const modalCount = document.querySelector("#playOnlineCount");
+  if (modalCount) modalCount.textContent = text;
+});
 
 function showInviteToast(from, code) {
   let wrap = document.querySelector(".toastWrap");
@@ -321,9 +359,9 @@ function showInviteToast(from, code) {
   toast.style.alignItems = "center";
   toast.style.gap = "10px";
   const span = document.createElement("span");
-  span.textContent = `${from} зовёт в комнату`;
+  span.textContent = I18N.t("lobby.inviteFrom", { from });
   const btn = document.createElement("button");
-  btn.textContent = "Войти";
+  btn.textContent = I18N.t("common.enter");
   btn.style.cssText = "padding:4px 10px;border-radius:6px;border:1px solid #62a0ea;color:#62a0ea;background:none;cursor:pointer;flex-shrink:0";
   btn.onclick = () => { location.href = `/rooms.html?code=${encodeURIComponent(code)}`; };
   toast.append(span, btn);

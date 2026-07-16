@@ -27,9 +27,9 @@ if (!settings.name || !settings.loggedIn) {
 }
 
 const BONUS_LABELS = {
-  shield: "🛡 Щит",
-  speed_up: "⚡ Скор",
-  slow_down: "🐢 Медл",
+  get shield() { return `🛡 ${I18N.t("game.bonusShield")}`; },
+  get speed_up() { return `⚡ ${I18N.t("game.bonusSpeed")}`; },
+  get slow_down() { return `🐢 ${I18N.t("game.bonusSlow")}`; },
   double: "x2",
   ghost: "👻",
 };
@@ -95,6 +95,11 @@ const keys = {
 
 connect();
 requestAnimationFrame(draw);
+
+window.addEventListener("i18n:change", () => {
+  if (statusEl.classList.contains("ok")) statusEl.textContent = I18N.t("game.statusOnline");
+  else if (statusEl.classList.contains("bad")) statusEl.textContent = I18N.t("game.statusOffline");
+});
 
 document.querySelector("#retryBtn").addEventListener("click", () => { send({ type: "restart" }); state.freezeEndsAt = 0; deathPanel.classList.add("hidden"); });
 
@@ -288,12 +293,12 @@ function connect() {
   state.socket = socket;
 
   socket.addEventListener("open", () => {
-    statusEl.textContent = "В сети";
+    statusEl.textContent = I18N.t("game.statusOnline");
     statusEl.className = "status ok";
     if (state.joined) sendJoin();
   });
   socket.addEventListener("close", () => {
-    statusEl.textContent = "Нет связи";
+    statusEl.textContent = I18N.t("game.statusOffline");
     statusEl.className = "status bad";
     setTimeout(connect, 1200);
   });
@@ -438,9 +443,9 @@ function updateHud(me, prevScore = 0, prevCombo = 0) {
     const isTarget  = myHeatHud > 50;
     bossHud.classList.toggle("hidden", !close && !isTarget);
     if (bossName) bossName.textContent = nearestBoss.name;
-    if (enraged)       bossLabel.textContent = "ЯРОСТЬ!";
-    else if (isTarget) bossLabel.textContent = "ОХОТА " + myHeatHud + "🔥";
-    else               bossLabel.textContent = nearestBoss.angry ? "РЯДОМ!" : "ОХОТА";
+    if (enraged)       bossLabel.textContent = I18N.t("game.bossRage");
+    else if (isTarget) bossLabel.textContent = I18N.t("game.bossHunting") + " " + myHeatHud + "🔥";
+    else               bossLabel.textContent = nearestBoss.angry ? I18N.t("game.bossNear") : I18N.t("game.bossHunting");
     canvasStage.classList.toggle("bossRage", state.bosses.some((b) => b.phase === "enraged"));
   } else {
     bossHud.classList.add("hidden");
@@ -454,11 +459,11 @@ function updateHud(me, prevScore = 0, prevCombo = 0) {
       deathPanel.classList.add("hidden");
     } else if (state.wasAlive) {
       state.wasAlive = false;
-      deathReason.textContent = me.reason || "Змейка умерла";
+      deathReason.textContent = me.reason || I18N.t("game.snakeDied");
       deathStats.innerHTML = `
-        <span>Очки <b>${me.score}</b></span>
-        <span>Макс. комбо <b>×${me.maxCombo || 0}</b></span>
-        <span>Монеты <b>+${me.coinsEarned || 0}</b></span>
+        <span>${I18N.t("game.score")} <b>${me.score}</b></span>
+        <span>${I18N.t("game.maxCombo")} <b>×${me.maxCombo || 0}</b></span>
+        <span>${I18N.t("game.coins")} <b>+${me.coinsEarned || 0}</b></span>
       `;
       deathPanel.classList.remove("hidden");
       SnakeFX.addShake(14);
@@ -773,11 +778,11 @@ function drawSpawnOverlay(width, height) {
   ctx.fillStyle = "#3de88a";
   ctx.shadowColor = "#3de88a";
   ctx.shadowBlur = 12;
-  ctx.fillText(`СТАРТ ${sec}`, width / 2, height / 2);
+  ctx.fillText(`${I18N.t("game.start")} ${sec}`, width / 2, height / 2);
   ctx.shadowBlur = 0;
   ctx.font = `600 ${Math.max(11, width * 0.018)}px sans-serif`;
   ctx.fillStyle = "rgba(255,255,255,0.75)";
-  ctx.fillText("Приготовься…", width / 2, height / 2 + width * 0.05);
+  ctx.fillText(I18N.t("game.getReady"), width / 2, height / 2 + width * 0.05);
   ctx.restore();
 }
 

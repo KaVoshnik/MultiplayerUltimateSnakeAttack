@@ -23,11 +23,11 @@
         <span class="iconFallback">🐍</span>
       </span>
     </div>
-    <div class="userBar" id="userBar" role="button" tabindex="0" title="Открыть профиль">
+    <div class="userBar" id="userBar" role="button" tabindex="0" data-i18n-title="index.userBar.title" title="Открыть профиль">
       <span class="coinPill">🪙 <strong id="headerCoins">0</strong></span>
       <div class="userChip">
         <span class="userAvatar" id="userAvatar">😎</span>
-        <span class="userName" id="userName">Гость</span>
+        <span class="userName" id="userName" data-i18n="index.guest">Гость</span>
       </div>
     </div>
   </header>
@@ -39,13 +39,13 @@
           <img src="img/icons/friends.png" alt="" class="iconImg" />
           <span class="iconFallback">🧑‍🤝‍🧑</span>
         </span>
-        <span class="sidePanelTitle">ДРУЗЬЯ ОНЛАЙН</span>
+        <span class="sidePanelTitle" data-i18n="index.friendsOnline">ДРУЗЬЯ ОНЛАЙН</span>
         <span class="sidePanelBadge hidden" id="friendsBadge">0</span>
       </div>
       <div class="sidePanelBody" id="friendsPanelBody">
-        <div class="sidePanelEmpty">Загрузка…</div>
+        <div class="sidePanelEmpty" data-i18n="common.loading">Загрузка…</div>
       </div>
-      <a href="/friends.html" class="sidePanelFoot">Все друзья →</a>
+      <a href="/friends.html" class="sidePanelFoot" data-i18n="index.allFriends">Все друзья →</a>
     </aside>
 
     <main class="menuMain">
@@ -53,11 +53,11 @@
         <h1 class="menuTitle">SNAKE<span>ATTACK</span></h1>
         <div class="onlineBadge">
           <span class="dot"></span>
-          <span id="onlineCount">Подключение...</span>
+          <span id="onlineCount" data-i18n="common.connecting">Подключение...</span>
         </div>
         <div class="liveFeedWrap glass" id="liveFeedWrap">
           <span class="liveFeedLabel">// LIVE</span>
-          <div class="liveFeed" id="liveFeed">Ожидание событий…</div>
+          <div class="liveFeed" id="liveFeed" data-i18n="index.waitingEvents">Ожидание событий…</div>
         </div>
       </div>
 
@@ -67,8 +67,8 @@
           <span class="iconFallback">🎁</span>
         </span>
         <span class="chestText">
-          <strong>Ежедневный сундук ждёт!</strong>
-          <span>Открой, чтобы получить награду</span>
+          <strong data-i18n="index.chestTitle">Ежедневный сундук ждёт!</strong>
+          <span data-i18n="index.chestSubtitle">Открой, чтобы получить награду</span>
         </span>
         <span class="chestArrow">→</span>
       </button>
@@ -79,35 +79,35 @@
             <img src="img/icons/play.png" alt="" class="iconImg" />
             <span class="iconFallback">▶</span>
           </span>
-          <span class="menuBtnLabel">ИГРАТЬ</span>
+          <span class="menuBtnLabel" data-i18n="index.play">ИГРАТЬ</span>
         </button>
         <a href="/shop.html" class="menuBtn cascade" style="--i:3">
           <span class="menuBtnIcon" data-icon-key="shop">
             <img src="img/icons/shop.png" alt="" class="iconImg" />
             <span class="iconFallback">🛒</span>
           </span>
-          <span class="menuBtnLabel">МАГАЗИН</span>
+          <span class="menuBtnLabel" data-i18n="index.shop">МАГАЗИН</span>
         </a>
         <a href="/battlepass.html" class="menuBtn cascade" style="--i:4">
           <span class="menuBtnIcon" data-icon-key="battlepass">
             <img src="img/icons/battlepass.png" alt="" class="iconImg" />
             <span class="iconFallback">🎖</span>
           </span>
-          <span class="menuBtnLabel">ПРОПУСК</span>
+          <span class="menuBtnLabel" data-i18n="index.battlepass">ПРОПУСК</span>
         </a>
         <a href="/inventory.html" class="menuBtn cascade" style="--i:5">
           <span class="menuBtnIcon" data-icon-key="inventory">
             <img src="img/icons/inventory.png" alt="" class="iconImg" />
             <span class="iconFallback">🎒</span>
           </span>
-          <span class="menuBtnLabel">ИНВЕНТАРЬ</span>
+          <span class="menuBtnLabel" data-i18n="index.inventory">ИНВЕНТАРЬ</span>
         </a>
         <button type="button" class="menuBtn cascade" style="--i:6" id="btnSettings">
           <span class="menuBtnIcon" data-icon-key="settings">
             <img src="img/icons/settings.png" alt="" class="iconImg" />
             <span class="iconFallback">⚙️</span>
           </span>
-          <span class="menuBtnLabel">НАСТРОЙКИ</span>
+          <span class="menuBtnLabel" data-i18n="index.settingsBtn">НАСТРОЙКИ</span>
         </button>
       </nav>
     </main>
@@ -118,12 +118,12 @@
           <img src="img/icons/leaderboard.png" alt="" class="iconImg" />
           <span class="iconFallback">🏆</span>
         </span>
-        <span class="sidePanelTitle">ТОП ИГРОКОВ</span>
+        <span class="sidePanelTitle" data-i18n="index.topPlayers">ТОП ИГРОКОВ</span>
       </div>
       <div class="sidePanelBody" id="leaderboardPanelBody">
-        <div class="sidePanelEmpty">Загрузка…</div>
+        <div class="sidePanelEmpty" data-i18n="common.loading">Загрузка…</div>
       </div>
-      <a href="/leaderboard.html" class="sidePanelFoot">Вся таблица →</a>
+      <a href="/leaderboard.html" class="sidePanelFoot" data-i18n="index.fullTable">Вся таблица →</a>
     </aside>
   </div>
 
@@ -132,7 +132,7 @@
   <!-- PLAY MODAL -->
   <div class="modalOverlay hidden" id="playModal">
     <div class="modalBox glass">
-      <h2>КАК ИГРАТЬ?</h2>
+      <h2 data-i18n="index.howToPlay">КАК ИГРАТЬ?</h2>
 
       <div class="playOptions">
         <button type="button" class="playOption" id="playOnlineBtn">
@@ -141,8 +141,8 @@
             <span class="iconFallback">🌐</span>
           </span>
           <span class="playOptionText">
-            <strong>Играть онлайн</strong>
-            <span id="playOnlineCount">Подключение...</span>
+            <strong data-i18n="index.playOnline">Играть онлайн</strong>
+            <span id="playOnlineCount" data-i18n="common.connecting">Подключение...</span>
           </span>
         </button>
 
@@ -152,14 +152,14 @@
             <span class="iconFallback">🚪</span>
           </span>
           <span class="playOptionText">
-            <strong>Играть в комнате</strong>
-            <span>Своя комната или вход по коду</span>
+            <strong data-i18n="index.playRoom">Играть в комнате</strong>
+            <span data-i18n="index.playRoomSub">Своя комната или вход по коду</span>
           </span>
         </button>
       </div>
 
       <div class="modalActions">
-        <button type="button" class="btn ghost" id="closePlayModal">Закрыть</button>
+        <button type="button" class="btn ghost" id="closePlayModal" data-i18n="common.close">Закрыть</button>
       </div>
     </div>
   </div>
@@ -167,28 +167,37 @@
   <!-- SETTINGS MODAL -->
   <div class="modalOverlay hidden" id="settingsModal">
     <div class="modalBox glass">
-      <h2>НАСТРОЙКИ</h2>
+      <h2 data-i18n="index.settingsBtn">НАСТРОЙКИ</h2>
 
       <label class="toggleRow">
         <input type="checkbox" id="audioToggle" checked />
-        <span>Синтвейв-звук и эмбиент</span>
+        <span data-i18n="index.audioToggle">Синтвейв-звук и эмбиент</span>
       </label>
 
       <label class="toggleRow">
         <input type="checkbox" id="showStatsToggle" />
-        <span>Показывать FPS и пинг в игре</span>
+        <span data-i18n="index.statsToggle">Показывать FPS и пинг в игре</span>
       </label>
 
-      <p class="settingsHint">Никнейм и вход — в разделе <a href="/profile.html">Профиль</a>.</p>
+      <div class="langRow">
+        <span class="langRowLabel" data-i18n="index.language">Язык</span>
+        <div class="langSwitch" id="langSwitch" role="group" data-i18n-title="index.languageTitle" title="Выбор языка">
+          <button type="button" class="langBtn" id="langRuBtn" data-lang="ru">RU</button>
+          <button type="button" class="langBtn" id="langEnBtn" data-lang="en">EN</button>
+        </div>
+      </div>
+
+      <p class="settingsHint" data-i18n-html="index.settingsHint">Никнейм и вход — в разделе <a href="/profile.html">Профиль</a>.</p>
 
       <div class="modalActions">
-        <button type="button" class="btn primary" id="saveSettings">Сохранить</button>
-        <button type="button" class="btn ghost" id="closeSettings">Закрыть</button>
+        <button type="button" class="btn primary" id="saveSettings" data-i18n="common.save">Сохранить</button>
+        <button type="button" class="btn ghost" id="closeSettings" data-i18n="common.close">Закрыть</button>
       </div>
     </div>
   </div>
 
   <div class="toastWrap"></div>
+  <script src="js/i18n.js"></script>
   <script src="js/common.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/icons.js"></script>

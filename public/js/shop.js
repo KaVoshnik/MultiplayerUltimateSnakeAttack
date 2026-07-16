@@ -70,7 +70,7 @@ function connect() {
   socket.addEventListener("open", () => {
     const name = SnakeStore.getName();
     if (name) send({ type: "shop_connect", name });
-    else showToast("Задай никнейм в лобби или профиле!");
+    else showToast(I18N.t("shop.setNickname"));
   });
 
   socket.addEventListener("close", () => setTimeout(connect, 1200));
@@ -96,7 +96,7 @@ function connect() {
 
 function send(payload) {
   if (state.socket?.readyState !== WebSocket.OPEN) {
-    showToast("Нет связи с сервером");
+    showToast(I18N.t("shop.noConnection"));
     return;
   }
   state.socket.send(JSON.stringify(payload));
@@ -133,8 +133,8 @@ function renderItems() {
   itemGrid.innerHTML = "";
   if (!sorted.length) {
     const hint = state.catalog.length
-      ? "В этой вкладке пока ничего нет"
-      : "Загрузка каталога…";
+      ? I18N.t("shop.emptyTab")
+      : I18N.t("shop.loadingCatalog");
     itemGrid.innerHTML = `<p class="shopEmpty">${hint}</p>`;
     return;
   }
@@ -150,7 +150,7 @@ function renderItems() {
     let actionText = `${price} 🪙`;
     let actionClass = "buy";
     if (owned) {
-      actionText = equipped ? "СНЯТЬ" : "НАДЕТЬ";
+      actionText = equipped ? I18N.t("shop.unequip") : I18N.t("shop.equip");
       actionClass = equipped ? "unequip" : "equip";
     } else if (coins < price) {
       actionClass = "buy";
@@ -169,14 +169,14 @@ function renderItems() {
 
     card.addEventListener("click", () => {
       const name = SnakeStore.getName();
-      if (!name) { showToast("Введи никнейм!"); return; }
+      if (!name) { showToast(I18N.t("shop.enterNickname")); return; }
       if (owned) {
         if (equipped) send({ type: "unequip_item", itemId: item.id });
         else send({ type: "equip_item", itemId: item.id });
       } else if (price === 0 || coins >= price) {
         send({ type: "buy_item", itemId: item.id });
       } else {
-        showToast("Недостаточно монет!");
+        showToast(I18N.t("shop.notEnoughCoins"));
       }
     });
 
@@ -193,32 +193,33 @@ function renderBattlePass() {
   const activeColor = stats.activeNickColor || "default";
   const step = bp?.scoreStep || 1000;
   const tiers = bp?.tiers || [];
-  const nickColors = bp?.nickColors || [{ id: "default", label: "Стандарт", color: null }];
+  const nickColors = bp?.nickColors || [{ id: "default", label: I18N.t("shop.bpDefaultColor"), color: null }];
 
   const currentTier = Math.floor(score / step);
   const progressInTier = score % step;
   const pct = Math.round((progressInTier / step) * 100);
   const nextAt = (currentTier + 1) * step;
+  const numLocale = I18N.getLang() === "en" ? "en-US" : "ru-RU";
 
   itemGrid.innerHTML = `
     <div class="bpPanel glass">
       <div class="bpHeader">
         <div>
-          <h2>Бесплатный боевой пропуск</h2>
-          <p>Очки из всех игр суммируются. Каждые <strong>${step}</strong> очков — награда.</p>
+          <h2>${I18N.t("shop.bpTitle")}</h2>
+          <p>${I18N.t("shop.bpDesc", { step })}</p>
         </div>
-        <div class="bpScoreBadge">${score.toLocaleString("ru")} очков</div>
+        <div class="bpScoreBadge">${I18N.t("shop.bpPoints", { n: score.toLocaleString(numLocale) })}</div>
       </div>
       <div class="bpProgressWrap">
         <div class="bpProgressMeta">
-          <span>До ур. ${currentTier + 1}</span>
+          <span>${I18N.t("shop.bpToLevel", { n: currentTier + 1 })}</span>
           <span>${progressInTier} / ${step}</span>
         </div>
         <div class="bpProgressBar"><div class="bpProgressFill" style="width:${pct}%"></div></div>
-        <p class="bpProgressHint">Следующая награда на <strong>${nextAt.toLocaleString("ru")}</strong> очков</p>
+        <p class="bpProgressHint">${I18N.t("shop.bpNextReward", { n: nextAt.toLocaleString(numLocale) })}</p>
       </div>
       <div class="bpNickSection">
-        <h3>Цвет ника</h3>
+        <h3>${I18N.t("shop.bpNickColor")}</h3>
         <div class="bpNickGrid" id="bpNickGrid"></div>
       </div>
       <div class="bpTiers" id="bpTiers"></div>
@@ -245,7 +246,7 @@ function renderBattlePass() {
 
   const tiersEl = document.querySelector("#bpTiers");
   if (!tiers.length) {
-    tiersEl.innerHTML = `<p class="shopEmpty">Загрузка уровней…</p>`;
+    tiersEl.innerHTML = `<p class="shopEmpty">${I18N.t("shop.bpLoadingTiers")}</p>`;
     return;
   }
 
@@ -257,10 +258,10 @@ function renderBattlePass() {
     card.innerHTML = `
       <div class="bpTierNum">${tier.tier}</div>
       <div class="bpTierBody">
-        <strong>${tier.scoreRequired.toLocaleString("ru")} очков</strong>
-        <span>+${tier.coins} 🪙 · цвет «${escapeHtml(tier.nickColor.label)}»</span>
+        <strong>${I18N.t("shop.bpPoints", { n: tier.scoreRequired.toLocaleString(numLocale) })}</strong>
+        <span>+${tier.coins} 🪙 · ${I18N.t("shop.bpColorLabel", { label: escapeHtml(tier.nickColor.label) })}</span>
       </div>
-      <div class="bpTierStatus">${done ? "ПОЛУЧЕНО" : locked ? "ЗАКРЫТО" : "ГОТОВО"}</div>
+      <div class="bpTierStatus">${done ? I18N.t("shop.bpClaimed") : locked ? I18N.t("shop.bpLocked") : I18N.t("shop.bpReady")}</div>
     `;
     tiersEl.append(card);
   }
@@ -269,3 +270,5 @@ function renderBattlePass() {
 connect();
 loadCatalog();
 renderItems();
+
+window.addEventListener("i18n:change", renderItems);

@@ -10,48 +10,49 @@
 </head>
 <body data-page="shop">
   <nav class="siteNav">
-    <a href="/" class="brand">← ЛОББИ</a>
+    <a href="/" class="brand" data-i18n="nav.lobby">← ЛОББИ</a>
     <div class="links">
-      <a href="/game.html" data-page="game">Игра</a>
-      <a href="/shop.html" data-page="shop" class="active">Магазин</a>
-      <a href="/profile.html" data-page="profile">Профиль</a>
-      <a href="/inventory.html" data-page="inventory">Инвентарь</a>
-      <a href="/leaderboard.html" data-page="leaderboard">Рекорды</a>
-      <a href="/friends.html" data-page="friends">Друзья</a>
+      <a href="/game.html" data-page="game" data-i18n="nav.game">Игра</a>
+      <a href="/shop.html" data-page="shop" class="active" data-i18n="nav.shop">Магазин</a>
+      <a href="/profile.html" data-page="profile" data-i18n="nav.profile">Профиль</a>
+      <a href="/inventory.html" data-page="inventory" data-i18n="nav.inventory">Инвентарь</a>
+      <a href="/leaderboard.html" data-page="leaderboard" data-i18n="nav.leaderboard">Рекорды</a>
+      <a href="/friends.html" data-page="friends" data-i18n="nav.friends">Друзья</a>
     </div>
     <span class="coinPill">🪙 <strong id="headerCoins">0</strong></span>
   </nav>
 
   <main class="pageWrap shopPage">
     <header class="pageHeader">
-      <h1>🛒 МАГАЗИН</h1>
+      <h1><span data-i18n="shop.title">🛒 МАГАЗИН</span></h1>
     </header>
 
     <div class="shopToolbar glass">
       <div class="shopTabs">
-        <button type="button" class="shopTab active" data-tab="skin">СКИНЫ</button>
-        <button type="button" class="shopTab" data-tab="snake_hat">ШЛЯПЫ ДЛЯ ЗМЕЙ</button>
-        <a href="/inventory.html#invMarket" class="shopTabLink">🍖 РЫНОК ЕДЫ</a>
+        <button type="button" class="shopTab active" data-tab="skin" data-i18n="shop.skins">СКИНЫ</button>
+        <button type="button" class="shopTab" data-tab="snake_hat" data-i18n="shop.hats">ШЛЯПЫ ДЛЯ ЗМЕЙ</button>
+        <a href="/inventory.html#invMarket" class="shopTabLink" data-i18n="shop.foodMarket">🍖 РЫНОК ЕДЫ</a>
       </div>
       <div class="shopSort">
-        <label>Сортировка</label>
+        <label data-i18n="shop.sorting">Сортировка</label>
         <select id="sortBy">
-          <option value="price-asc">Цена ↑</option>
-          <option value="price-desc">Цена ↓</option>
-          <option value="rarity-asc">Редкость ↑</option>
-          <option value="rarity-desc">Редкость ↓</option>
+          <option value="price-asc" data-i18n="shop.priceAsc">Цена ↑</option>
+          <option value="price-desc" data-i18n="shop.priceDesc">Цена ↓</option>
+          <option value="rarity-asc" data-i18n="shop.rarityAsc">Редкость ↑</option>
+          <option value="rarity-desc" data-i18n="shop.rarityDesc">Редкость ↓</option>
         </select>
       </div>
     </div>
 
     <div class="shopCoinsBar glass">
-      Баланс: <strong id="shopCoins">0</strong> 🪙
+      <span data-i18n="shop.balance">Баланс:</span> <strong id="shopCoins">0</strong> 🪙
     </div>
 
     <div class="itemGrid" id="itemGrid"></div>
   </main>
 
   <div class="toastWrap"></div>
+  <script src="js/i18n.js"></script>
   <script src="js/common.js"></script>
   <script src="js/custom-skins.js"></script>
   <script src="js/shop.js"></script>

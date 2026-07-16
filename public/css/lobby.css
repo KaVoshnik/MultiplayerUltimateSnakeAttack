@@ -75,6 +75,50 @@
   background: rgba(255,255,255,.04);
 }
 
+.langRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  gap: 12px;
+}
+
+.langRowLabel {
+  font-size: .9rem;
+}
+
+.langSwitch {
+  display: inline-flex;
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  padding: 3px;
+  gap: 3px;
+}
+
+.langBtn {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 700;
+  font-size: .75rem;
+  letter-spacing: .04em;
+  padding: 6px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+
+.langBtn:hover {
+  color: #fff;
+}
+
+.langBtn.active {
+  background: var(--green-dim);
+  color: var(--green);
+  box-shadow: 0 0 0 1px var(--panel-border) inset;
+}
+
 .settingsHint {
   margin: 0 0 4px;
   font-size: .8rem;

@@ -11,60 +11,61 @@
 </head>
 <body data-page="friends">
   <nav class="siteNav">
-    <a href="/" class="brand">← ЛОББИ</a>
+    <a href="/" class="brand" data-i18n="nav.lobby">← ЛОББИ</a>
     <div class="links">
-      <a href="/game.html" data-page="game">Игра</a>
-      <a href="/shop.html" data-page="shop">Магазин</a>
-      <a href="/profile.html" data-page="profile">Профиль</a>
-      <a href="/inventory.html" data-page="inventory">Инвентарь</a>
-      <a href="/leaderboard.html" data-page="leaderboard">Рекорды</a>
-      <a href="/friends.html" data-page="friends" class="active">Друзья</a>
+      <a href="/game.html" data-page="game" data-i18n="nav.game">Игра</a>
+      <a href="/shop.html" data-page="shop" data-i18n="nav.shop">Магазин</a>
+      <a href="/profile.html" data-page="profile" data-i18n="nav.profile">Профиль</a>
+      <a href="/inventory.html" data-page="inventory" data-i18n="nav.inventory">Инвентарь</a>
+      <a href="/leaderboard.html" data-page="leaderboard" data-i18n="nav.leaderboard">Рекорды</a>
+      <a href="/friends.html" data-page="friends" class="active" data-i18n="nav.friends">Друзья</a>
     </div>
   </nav>
 
   <main class="pageWrap friendsPage">
     <header class="pageHeader">
-      <h1>🧑‍🤝‍🧑 ДРУЗЬЯ</h1>
-      <p>Добавляй других игроков и следи, кто сейчас в сети</p>
+      <h1 data-i18n="friends.title">🧑‍🤝‍🧑 ДРУЗЬЯ</h1>
+      <p data-i18n="friends.subtitle">Добавляй других игроков и следи, кто сейчас в сети</p>
       <div class="friendsSearchWrap">
-        <input type="search" id="friendsSearch" class="lbSearch" placeholder="Найти игрока по нику…" autocomplete="off" />
+        <input type="search" id="friendsSearch" class="lbSearch" data-i18n-placeholder="lb.searchPlaceholder" placeholder="Найти игрока по нику…" autocomplete="off" />
         <div class="lbSearchResults hidden" id="friendsSearchResults"></div>
       </div>
     </header>
 
     <section class="glass pageCard hidden" id="guestCard">
-      <p>Войди в аккаунт на странице профиля, чтобы добавлять друзей.</p>
-      <a href="/profile.html" class="btn primary">Перейти в профиль</a>
+      <p data-i18n="friends.guestText">Войди в аккаунт на странице профиля, чтобы добавлять друзей.</p>
+      <a href="/profile.html" class="btn primary" data-i18n="friends.goToProfile">Перейти в профиль</a>
     </section>
 
     <div id="friendsContent" class="hidden">
       <section class="glass pageCard friendsSection" id="incomingSection">
-        <h2>Заявки в друзья <span class="countPill" id="incomingCount">0</span></h2>
+        <h2><span data-i18n="friends.incoming">Заявки в друзья</span> <span class="countPill" id="incomingCount">0</span></h2>
         <ul class="friendsList" id="incomingList"></ul>
-        <p class="emptyState" id="incomingEmpty">Пока никто не добавлял тебя.</p>
+        <p class="emptyState" id="incomingEmpty" data-i18n="friends.noIncoming">Пока никто не добавлял тебя.</p>
       </section>
 
       <section class="glass pageCard friendsSection" id="friendsTopSection">
-        <h2>🏆 Топ друзей по рекорду</h2>
+        <h2 data-i18n="friends.topByRecord">🏆 Топ друзей по рекорду</h2>
         <ul class="friendsList" id="friendsTopList"></ul>
-        <p class="emptyState hidden" id="friendsTopEmpty">Добавь друзей, чтобы сравнить рекорды.</p>
+        <p class="emptyState hidden" id="friendsTopEmpty" data-i18n="friends.addToCompare">Добавь друзей, чтобы сравнить рекорды.</p>
       </section>
 
       <section class="glass pageCard friendsSection">
-        <h2>Друзья <span class="countPill" id="friendsCount">0</span></h2>
+        <h2><span data-i18n="nav.friends">Друзья</span> <span class="countPill" id="friendsCount">0</span></h2>
         <ul class="friendsList" id="friendsList"></ul>
-        <p class="emptyState hidden" id="friendsEmpty">Пока нет друзей — найди кого-нибудь через поиск сверху.</p>
+        <p class="emptyState hidden" id="friendsEmpty" data-i18n="friends.noFriendsYet">Пока нет друзей — найди кого-нибудь через поиск сверху.</p>
       </section>
 
       <section class="glass pageCard friendsSection" id="outgoingSection">
-        <h2>Исходящие заявки <span class="countPill" id="outgoingCount">0</span></h2>
+        <h2><span data-i18n="friends.outgoing">Исходящие заявки</span> <span class="countPill" id="outgoingCount">0</span></h2>
         <ul class="friendsList" id="outgoingList"></ul>
-        <p class="emptyState" id="outgoingEmpty">Нет отправленных заявок.</p>
+        <p class="emptyState" id="outgoingEmpty" data-i18n="friends.noOutgoing">Нет отправленных заявок.</p>
       </section>
     </div>
   </main>
 
   <div class="toastWrap"></div>
+  <script src="js/i18n.js"></script>
   <script src="js/common.js"></script>
   <script src="js/friends.js"></script>
 </body>

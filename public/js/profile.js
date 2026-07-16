@@ -49,7 +49,7 @@ function setProfileEditable(enabled) {
 // обычного захода и просто шумит рядом с именем.
 function streakBadgeHtml(streak) {
   if (!streak || streak < 2) return "";
-  return ` <span class="streakBadge" title="${streak} дней подряд">🔥${streak}</span>`;
+  return ` <span class="streakBadge" title="${I18N.t("profile.streakDays", { n: streak })}">🔥${streak}</span>`;
 }
 
 async function loadAchievements(name) {
@@ -180,7 +180,7 @@ function connect() {
         renderEquipped();
         drawPreview();
       }
-      showToast("Профиль сохранён!");
+      showToast(I18N.t("profile.savedToast"));
     }
     if (msg.type === "notice") {
       showToast(msg.text);
@@ -195,7 +195,7 @@ function connect() {
 
 function send(payload) {
   if (state.socket?.readyState !== WebSocket.OPEN) {
-    showToast("Нет связи с сервером. Подожди пару секунд…");
+    showToast(I18N.t("profile.noConnection"));
     return false;
   }
   state.socket.send(JSON.stringify(payload));
@@ -233,7 +233,7 @@ async function loadPublicProfile(name) {
   const res = await fetch(`/profile?name=${encodeURIComponent(name)}`);
   const data = await res.json();
   if (data.error) {
-    showToast("Игрок не найден");
+    showToast(I18N.t("profile.playerNotFound"));
     return false;
   }
 
@@ -245,6 +245,7 @@ async function loadPublicProfile(name) {
   } catch { /* ignore */ }
 
   state.viewMode = true;
+  state.friendStatus = data.friendStatus;
   state.shopData = {
     coins: data.coins,
     activeSkin: data.activeSkin,
@@ -261,7 +262,7 @@ async function loadPublicProfile(name) {
 
   accountGuest?.classList.add("hidden");
   accountUser?.classList.remove("hidden");
-  document.querySelector(".accountBadge").textContent = "Публичный профиль";
+  document.querySelector(".accountBadge").textContent = I18N.t("profile.publicProfile");
 
   // Своё состояние логина не выставляется в viewMode (чтобы не перепутать
   // с данными просматриваемого профиля), поэтому для жалобы проверяем
@@ -289,7 +290,7 @@ async function loadPublicProfile(name) {
   applyAvatarVisuals({ customAvatarUrl: data.customAvatarUrl, avatar: data.avatar });
   btnRemoveCustomAvatar?.classList.add("hidden"); // не своё фото — удалять его отсюда нельзя
 
-  document.title = `${data.name} — Профиль`;
+  document.title = `${data.name} — ${I18N.t("profile.profileTitleSuffix")}`;
   renderStats();
   renderEquipped();
   drawPreview();
@@ -300,6 +301,7 @@ async function loadPublicProfile(name) {
 
 function renderFriendButton(targetName, status) {
   if (!btnFriendAction) return;
+  state.friendStatus = status;
   if (!state.reporterLoggedIn) { btnFriendAction.classList.add("hidden"); return; }
 
   btnFriendAction.classList.remove("hidden");
@@ -307,32 +309,32 @@ function renderFriendButton(targetName, status) {
   btnFriendAction.onclick = null;
 
   if (status === "friends") {
-    btnFriendAction.textContent = "✓ В друзьях — удалить";
+    btnFriendAction.textContent = I18N.t("profile.friendsRemove");
     btnFriendAction.onclick = async () => {
-      if (!confirm(`Удалить ${targetName} из друзей?`)) return;
+      if (!confirm(I18N.t("profile.confirmRemoveFriend", { name: targetName }))) return;
       btnFriendAction.disabled = true;
       const ok = await friendPost("/friends/remove", targetName);
-      showToast(ok ? `${targetName} удалён из друзей` : "Не получилось удалить.");
+      showToast(ok ? I18N.t("profile.friendRemoved", { name: targetName }) : I18N.t("profile.removeFailed"));
       renderFriendButton(targetName, ok ? "none" : status);
     };
   } else if (status === "outgoing") {
-    btnFriendAction.textContent = "Заявка отправлена — отменить";
+    btnFriendAction.textContent = I18N.t("profile.requestSentCancel");
     btnFriendAction.onclick = async () => {
       btnFriendAction.disabled = true;
       const ok = await friendPost("/friends/cancel", targetName);
-      showToast(ok ? "Заявка отменена" : "Не получилось отменить.");
+      showToast(ok ? I18N.t("profile.requestCancelled") : I18N.t("profile.cancelFailed"));
       renderFriendButton(targetName, ok ? "none" : status);
     };
   } else if (status === "incoming") {
-    btnFriendAction.textContent = "Принять заявку в друзья";
+    btnFriendAction.textContent = I18N.t("profile.acceptRequest");
     btnFriendAction.onclick = async () => {
       btnFriendAction.disabled = true;
       const ok = await friendPost("/friends/accept", targetName);
-      showToast(ok ? `Теперь вы друзья с ${targetName}` : "Не получилось принять.");
+      showToast(ok ? I18N.t("profile.nowFriends", { name: targetName }) : I18N.t("profile.acceptFailed"));
       renderFriendButton(targetName, ok ? "friends" : status);
     };
   } else {
-    btnFriendAction.textContent = "Добавить в друзья";
+    btnFriendAction.textContent = I18N.t("profile.addFriend");
     btnFriendAction.onclick = async () => {
       btnFriendAction.disabled = true;
       try {
@@ -344,17 +346,17 @@ function renderFriendButton(targetName, status) {
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok && data.status === "accepted") {
-          showToast(`Вы с ${targetName} теперь друзья! (взаимная заявка)`);
+          showToast(I18N.t("profile.mutualFriends", { name: targetName }));
           renderFriendButton(targetName, "friends");
         } else if (res.ok) {
-          showToast(`Заявка отправлена игроку ${targetName}`);
+          showToast(I18N.t("profile.requestSentTo", { name: targetName }));
           renderFriendButton(targetName, "outgoing");
         } else {
-          showToast("Не получилось отправить заявку.");
+          showToast(I18N.t("profile.requestFailed"));
           renderFriendButton(targetName, "none");
         }
       } catch {
-        showToast("Не получилось отправить заявку.");
+        showToast(I18N.t("profile.requestFailed"));
         renderFriendButton(targetName, "none");
       }
     };
@@ -377,7 +379,7 @@ async function friendPost(path, name) {
 
 async function reportAvatar(target) {
   if (!state.reporterLoggedIn) {
-    showToast("Войди в аккаунт, чтобы жаловаться на аватарки.");
+    showToast(I18N.t("profile.loginToReport"));
     return;
   }
   btnReportAvatar.disabled = true;
@@ -388,11 +390,11 @@ async function reportAvatar(target) {
       credentials: "include",
       body: JSON.stringify({ target }),
     });
-    if (res.ok) showToast("Спасибо, жалоба отправлена модераторам.");
-    else if (res.status === 401) showToast("Сессия истекла — войди заново.");
-    else showToast("Не получилось отправить жалобу.");
+    if (res.ok) showToast(I18N.t("profile.reportSent"));
+    else if (res.status === 401) showToast(I18N.t("profile.sessionExpired"));
+    else showToast(I18N.t("profile.reportFailed"));
   } catch {
-    showToast("Не получилось отправить жалобу.");
+    showToast(I18N.t("profile.reportFailed"));
   } finally {
     btnReportAvatar.disabled = false;
   }
@@ -415,11 +417,11 @@ avatarUploadInput?.addEventListener("change", async () => {
   if (!file) return;
 
   if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
-    showToast("Нужен файл PNG, JPEG или WEBP.");
+    showToast(I18N.t("profile.fileTypeError"));
     return;
   }
   if (file.size > AVATAR_UPLOAD_MAX_BYTES) {
-    showToast(`Файл слишком большой — до ${(AVATAR_UPLOAD_MAX_BYTES / 1024 / 1024).toFixed(1)} МБ.`);
+    showToast(I18N.t("profile.fileTooLarge", { mb: (AVATAR_UPLOAD_MAX_BYTES / 1024 / 1024).toFixed(1) }));
     return;
   }
 
@@ -434,14 +436,14 @@ avatarUploadInput?.addEventListener("change", async () => {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.ok) {
-      showToast("Не получилось загрузить фото. Проверь формат и размер.");
+      showToast(I18N.t("profile.uploadFailed"));
       return;
     }
     if (state.shopData) state.shopData.stats = { ...state.shopData.stats, customAvatarUrl: data.customAvatarUrl };
     applyAvatarVisuals({ customAvatarUrl: data.customAvatarUrl, avatar: state.selectedAvatar });
-    showToast("Фото обновлено!");
+    showToast(I18N.t("profile.photoUpdated"));
   } catch {
-    showToast("Не получилось загрузить фото.");
+    showToast(I18N.t("profile.uploadFailedGeneric"));
   } finally {
     btnUploadAvatar.disabled = false;
   }
@@ -454,12 +456,12 @@ btnRemoveCustomAvatar?.addEventListener("click", async () => {
     if (res.ok) {
       if (state.shopData) state.shopData.stats = { ...state.shopData.stats, customAvatarUrl: null };
       applyAvatarVisuals({ customAvatarUrl: null, avatar: state.selectedAvatar });
-      showToast("Фото удалено.");
+      showToast(I18N.t("profile.photoRemoved"));
     } else {
-      showToast("Не получилось удалить фото.");
+      showToast(I18N.t("profile.removePhotoFailed"));
     }
   } catch {
-    showToast("Не получилось удалить фото.");
+    showToast(I18N.t("profile.removePhotoFailed"));
   } finally {
     btnRemoveCustomAvatar.disabled = false;
   }
@@ -480,7 +482,7 @@ function renderEquipped() {
   }
 
   if (!items.length) {
-    equippedList.innerHTML = "<span>Ничего не надето — зайди в магазин!</span>";
+    equippedList.innerHTML = `<span>${I18N.t("profile.nothingEquipped")}</span>`;
     return;
   }
 
@@ -571,16 +573,16 @@ function roundRect(c, x, y, w, h, r) {
 
 saveBtn.addEventListener("click", () => {
   if (!state.loggedIn) {
-    showToast("Сначала войди в аккаунт!");
+    showToast(I18N.t("profile.loginFirst"));
     return;
   }
   if (!state.wsAuthed) {
-    showToast("Подожди подключения к серверу…");
+    showToast(I18N.t("profile.waitConnection"));
     return;
   }
   const name = profileNameInput.value.trim();
   if (!name) {
-    showToast("Никнейм не может быть пустым!");
+    showToast(I18N.t("profile.nickEmpty"));
     return;
   }
   if (!send({
@@ -634,3 +636,10 @@ async function boot() {
 }
 
 boot();
+
+window.addEventListener("i18n:change", () => {
+  renderEquipped();
+  if (state.viewMode && state.oldName) {
+    renderFriendButton(state.oldName, state.friendStatus);
+  }
+});

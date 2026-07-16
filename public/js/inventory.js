@@ -1,9 +1,9 @@
 const FOOD_META = {
-  apple:     { icon: "🍎", label: "Яблоко" },
-  cherry:    { icon: "🍒", label: "Вишня" },
-  grape:     { icon: "🍇", label: "Виноград" },
-  pineapple: { icon: "🍍", label: "Ананас" },
-  coconut:   { icon: "🥥", label: "Кокос" },
+  apple:     { icon: "🍎", get label() { return I18N.t("food.apple"); } },
+  cherry:    { icon: "🍒", get label() { return I18N.t("food.cherry"); } },
+  grape:     { icon: "🍇", get label() { return I18N.t("food.grape"); } },
+  pineapple: { icon: "🍍", get label() { return I18N.t("food.pineapple"); } },
+  coconut:   { icon: "🥥", get label() { return I18N.t("food.coconut"); } },
 };
 
 const state = { loggedIn: false, name: "", socket: null, foodInventory: {}, listings: [] };
@@ -26,7 +26,7 @@ function renderInventory() {
   invGrid.innerHTML = "";
   const entries = Object.entries(state.foodInventory || {});
   if (!entries.length) {
-    invGrid.innerHTML = '<div class="emptyState">Пока пусто — иди собирай еду в игре!</div>';
+    invGrid.innerHTML = `<div class="emptyState">${I18N.t("inv.emptyYet")}</div>`;
   } else {
     for (const [kind, count] of entries) {
       const meta = foodMeta(kind);
@@ -49,13 +49,13 @@ function renderInventory() {
 function renderListForm() {
   const owned = Object.entries(state.foodInventory || {}).filter(([, count]) => count > 0);
   if (!owned.length) {
-    invListKind.innerHTML = '<option value="">Нечего продавать</option>';
+    invListKind.innerHTML = `<option value="">${I18N.t("inv.nothingToSell")}</option>`;
     invListForm.querySelector("button").disabled = true;
     return;
   }
   invListForm.querySelector("button").disabled = false;
   invListKind.innerHTML = owned
-    .map(([kind, count]) => `<option value="${kind}">${foodMeta(kind).icon} ${foodMeta(kind).label} (есть ${count})</option>`)
+    .map(([kind, count]) => `<option value="${kind}">${foodMeta(kind).icon} ${foodMeta(kind).label} (${I18N.t("inv.inStock", { n: count })})</option>`)
     .join("");
 }
 
@@ -65,11 +65,11 @@ function renderMarket() {
 
   invMyListings.innerHTML = mine.length
     ? mine.map((l) => listingRowHtml(l, true)).join("")
-    : '<div class="emptyState">Нет активных лотов.</div>';
+    : `<div class="emptyState">${I18N.t("inv.noActiveListings")}</div>`;
 
   invAllListings.innerHTML = others.length
     ? others.map((l) => listingRowHtml(l, false)).join("")
-    : '<div class="emptyState">Рынок пока пуст.</div>';
+    : `<div class="emptyState">${I18N.t("inv.marketEmpty")}</div>`;
 
   invMyListings.querySelectorAll("[data-cancel]").forEach((btn) => {
     btn.addEventListener("click", () => cancelListing(btn.dataset.cancel));
@@ -83,14 +83,14 @@ function listingRowHtml(listing, mine) {
   const meta = foodMeta(listing.kind);
   const total = listing.quantity * listing.pricePerUnit;
   const actionHtml = mine
-    ? `<button type="button" class="btn ghost small" data-cancel="${listing.id}">Снять</button>`
-    : `<button type="button" class="btn primary small" data-buy="${listing.id}">Купить всё за ${total} 🪙</button>`;
+    ? `<button type="button" class="btn ghost small" data-cancel="${listing.id}">${I18N.t("inv.cancel")}</button>`
+    : `<button type="button" class="btn primary small" data-buy="${listing.id}">${I18N.t("inv.buyAllFor", { total })}</button>`;
   return `
     <div class="invListingRow">
       <span class="invListingIcon">${meta.icon}</span>
       <span class="invListingInfo">
         <strong>${listing.quantity}× ${meta.label}</strong>
-        <span class="invListingSeller">${mine ? "твой лот" : `у ${escapeHtml(listing.sellerName)}`} · ${listing.pricePerUnit} 🪙/шт</span>
+        <span class="invListingSeller">${mine ? I18N.t("inv.yourListing") : I18N.t("inv.fromSeller", { name: escapeHtml(listing.sellerName) })} · ${listing.pricePerUnit} 🪙/${I18N.t("inv.perUnitShort")}</span>
       </span>
       ${actionHtml}
     </div>
@@ -114,7 +114,7 @@ function cancelListing(listingId) {
 
 function buyListing(listingId) {
   const listing = state.listings.find((l) => l.id === listingId);
-  if (!listing || !confirm(`Купить ${listing.quantity}× за ${listing.quantity * listing.pricePerUnit} монет?`)) return;
+  if (!listing || !confirm(I18N.t("inv.confirmBuy", { n: listing.quantity, total: listing.quantity * listing.pricePerUnit }))) return;
   state.socket?.send(JSON.stringify({ type: "market_buy", listingId, quantity: listing.quantity, name: state.name }));
 }
 
@@ -176,3 +176,8 @@ async function init() {
 }
 
 init();
+
+window.addEventListener("i18n:change", () => {
+  renderInventory();
+  renderMarket();
+});

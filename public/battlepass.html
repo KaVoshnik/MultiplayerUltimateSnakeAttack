@@ -10,32 +10,33 @@
 </head>
 <body data-page="battlepass">
   <nav class="siteNav">
-    <a href="/" class="brand">← ЛОББИ</a>
+    <a href="/" class="brand" data-i18n="nav.lobby">← ЛОББИ</a>
     <div class="links">
-      <a href="/game.html" data-page="game">Игра</a>
-      <a href="/shop.html" data-page="shop">Магазин</a>
-      <a href="/profile.html" data-page="profile">Профиль</a>
-      <a href="/inventory.html" data-page="inventory">Инвентарь</a>
-      <a href="/leaderboard.html" data-page="leaderboard">Рекорды</a>
-      <a href="/friends.html" data-page="friends">Друзья</a>
+      <a href="/game.html" data-page="game" data-i18n="nav.game">Игра</a>
+      <a href="/shop.html" data-page="shop" data-i18n="nav.shop">Магазин</a>
+      <a href="/profile.html" data-page="profile" data-i18n="nav.profile">Профиль</a>
+      <a href="/inventory.html" data-page="inventory" data-i18n="nav.inventory">Инвентарь</a>
+      <a href="/leaderboard.html" data-page="leaderboard" data-i18n="nav.leaderboard">Рекорды</a>
+      <a href="/friends.html" data-page="friends" data-i18n="nav.friends">Друзья</a>
     </div>
     <span class="coinPill">🪙 <strong id="headerCoins">0</strong></span>
   </nav>
 
   <main class="pageWrap shopPage">
     <header class="pageHeader">
-      <h1>🎖 БОЕВОЙ ПРОПУСК</h1>
-      <p>Очки из всех игр суммируются. Каждые 1000 очков — награда.</p>
+      <h1 data-i18n="bp.title">🎖 БОЕВОЙ ПРОПУСК</h1>
+      <p data-i18n-html="shop.bpDesc1000">Очки из всех игр суммируются. Каждые 1000 очков — награда.</p>
     </header>
 
     <div class="shopCoinsBar glass">
-      Баланс: <strong id="shopCoins">0</strong> 🪙
+      <span data-i18n="shop.balance">Баланс:</span> <strong id="shopCoins">0</strong> 🪙
     </div>
 
     <div class="itemGrid" id="itemGrid"></div>
   </main>
 
   <div class="toastWrap"></div>
+  <script src="js/i18n.js"></script>
   <script src="js/common.js"></script>
   <script src="js/battlepass.js"></script>
 </body>

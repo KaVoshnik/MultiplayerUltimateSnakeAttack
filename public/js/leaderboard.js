@@ -35,7 +35,7 @@ function avatarHtml(entry, className = "lbAvatar") {
 // обычного захода и просто шумит рядом с именем.
 function streakBadgeHtml(streak) {
   if (!streak || streak < 2) return "";
-  return `<span class="streakBadge" title="${streak} дней подряд">🔥${streak}</span>`;
+  return `<span class="streakBadge" title="${I18N.t("profile.streakDays", { n: streak })}">🔥${streak}</span>`;
 }
 
 function openPlayerProfile(name) {
@@ -44,7 +44,7 @@ function openPlayerProfile(name) {
 
 function bindProfileClick(el, name) {
   el.classList.add("lbClickable");
-  el.title = `Открыть профиль ${name}`;
+  el.title = I18N.t("lb.openProfile", { name });
   el.addEventListener("click", () => openPlayerProfile(name));
 }
 
@@ -57,7 +57,7 @@ async function loadLeaderboard() {
     render();
   } catch {
     emptyEl.classList.remove("hidden");
-    emptyEl.textContent = "Не удалось загрузить рекорды.";
+    emptyEl.textContent = I18N.t("lb.loadError");
   }
 }
 
@@ -73,7 +73,7 @@ async function runSearch(query) {
     const players = await res.json();
     searchResults.innerHTML = "";
     if (!players.length) {
-      searchResults.innerHTML = `<div class="lbSearchEmpty">Никого не найдено</div>`;
+      searchResults.innerHTML = `<div class="lbSearchEmpty">${I18N.t("lb.nobodyFound")}</div>`;
     } else {
       for (const p of players) {
         const row = document.createElement("button");
@@ -90,7 +90,7 @@ async function runSearch(query) {
     }
     searchResults.classList.remove("hidden");
   } catch {
-    searchResults.innerHTML = `<div class="lbSearchEmpty">Ошибка поиска</div>`;
+    searchResults.innerHTML = `<div class="lbSearchEmpty">${I18N.t("lb.searchError")}</div>`;
     searchResults.classList.remove("hidden");
   }
 }
@@ -109,10 +109,6 @@ document.addEventListener("click", (event) => {
     searchResults?.classList.add("hidden");
   }
 });
-
-function valueLabel() {
-  return sortMode === "coins" ? "монет" : "очков";
-}
 
 function entryValue(entry) {
   return sortMode === "coins" ? (entry.coins ?? entry.score) : entry.score;
@@ -133,8 +129,8 @@ function renderPodium(top3) {
       ${avatarHtml(entry, "podiumAvatar")}
       <div class="podiumName">${escapeHtml(entry.name)} ${streakBadgeHtml(entry.streak)}</div>
       <div class="podiumStats">
-        <span>🎮 Игр<strong>${entry.games || 0}</strong></span>
-        <span>📈 Рекорд<strong>${entry.best || entry.score}</strong></span>
+        <span>🎮 ${I18N.t("profile.games")}<strong>${entry.games || 0}</strong></span>
+        <span>📈 ${I18N.t("game.best")}<strong>${entry.best || entry.score}</strong></span>
       </div>
       <div class="podiumScore">${sortMode === "coins" ? "💰 " : ""}${entryValue(entry)}</div>
     `;
@@ -152,8 +148,8 @@ function renderList(rest) {
     const li = document.createElement("li");
     li.style.animationDelay = `${i * 0.05}s`;
     const extra = sortMode === "coins"
-      ? `<small class="lbPlayerExtra">📈 рекорд ${entry.best || 0}</small>`
-      : `<small class="lbPlayerExtra">🎮 ${entry.games || 0} игр · 💀 ${entry.deaths || 0} · 💰 ${entry.coins || 0}</small>`;
+      ? `<small class="lbPlayerExtra">📈 ${I18N.t("lb.recordShort", { n: entry.best || 0 })}</small>`
+      : `<small class="lbPlayerExtra">🎮 ${I18N.t("lb.gamesShort", { n: entry.games || 0 })} · 💀 ${entry.deaths || 0} · 💰 ${entry.coins || 0}</small>`;
     li.innerHTML = `
       <span class="rank">#${entry.rank}</span>
       <div class="lbPlayerMain">
@@ -194,8 +190,8 @@ function render() {
   if (!allEntries.length) {
     emptyEl.classList.remove("hidden");
     emptyEl.textContent = sortMode === "coins"
-      ? "Пока никто не разбогател."
-      : "Пока никто не попал в рекорды.";
+      ? I18N.t("lb.nobodyRich")
+      : I18N.t("lb.empty");
     podiumEl.innerHTML = "";
     listEl.innerHTML = "";
     return;
@@ -209,3 +205,5 @@ function render() {
 
 loadLeaderboard();
 setInterval(loadLeaderboard, 12000);
+
+window.addEventListener("i18n:change", render);
