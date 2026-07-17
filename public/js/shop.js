@@ -162,7 +162,7 @@ function renderItems() {
 
     card.innerHTML = `
       ${preview}
-      <div class="itemName">${escapeHtml(item.name)}</div>
+      <div class="itemName">${escapeHtml(I18N.itemName(item.id, item.name))}</div>
       <div class="itemRarity ${item.rarity}">${RARITY_LABELS[item.rarity]}</div>
       <div class="itemAction ${actionClass}">${actionText}</div>
     `;
@@ -236,7 +236,7 @@ function renderBattlePass() {
     btn.disabled = !isUnlocked;
     btn.innerHTML = `
       <span class="bpNickSwatch" style="${color.color ? `background:${color.color}` : "background:linear-gradient(90deg,#fff,#3de88a)"}"></span>
-      <span>${escapeHtml(color.label)}</span>
+      <span>${escapeHtml(I18N.nickColorLabel(color.id, color.label))}</span>
     `;
     btn.addEventListener("click", () => {
       send({ type: "equip_nick_color", colorId: color.id === "default" ? "default" : color.id });
@@ -259,7 +259,7 @@ function renderBattlePass() {
       <div class="bpTierNum">${tier.tier}</div>
       <div class="bpTierBody">
         <strong>${I18N.t("shop.bpPoints", { n: tier.scoreRequired.toLocaleString(numLocale) })}</strong>
-        <span>+${tier.coins} 🪙 · ${I18N.t("shop.bpColorLabel", { label: escapeHtml(tier.nickColor.label) })}</span>
+        <span>+${tier.coins} 🪙 · ${I18N.t("shop.bpColorLabel", { label: escapeHtml(I18N.nickColorLabel(tier.nickColor.id, tier.nickColor.label)) })}</span>
       </div>
       <div class="bpTierStatus">${done ? I18N.t("shop.bpClaimed") : locked ? I18N.t("shop.bpLocked") : I18N.t("shop.bpReady")}</div>
     `;

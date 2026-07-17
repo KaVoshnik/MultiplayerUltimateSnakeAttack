@@ -1171,13 +1171,16 @@ function forceAoiResync(playerId) {
   for (const aoiSet of clientAoi.values()) aoiSet.delete(playerId);
 }
 
-function pushFeed(kind, text, playerName = "") {
+function pushFeed(kind, text, playerName = "", meta = {}) {
   const dedupeKey = `${kind}:${text}`;
   const now = Date.now();
   const lastAt = feedDedupe.get(dedupeKey);
   if (lastAt && now - lastAt < FEED_DEDUPE_MS) return;
   feedDedupe.set(dedupeKey, now);
-  feedLog.unshift({ id: `${now}-${feedLog.length}`, kind, text, playerName, at: now });
+  feedLog.unshift({
+    id: `${now}-${feedLog.length}`, kind, text, playerName, at: now,
+    key: meta.key || null, params: meta.params || null,
+  });
   if (feedLog.length > 12) feedLog.length = 12;
   scheduleFeedBroadcast();
 }
@@ -1247,14 +1250,20 @@ function tick() {
     const nextHead = planned.get(player.id);
     const key = foodMod.pointKey(nextHead);
 
-    if (!foodMod.insideGrid(nextHead, GRID)) { killPlayer(player, "Врезался в стену"); continue; }
+    if (!foodMod.insideGrid(nextHead, GRID)) { killPlayer(player, "Врезался в стену", { reasonKey: "death.wall" }); continue; }
 
     const resolvedKey = key;
 
-    if (targetCounts.get(key) > 1) { killPlayer(player, "Столкновение лоб в лоб"); continue; }
+    if (targetCounts.get(key) > 1) { killPlayer(player, "Столкновение лоб в лоб", { reasonKey: "death.headOn" }); continue; }
 
     const killerBoss = bossMod.bossAt(bosses, nextHead);
-    if (killerBoss) { killPlayer(player, `${killerBoss.name} поймал змейку`, { at: nextHead, boss: killerBoss }); continue; }
+    if (killerBoss) {
+      killPlayer(player, `${killerBoss.name} поймал змейку`, {
+        at: nextHead, boss: killerBoss,
+        reasonKey: "death.caughtByBoss", reasonParams: { boss: killerBoss.name },
+      });
+      continue;
+    }
 
     // Баффы проверяем ДО occupied — бафф важнее хвоста
     const eatenBonusIdx = bonuses.findIndex((b) => b.x === nextHead.x && b.y === nextHead.y);
@@ -1268,7 +1277,11 @@ function tick() {
     if (player.activeBonus !== "ghost" && occupied.has(resolvedKey)) {
       const killerId = occupied.get(resolvedKey);
       const killer = killerId && killerId !== player.id ? players.get(killerId) : null;
-      killPlayer(player, killer ? `${killer.name} убил ${player.name}` : "Столкнулся со змейкой", { at: nextHead, killerPlayer: killer });
+      killPlayer(
+        player,
+        killer ? `${killer.name} убил ${player.name}` : "Столкнулся со змейкой",
+        { at: nextHead, killerPlayer: killer, reasonKey: killer ? undefined : "death.collidedSnake" },
+      );
       continue;
     }
 
@@ -1290,7 +1303,8 @@ function tick() {
         player.score += pts;
         player.best = Math.max(player.best, player.score);
         if (player.combo === 5 || player.combo === 10) {
-          pushFeed("combo", `🔥 ${player.name}: COMBO ×${player.combo}!`, player.name);
+          pushFeed("combo", `🔥 ${player.name}: COMBO ×${player.combo}!`, player.name,
+            { key: "feed.combo", params: { name: player.name, combo: player.combo } });
         }
         // Инвентарь копится в памяти живой змейки и разово синкается в
         // персистентный профиль при смерти/дисконнекте (trackDeathStats /
@@ -1302,7 +1316,9 @@ function tick() {
         player.activeBonus = null;
         broadcast({ type: "notice", text: `${player.name}: щит поглотил ${FOOD_TYPES[eaten.kind]?.label || "яд"}!` });
       } else {
-        killPlayer(player, `Съел ${FOOD_TYPES[eaten.kind]?.label || "яд"}`);
+        killPlayer(player, `Съел ${FOOD_TYPES[eaten.kind]?.label || "яд"}`, {
+          reasonKey: "death.ateBadFood", reasonParams: { kind: eaten.kind },
+        });
       }
     } else {
       player.snake.pop();
@@ -1317,7 +1333,8 @@ function tick() {
 
 function activateBonus(player, bonusType) {
   bonusEffects.activateBonus(player, bonusType, BONUS_TYPES, (def) => {
-    pushFeed("bonus", `⚡ ${player.name} → ${def.label}`, player.name);
+    pushFeed("bonus", `⚡ ${player.name} → ${def.label}`, player.name,
+      { key: "feed.bonusPickup", params: { name: player.name, label: def.label } });
     broadcast({ type: "notice", text: `${player.name} получил бонус ${def.label} ${def.desc}!` });
   });
 }
@@ -1353,7 +1370,15 @@ function killPlayer(player, reason, opts = {}) {
   trackDeathStats(player);
   player.alive = false;
   player.deaths += 1;
-  player.reason = opts.killerPlayer ? `${opts.killerPlayer.name} убил тебя` : reason;
+  if (opts.killerPlayer) {
+    player.reason = `${opts.killerPlayer.name} убил тебя`;
+    player.reasonKey = "death.killedByPlayer";
+    player.reasonParams = { name: opts.killerPlayer.name };
+  } else {
+    player.reason = reason;
+    player.reasonKey = opts.reasonKey || null;
+    player.reasonParams = opts.reasonParams || null;
+  }
   player.activeBonus = null;
   player.bonusExpires = null;
   player.combo = 0;
@@ -1362,15 +1387,18 @@ function killPlayer(player, reason, opts = {}) {
   if (reward > 0) {
     player.coins = (player.coins || 0) + reward;
     savePlayerCoins(player);
-    pushFeed("bonus", `💰 ${player.name}: +${reward} монет`, player.name);
+    pushFeed("bonus", `💰 ${player.name}: +${reward} монет`, player.name,
+      { key: "feed.coinsEarned", params: { name: player.name, reward } });
   }
   recordScore(player);
   if (opts.killerPlayer?.alive) {
     awardKillCoins(opts.killerPlayer, player);
   } else if (opts.killerPlayer) {
-    pushFeed("kill", `⚔ ${opts.killerPlayer.name} убил ${player.name}`, opts.killerPlayer.name);
+    pushFeed("kill", `⚔ ${opts.killerPlayer.name} убил ${player.name}`, opts.killerPlayer.name,
+      { key: "feed.killedPlayer", params: { killer: opts.killerPlayer.name, victim: player.name } });
   } else {
-    pushFeed("death", `💀 ${player.name}: ${reason}`, player.name);
+    pushFeed("death", `💀 ${player.name}: ${reason}`, player.name,
+      { key: player.reasonKey, params: { name: player.name, ...player.reasonParams } });
   }
   const hitCell = opts.at || player.snake[0];
   const killerBoss = opts.boss || bossMod.bossAt(bosses, hitCell) || bosses.find((b) => reason.includes(b.name));
@@ -2116,7 +2144,8 @@ function awardKillCoins(killer, victim) {
   entry.coins = killer.coins;
   shopData[killer.name] = entry;
   persistProfile(killer.name, entry);
-  pushFeed("kill", `💰 ${killer.name}: +${KILL_REWARD_COINS} за убийство ${victim.name}`, killer.name);
+  pushFeed("kill", `💰 ${killer.name}: +${KILL_REWARD_COINS} за убийство ${victim.name}`, killer.name,
+    { key: "feed.killReward", params: { killer: killer.name, victim: victim.name, coins: KILL_REWARD_COINS } });
   send(killer.id, { type: "notice", text: `+${KILL_REWARD_COINS} монет за убийство!` });
   checkAchievements(killer.name, entry).catch((err) => console.error("Achievements:", err.message));
 }
@@ -2143,7 +2172,8 @@ function processBattlePassRewards(name, entry) {
     if (def.nickColor && def.nickColor.label) {
       colorText = `, цвет «${def.nickColor.label}»`;
     }
-    pushFeed("bonus", `🎖 ${name}: боевой пропуск ур.${tier} — +${def.coins}🪙${colorText}`, name);
+    pushFeed("bonus", `🎖 ${name}: боевой пропуск ур.${tier} — +${def.coins}🪙${colorText}`, name,
+      { key: "feed.battlePassTier", params: { name, tier, coins: def.coins, colorId: def.nickColor?.id || null } });
   }
 
   if (!granted.length) return granted;

@@ -12,7 +12,6 @@
  */
 const I18N = (() => {
   const STORAGE_KEY = "snakeLang";
-  const DEFAULT_LANG = "ru";
 
   const ru = {};
   const en = {};
@@ -739,6 +738,281 @@ const I18N = (() => {
     "admin.errorTitle": "⚠ Error",
   });
 
+  function itemName(id, fallback) {
+    const key = `item.${id}`;
+    const lang = getLang();
+    return (dict[lang] && dict[lang][key]) || (lang !== "ru" && dict.ru[key]) || fallback || id;
+  }
+
+  function nickColorLabel(id, fallback) {
+    const key = `nickColor.${id}`;
+    const lang = getLang();
+    return (dict[lang] && dict[lang][key]) || (lang !== "ru" && dict.ru[key]) || fallback || id;
+  }
+
+  function achName(id, fallback) {
+    const key = `ach.${id}`;
+    const lang = getLang();
+    return (dict[lang] && dict[lang][key]) || (lang !== "ru" && dict.ru[key]) || fallback || id;
+  }
+
+  function achDesc(id, fallback) {
+    const key = `achDesc.${id}`;
+    const lang = getLang();
+    return (dict[lang] && dict[lang][key]) || (lang !== "ru" && dict.ru[key]) || fallback || id;
+  }
+
+  // Переводит серверный reasonKey (причина смерти) с поддержкой
+  // вложенного перевода названия еды (death.ateBadFood -> food.<kind>).
+  function tReason(key, params) {
+    if (!key) return null;
+    if (key === "death.ateBadFood" && params?.kind) {
+      return t(key, { food: t(`food.${params.kind}`) });
+    }
+    return t(key, params || {});
+  }
+
+  // Переводит одно событие ленты (feed item), пришедшее с сервера.
+  // Возвращает переведённый текст либо null, если ключа нет (тогда
+  // вызывающий код должен использовать item.text как есть).
+  function tFeed(item) {
+    if (!item || !item.key) return null;
+    if (item.kind === "death") {
+      const reasonText = tReason(item.key, item.params);
+      return t("feed.deathWrapper", { name: item.params?.name ?? item.playerName ?? "", reason: reasonText });
+    }
+    if (item.key === "feed.battlePassTier") {
+      const { name, tier, coins, colorId } = item.params || {};
+      if (colorId) {
+        return t("feed.battlePassTierColor", { name, tier, coins, color: nickColorLabel(colorId) });
+      }
+      return t("feed.battlePassTier", { name, tier, coins });
+    }
+    return t(item.key, item.params || {});
+  }
+
+  // ---- shop items (skins & hats) — translated client-side by id ----
+  Object.assign(ru, {
+    "item.default": "Классик",
+    "item.fire": "Огненная",
+    "item.ocean": "Океан",
+    "item.toxic": "Токсичная",
+    "item.coral": "Коралл",
+    "item.ice": "Ледяная",
+    "item.midnight": "Полночь",
+    "item.neon": "Неон",
+    "item.gold": "Золото",
+    "item.candy": "Кэнди",
+    "item.void": "Пустота",
+    "item.plasma": "Плазма",
+    "item.shadow": "Тень",
+    "item.rainbow": "Радуга",
+    "item.royal": "Королевская",
+    "item.lime": "Лайм",
+    "item.crimson": "Багровая",
+    "item.azure": "Лазурь",
+    "item.ember": "Угли",
+    "item.mint": "Мята",
+    "item.custom_1": "Свой скин 1",
+    "item.custom_2": "Свой скин 2",
+    "item.custom_3": "Свой скин 3",
+    "item.hat_top": "Цилиндр змеи",
+    "item.hat_cap": "Кепка змеи",
+    "item.hat_beanie": "Вязаная шапка",
+    "item.hat_straw": "Соломенная шляпа",
+    "item.hat_grad": "Выпускная шапка",
+    "item.hat_hard": "Строительная каска",
+    "item.hat_party": "Праздничный колпак",
+    "item.hat_mushroom": "Грибная шляпка",
+    "item.hat_flame": "Огненная корона",
+    "item.hat_royal": "Королевская корона",
+    "item.custom_hat_1": "Своя шляпа 1",
+    "item.custom_hat_2": "Своя шляпа 2",
+    "item.custom_hat_3": "Своя шляпа 3",
+  });
+  Object.assign(en, {
+    "item.default": "Classic",
+    "item.fire": "Blaze",
+    "item.ocean": "Ocean",
+    "item.toxic": "Toxic",
+    "item.coral": "Coral",
+    "item.ice": "Frost",
+    "item.midnight": "Midnight",
+    "item.neon": "Neon",
+    "item.gold": "Gold",
+    "item.candy": "Candy",
+    "item.void": "Void",
+    "item.plasma": "Plasma",
+    "item.shadow": "Shadow",
+    "item.rainbow": "Rainbow",
+    "item.royal": "Royal",
+    "item.lime": "Lime",
+    "item.crimson": "Crimson",
+    "item.azure": "Azure",
+    "item.ember": "Embers",
+    "item.mint": "Mint",
+    "item.custom_1": "Custom skin 1",
+    "item.custom_2": "Custom skin 2",
+    "item.custom_3": "Custom skin 3",
+    "item.hat_top": "Snake top hat",
+    "item.hat_cap": "Snake cap",
+    "item.hat_beanie": "Knit beanie",
+    "item.hat_straw": "Straw hat",
+    "item.hat_grad": "Graduation cap",
+    "item.hat_hard": "Hard hat",
+    "item.hat_party": "Party hat",
+    "item.hat_mushroom": "Mushroom cap",
+    "item.hat_flame": "Flame crown",
+    "item.hat_royal": "Royal crown",
+    "item.custom_hat_1": "Custom hat 1",
+    "item.custom_hat_2": "Custom hat 2",
+    "item.custom_hat_3": "Custom hat 3",
+  });
+
+  // ---- battle pass nickname colors — translated client-side by id ----
+  Object.assign(ru, {
+    "nickColor.default": "Стандарт",
+    "nickColor.bp_gold": "Золото",
+    "nickColor.bp_cyan": "Бирюза",
+    "nickColor.bp_magenta": "Магента",
+    "nickColor.bp_lime": "Лайм",
+    "nickColor.bp_crimson": "Багряный",
+    "nickColor.bp_violet": "Фиолет",
+    "nickColor.bp_orange": "Оранж",
+    "nickColor.bp_ice": "Лёд",
+    "nickColor.bp_neon": "Неон",
+    "nickColor.bp_royal": "Корона",
+    "nickColor.bp_plasma": "Плазма",
+    "nickColor.bp_sunset": "Закат",
+    "nickColor.bp_mint": "Мята",
+    "nickColor.bp_ember": "Угли",
+    "nickColor.bp_azure": "Лазурь",
+    "nickColor.bp_sakura": "Сакура",
+    "nickColor.bp_poison": "Яд",
+    "nickColor.bp_shadow": "Тень",
+    "nickColor.bp_aurora": "Аврора",
+    "nickColor.bp_legendary": "Легенда",
+  });
+  Object.assign(en, {
+    "nickColor.default": "Default",
+    "nickColor.bp_gold": "Gold",
+    "nickColor.bp_cyan": "Cyan",
+    "nickColor.bp_magenta": "Magenta",
+    "nickColor.bp_lime": "Lime",
+    "nickColor.bp_crimson": "Crimson",
+    "nickColor.bp_violet": "Violet",
+    "nickColor.bp_orange": "Orange",
+    "nickColor.bp_ice": "Ice",
+    "nickColor.bp_neon": "Neon",
+    "nickColor.bp_royal": "Crown",
+    "nickColor.bp_plasma": "Plasma",
+    "nickColor.bp_sunset": "Sunset",
+    "nickColor.bp_mint": "Mint",
+    "nickColor.bp_ember": "Embers",
+    "nickColor.bp_azure": "Azure",
+    "nickColor.bp_sakura": "Sakura",
+    "nickColor.bp_poison": "Poison",
+    "nickColor.bp_shadow": "Shadow",
+    "nickColor.bp_aurora": "Aurora",
+    "nickColor.bp_legendary": "Legend",
+  });
+
+  // ---- achievements — translated client-side by id ----
+  Object.assign(ru, {
+    "ach.first_blood": "Первая кровь", "achDesc.first_blood": "Убей первого игрока",
+    "ach.butcher": "Мясник", "achDesc.butcher": "50 убийств",
+    "ach.arena_legend": "Легенда арены", "achDesc.arena_legend": "250 убийств",
+    "ach.rookie": "Новичок", "achDesc.rookie": "Сыграй 10 игр",
+    "ach.veteran": "Ветеран", "achDesc.veteran": "Сыграй 100 игр",
+    "ach.obsessed": "Одержимый", "achDesc.obsessed": "Сыграй 500 игр",
+    "ach.scorer": "Рекордсмен", "achDesc.scorer": "Рекорд 100+ очков за игру",
+    "ach.pro": "Профи", "achDesc.pro": "Рекорд 300+ очков за игру",
+    "ach.legend": "Легенда", "achDesc.legend": "Рекорд 1000+ очков за игру",
+    "ach.collector": "Коллекционер", "achDesc.collector": "10 разных скинов",
+    "ach.fashionista": "Модник", "achDesc.fashionista": "Собери все скины",
+    "ach.sociable": "Душа компании", "achDesc.sociable": "5 друзей",
+    "ach.popular": "Душа тусовки", "achDesc.popular": "20 друзей",
+    "ach.streak_week": "На волне", "achDesc.streak_week": "Стрик 7 дней подряд",
+    "ach.streak_month": "Несгибаемый", "achDesc.streak_month": "Стрик 30 дней подряд",
+    "ach.rich": "Мешок с золотом", "achDesc.rich": "Накопи 5000 монет",
+  });
+  Object.assign(en, {
+    "ach.first_blood": "First Blood", "achDesc.first_blood": "Kill your first player",
+    "ach.butcher": "Butcher", "achDesc.butcher": "50 kills",
+    "ach.arena_legend": "Arena Legend", "achDesc.arena_legend": "250 kills",
+    "ach.rookie": "Rookie", "achDesc.rookie": "Play 10 games",
+    "ach.veteran": "Veteran", "achDesc.veteran": "Play 100 games",
+    "ach.obsessed": "Obsessed", "achDesc.obsessed": "Play 500 games",
+    "ach.scorer": "High Scorer", "achDesc.scorer": "Score 100+ points in a game",
+    "ach.pro": "Pro", "achDesc.pro": "Score 300+ points in a game",
+    "ach.legend": "Legend", "achDesc.legend": "Score 1000+ points in a game",
+    "ach.collector": "Collector", "achDesc.collector": "Own 10 different skins",
+    "ach.fashionista": "Fashionista", "achDesc.fashionista": "Collect every skin",
+    "ach.sociable": "Life of the Party", "achDesc.sociable": "5 friends",
+    "ach.popular": "Popular", "achDesc.popular": "20 friends",
+    "ach.streak_week": "On a Roll", "achDesc.streak_week": "7-day streak",
+    "ach.streak_month": "Unbreakable", "achDesc.streak_month": "30-day streak",
+    "ach.rich": "Bag of Gold", "achDesc.rich": "Save up 5000 coins",
+  });
+
+  // ---- bad food names (used in death.ateBadFood translation) ----
+  Object.assign(ru, {
+    "food.rotten": "гниль",
+    "food.spider": "паука",
+    "food.mushroom": "ядовитый гриб",
+    "food.bone": "кость",
+    "food.poison": "яд",
+  });
+  Object.assign(en, {
+    "food.rotten": "rot",
+    "food.spider": "a spider",
+    "food.mushroom": "a poison mushroom",
+    "food.bone": "a bone",
+    "food.poison": "poison",
+  });
+
+  // ---- death reasons & live-feed events (server sends key+params) ----
+  Object.assign(ru, {
+    "death.wall": "Врезался в стену",
+    "death.headOn": "Столкновение лоб в лоб",
+    "death.collidedSnake": "Столкнулся со змейкой",
+    "death.killedByPlayer": "{name} убил тебя",
+    "death.caughtByBoss": "{boss} поймал змейку",
+    "death.grabbedByBoss": "{boss} схватил за голову",
+    "death.ateBadFood": "Съел {food}",
+    "feed.deathWrapper": "💀 {name}: {reason}",
+    "feed.killedPlayer": "⚔ {killer} убил {victim}",
+    "feed.combo": "🔥 {name}: КОМБО ×{combo}!",
+    "feed.coinsEarned": "💰 {name}: +{reward} монет",
+    "feed.killReward": "💰 {killer}: +{coins} за убийство {victim}",
+    "feed.bonusPickup": "⚡ {name} → {label}",
+    "feed.battlePassTier": "🎖 {name}: боевой пропуск ур.{tier} — +{coins}🪙",
+    "feed.battlePassTierColor": "🎖 {name}: боевой пропуск ур.{tier} — +{coins}🪙, цвет «{color}»",
+    "feed.bossRage": "👹 {boss} в ЯРОСТИ!",
+    "feed.bossFrenzy": "🤢 {boss} объелась дряни и беснуется!",
+    "feed.bossTeleportWarning": "⚠ {boss} готовит прыжок из ниоткуда!",
+  });
+  Object.assign(en, {
+    "death.wall": "Ran into a wall",
+    "death.headOn": "Head-on collision",
+    "death.collidedSnake": "Collided with a snake",
+    "death.killedByPlayer": "{name} killed you",
+    "death.caughtByBoss": "{boss} caught the snake",
+    "death.grabbedByBoss": "{boss} grabbed you by the head",
+    "death.ateBadFood": "Ate {food}",
+    "feed.deathWrapper": "💀 {name}: {reason}",
+    "feed.killedPlayer": "⚔ {killer} killed {victim}",
+    "feed.combo": "🔥 {name}: COMBO ×{combo}!",
+    "feed.coinsEarned": "💰 {name}: +{reward} coins",
+    "feed.killReward": "💰 {killer}: +{coins} for the kill on {victim}",
+    "feed.bonusPickup": "⚡ {name} → {label}",
+    "feed.battlePassTier": "🎖 {name}: battle pass lvl.{tier} — +{coins}🪙",
+    "feed.battlePassTierColor": "🎖 {name}: battle pass lvl.{tier} — +{coins}🪙, color \"{color}\"",
+    "feed.bossRage": "👹 {boss} is ENRAGED!",
+    "feed.bossFrenzy": "🤢 {boss} gorged on garbage and is going berserk!",
+    "feed.bossTeleportWarning": "⚠ {boss} is winding up a jump from nowhere!",
+  });
+
   // __I18N_DICT_ANCHOR__
 
   const dict = { ru, en };
@@ -797,5 +1071,8 @@ const I18N = (() => {
     init();
   }
 
-  return { t, apply, setLang, getLang, init };
+  return {
+    t, apply, setLang, getLang, init,
+    itemName, nickColorLabel, achName, achDesc, tReason, tFeed,
+  };
 })();

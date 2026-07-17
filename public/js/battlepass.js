@@ -126,7 +126,7 @@ function renderBattlePass() {
     btn.disabled = !isUnlocked;
     btn.innerHTML = `
       <span class="bpNickSwatch" style="${color.color ? `background:${color.color}` : "background:linear-gradient(90deg,#fff,#3de88a)"}"></span>
-      <span>${escapeHtml(color.label)}</span>
+      <span>${escapeHtml(I18N.nickColorLabel(color.id, color.label))}</span>
     `;
     btn.addEventListener("click", () => {
       send({ type: "equip_nick_color", colorId: color.id });
@@ -145,7 +145,7 @@ function renderBattlePass() {
     const locked = score < tier.scoreRequired;
     const hasColor = tier.nickColor !== null;
     const rewardDesc = hasColor
-      ? `+${tier.coins} 🪙 · ${I18N.t("bp.nickColorLabel", { label: `<span style="color:${tier.nickColor.color}">${escapeHtml(tier.nickColor.label)}</span>` })}`
+      ? `+${tier.coins} 🪙 · ${I18N.t("bp.nickColorLabel", { label: `<span style="color:${tier.nickColor.color}">${escapeHtml(I18N.nickColorLabel(tier.nickColor.id, tier.nickColor.label))}</span>` })}`
       : `+${tier.coins} 🪙`;
     const card = document.createElement("div");
     card.className = `bpTier${done ? " done" : ""}${locked ? " locked" : ""}${hasColor ? " hasColor" : ""}`;

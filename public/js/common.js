@@ -83,7 +83,7 @@ function showAchievementToast(achievement) {
     <span class="achToastIcon">${achievement.icon || "🏆"}</span>
     <span class="achToastText">
       <strong>${I18N.t("common.achievementUnlocked")}</strong>
-      <span>${escapeHtml(achievement.name)}</span>
+      <span>${escapeHtml(I18N.achName(achievement.id, achievement.name))}</span>
     </span>
   `;
   wrap.append(toast);

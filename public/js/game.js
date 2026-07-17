@@ -99,6 +99,9 @@ requestAnimationFrame(draw);
 window.addEventListener("i18n:change", () => {
   if (statusEl.classList.contains("ok")) statusEl.textContent = I18N.t("game.statusOnline");
   else if (statusEl.classList.contains("bad")) statusEl.textContent = I18N.t("game.statusOffline");
+  for (const li of [...(feedList?.children || [])]) li.remove();
+  renderFeed.lastKey = null;
+  renderFeed();
 });
 
 document.querySelector("#retryBtn").addEventListener("click", () => { send({ type: "restart" }); state.freezeEndsAt = 0; deathPanel.classList.add("hidden"); });
@@ -459,7 +462,7 @@ function updateHud(me, prevScore = 0, prevCombo = 0) {
       deathPanel.classList.add("hidden");
     } else if (state.wasAlive) {
       state.wasAlive = false;
-      deathReason.textContent = me.reason || I18N.t("game.snakeDied");
+      deathReason.textContent = I18N.tReason(me.reasonKey, me.reasonParams) || me.reason || I18N.t("game.snakeDied");
       deathStats.innerHTML = `
         <span>${I18N.t("game.score")} <b>${me.score}</b></span>
         <span>${I18N.t("game.maxCombo")} <b>×${me.maxCombo || 0}</b></span>
@@ -495,7 +498,7 @@ function renderFeed() {
     li.className = ev.kind || "";
     if (i === 0) li.classList.add("feed-new");
     li.dataset.id = ev.id;
-    li.textContent = ev.text;
+    li.textContent = I18N.tFeed(ev) || ev.text;
     feedList.prepend(li);
   }
 }

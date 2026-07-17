@@ -54,26 +54,35 @@ function streakBadgeHtml(streak) {
 
 async function loadAchievements(name) {
   const grid = document.querySelector("#achievementsGrid");
-  const countEl = document.querySelector("#achievementsCount");
   if (!grid || !name) return;
   try {
     const res = await fetch(`/achievements?name=${encodeURIComponent(name)}`);
-    const list = await res.json();
-    grid.innerHTML = "";
-    const unlockedCount = list.filter((a) => a.unlocked).length;
-    if (countEl) countEl.textContent = `${unlockedCount}/${list.length}`;
-    for (const ach of list) {
-      const badge = document.createElement("div");
-      badge.className = `achBadge${ach.unlocked ? "" : " locked"}`;
-      badge.title = ach.desc;
-      badge.innerHTML = `
-        <span class="achIcon">${ach.icon}</span>
-        <span class="achName">${escapeHtml(ach.name)}</span>
-        <span class="achDesc">${escapeHtml(ach.desc)}</span>
-      `;
-      grid.append(badge);
-    }
+    state.lastAchievements = await res.json();
+    renderAchievements();
   } catch { /* тихо игнорируем — не критично для остального профиля */ }
+}
+
+function renderAchievements() {
+  const grid = document.querySelector("#achievementsGrid");
+  const countEl = document.querySelector("#achievementsCount");
+  const list = state.lastAchievements;
+  if (!grid || !list) return;
+  grid.innerHTML = "";
+  const unlockedCount = list.filter((a) => a.unlocked).length;
+  if (countEl) countEl.textContent = `${unlockedCount}/${list.length}`;
+  for (const ach of list) {
+    const name = I18N.achName(ach.id, ach.name);
+    const desc = I18N.achDesc(ach.id, ach.desc);
+    const badge = document.createElement("div");
+    badge.className = `achBadge${ach.unlocked ? "" : " locked"}`;
+    badge.title = desc;
+    badge.innerHTML = `
+      <span class="achIcon">${ach.icon}</span>
+      <span class="achName">${escapeHtml(name)}</span>
+      <span class="achDesc">${escapeHtml(desc)}</span>
+    `;
+    grid.append(badge);
+  }
 }
 
 // Приоритет: своя загруженная фотка > эмодзи-пресет.
@@ -489,10 +498,11 @@ function renderEquipped() {
   for (const item of items) {
     const tag = document.createElement("span");
     tag.className = "equippedTag";
+    const name = I18N.itemName(item.id, item.name);
     if (item.category === "skin") {
-      tag.innerHTML = `<span class="equippedSwatch" style="background:${item.color === "rainbow" ? "linear-gradient(90deg,#f66151,#f9f06b,#33d17a,#62a0ea,#c77dff)" : item.color}"></span> ${escapeHtml(item.name)}`;
+      tag.innerHTML = `<span class="equippedSwatch" style="background:${item.color === "rainbow" ? "linear-gradient(90deg,#f66151,#f9f06b,#33d17a,#62a0ea,#c77dff)" : item.color}"></span> ${escapeHtml(name)}`;
     } else {
-      tag.textContent = `${item.emoji} ${item.name}`;
+      tag.textContent = `${item.emoji} ${name}`;
     }
     equippedList.append(tag);
   }
@@ -639,6 +649,7 @@ boot();
 
 window.addEventListener("i18n:change", () => {
   renderEquipped();
+  renderAchievements();
   if (state.viewMode && state.oldName) {
     renderFriendButton(state.oldName, state.friendStatus);
   }

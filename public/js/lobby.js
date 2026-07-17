@@ -293,6 +293,7 @@ function setLiveFeed(text) {
 // Socket
 let socket = null;
 let lastPresence = null;
+let lastFeedItem = null;
 
 function presenceText(players, alive) {
   return I18N.t("lobby.presence", { players, alive });
@@ -320,7 +321,9 @@ function connect() {
       if (modalCount) modalCount.textContent = text;
     }
     if (msg.type === "feed" && msg.feed?.[0]) {
-      setLiveFeed(msg.feed[0].text);
+      const item = msg.feed[0];
+      setLiveFeed(I18N.tFeed(item) || item.text);
+      lastFeedItem = item;
     }
     if (msg.type === "hello") {
       lastPresence = msg.presence ? { players: msg.presence.players, alive: msg.presence.alive } : null;
@@ -344,6 +347,10 @@ window.addEventListener("i18n:change", () => {
   if (onlineEl) onlineEl.textContent = text;
   const modalCount = document.querySelector("#playOnlineCount");
   if (modalCount) modalCount.textContent = text;
+});
+
+window.addEventListener("i18n:change", () => {
+  if (lastFeedItem) setLiveFeed(I18N.tFeed(lastFeedItem) || lastFeedItem.text);
 });
 
 function showInviteToast(from, code) {
