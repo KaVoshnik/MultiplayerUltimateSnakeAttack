@@ -45,6 +45,7 @@ const GameSyncClient = (() => {
     const [
       id, score, combo, alive, activeBonus, bonusExpires,
       spawnFrozenLeft, heat, coins, coinsEarned, reason,
+      reasonKey, reasonParams,
     ] = meta;
     p.score = score;
     p.combo = combo;
@@ -56,6 +57,8 @@ const GameSyncClient = (() => {
     p.coins = coins;
     p.coinsEarned = coinsEarned;
     p.reason = reason;
+    p.reasonKey = reasonKey || null;
+    p.reasonParams = reasonParams || null;
     return p;
   }
 

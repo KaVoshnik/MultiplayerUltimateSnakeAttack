@@ -82,8 +82,8 @@ function showAchievementToast(achievement) {
   toast.innerHTML = `
     <span class="achToastIcon">${achievement.icon || "🏆"}</span>
     <span class="achToastText">
-      <strong>Достижение разблокировано</strong>
-      <span>${escapeHtml(achievement.name)}</span>
+      <strong>${I18N.t("common.achievementUnlocked")}</strong>
+      <span>${escapeHtml(I18N.achName(achievement.id, achievement.name))}</span>
     </span>
   `;
   wrap.append(toast);
@@ -101,8 +101,8 @@ function formatPlayTime(ms) {
   const sec = Math.floor((ms || 0) / 1000);
   const h = Math.floor(sec / 3600);
   const m = Math.floor((sec % 3600) / 60);
-  if (h > 0) return `${h}ч ${m}м`;
-  return `${m}м ${sec % 60}с`;
+  if (h > 0) return I18N.t("common.timeHM", { h, m });
+  return I18N.t("common.timeMS", { m, s: sec % 60 });
 }
 
 function sortCatalog(items, sortBy, dir) {
@@ -142,7 +142,7 @@ function updateUserBar(shopData, name) {
       avatarEl.textContent = shopData?.avatar || "😎";
     }
   }
-  if (nameEl) nameEl.textContent = name || SnakeStore.getName() || "Гость";
+  if (nameEl) nameEl.textContent = name || SnakeStore.getName() || I18N.t("index.guest");
   if (coinsEl) coinsEl.textContent = shopData?.coins ?? 0;
 }
 
@@ -237,20 +237,20 @@ async function initProfileAuth(options = {}) {
   async function doLogin() {
     const name = authNameInput?.value.trim();
     const password = authPasswordInput?.value || "";
-    if (!name || !password) { showAuthError("Введите ник и пароль"); return; }
+    if (!name || !password) { showAuthError(I18N.t("auth.enterNameAndPassword")); return; }
     authError?.classList.add("hidden");
     const { ok, body } = await postJson("/auth/login", { name, password });
-    if (!ok) { showAuthError(body.error || "Не удалось войти"); return; }
+    if (!ok) { showAuthError(body.error || I18N.t("auth.loginFailed")); return; }
     await applySession(await fetchMe());
   }
 
   async function doRegister() {
     const name = authNameInput?.value.trim();
     const password = authPasswordInput?.value || "";
-    if (!name || !password) { showAuthError("Введите ник и пароль"); return; }
+    if (!name || !password) { showAuthError(I18N.t("auth.enterNameAndPassword")); return; }
     authError?.classList.add("hidden");
     const { ok, body } = await postJson("/auth/register", { name, password });
-    if (!ok) { showAuthError(body.error || "Не удалось зарегистрироваться"); return; }
+    if (!ok) { showAuthError(body.error || I18N.t("auth.registerFailed")); return; }
     await applySession(await fetchMe());
   }
 
@@ -261,15 +261,15 @@ async function initProfileAuth(options = {}) {
     const { ok, body } = await postJson("/auth/claim", { token: claimToken, password });
     if (!ok) {
       if (claimError) {
-        claimError.textContent = body.error || "Не удалось задать пароль";
+        claimError.textContent = body.error || I18N.t("auth.claimFailed");
         claimError.classList.remove("hidden");
       } else {
-        showToast(body.error || "Не удалось задать пароль");
+        showToast(body.error || I18N.t("auth.claimFailed"));
       }
       return;
     }
     history.replaceState({}, "", location.pathname);
-    showToast("Пароль задан — теперь заходи по нему");
+    showToast(I18N.t("auth.claimSuccess"));
     await applySession(await fetchMe());
   }
 

@@ -282,27 +282,27 @@
 
 <body data-page="rooms">
   <nav class="siteNav">
-    <a href="/" class="brand">← ЛОББИ</a>
-    <span class="coinPill">🚪 Комнаты</span>
+    <a href="/" class="brand" data-i18n="nav.lobby">← ЛОББИ</a>
+    <span class="coinPill" data-i18n="rooms.navBadge">🚪 Комнаты</span>
   </nav>
 
   <div class="wrap">
-    <h1>Приватные комнаты</h1>
-    <p class="sub">Играй с друзьями по коду — до 16 игроков</p>
+    <h1 data-i18n="rooms.title">Приватные комнаты</h1>
+    <p class="sub" data-i18n="rooms.subtitle">Играй с друзьями по коду — до 16 игроков</p>
 
     <div id="sMenu">
       <div class="card" id="btnCreate">
         <span class="ico">➕</span>
         <div>
-          <div class="title">Создать комнату</div>
-          <div class="desc">Получи 9-значный код и пригласи друзей</div>
+          <div class="title" data-i18n="rooms.create">Создать комнату</div>
+          <div class="desc" data-i18n="rooms.createDesc">Получи 9-значный код и пригласи друзей</div>
         </div>
       </div>
       <div class="card" id="btnJoin">
         <span class="ico">🔑</span>
         <div>
-          <div class="title">Войти по коду</div>
-          <div class="desc">Введи код комнаты от друга</div>
+          <div class="title" data-i18n="rooms.joinByCode">Войти по коду</div>
+          <div class="desc" data-i18n="rooms.joinByCodeDesc">Введи код комнаты от друга</div>
         </div>
       </div>
     </div>
@@ -310,27 +310,28 @@
     <div id="sCode" class="hidden">
       <input class="field" id="codeInput" maxlength="9" placeholder="XXXXXXXXX" autocomplete="off" />
       <div class="err" id="codeErr"></div>
-      <button class="btn-primary" id="btnDoJoin">Войти в комнату</button>
-      <button class="btn-back" id="btnBack">← Назад</button>
+      <button class="btn-primary" id="btnDoJoin" data-i18n="rooms.enterRoom">Войти в комнату</button>
+      <button class="btn-back" id="btnBack" data-i18n="rooms.back">← Назад</button>
     </div>
 
     <div id="sLobby" class="hidden">
       <div class="lobby-code" id="lobbyCodeWrap">
-        <div class="lbl">Код комнаты</div>
+        <div class="lbl" data-i18n="rooms.roomCode">Код комнаты</div>
         <div class="val" id="lobbyCode"></div>
-        <div class="hint">Нажми чтобы скопировать</div>
+        <div class="hint" data-i18n="rooms.tapToCopy">Нажми чтобы скопировать</div>
       </div>
-      <div class="members-title" id="membersTitle">Игроки</div>
+      <div class="members-title" id="membersTitle" data-i18n="game.players">Игроки</div>
       <div id="memberList"></div>
-      <button class="btn-start" id="btnStart" disabled>Начать игру</button>
-      <p class="wait-msg hidden" id="waitMsg">Ожидаем хоста…</p>
-      <button class="btn-invite" id="btnInvite">👥 Пригласить друга</button>
+      <button class="btn-start" id="btnStart" disabled data-i18n="rooms.startGame">Начать игру</button>
+      <p class="wait-msg hidden" id="waitMsg" data-i18n="rooms.waitingHost">Ожидаем хоста…</p>
+      <button class="btn-invite" id="btnInvite" data-i18n="rooms.inviteFriend">👥 Пригласить друга</button>
       <div id="invitePanel" class="invite-panel hidden"></div>
-      <button class="btn-leave" id="btnLeave">Покинуть комнату</button>
+      <button class="btn-leave" id="btnLeave" data-i18n="rooms.leaveRoom">Покинуть комнату</button>
     </div>
   </div>
 
   <div class="toastWrap"></div>
+  <script src="js/i18n.js"></script>
   <script src="js/common.js"></script>
   <script>
     (function () {
@@ -356,7 +357,7 @@
       }
 
       function checkName() {
-        if (!NAME) { showToast("Задай никнейм в профиле!"); return false; }
+        if (!NAME) { showToast(I18N.t("rooms.setNickname")); return false; }
         return true;
       }
 
@@ -369,9 +370,9 @@
         toast.style.alignItems = "center";
         toast.style.gap = "10px";
         var span = document.createElement("span");
-        span.textContent = escapeHtml(from) + " зовёт в комнату";
+        span.textContent = I18N.t("lobby.inviteFrom", { from: escapeHtml(from) });
         var btn = document.createElement("button");
-        btn.textContent = "Войти";
+        btn.textContent = I18N.t("common.enter");
         btn.style.cssText = "padding:4px 10px;border-radius:6px;border:1px solid #62a0ea;color:#62a0ea;background:none;cursor:pointer;flex-shrink:0";
         btn.onclick = function () {
           toast.remove();
@@ -387,12 +388,12 @@
 
       async function renderInvitePanel() {
         var panel = document.getElementById("invitePanel");
-        panel.innerHTML = '<div class="invite-empty">Загрузка…</div>';
+        panel.innerHTML = '<div class="invite-empty">' + I18N.t("common.loading") + '</div>';
         try {
           var res = await fetch("/friends", { credentials: "same-origin" });
-          if (!res.ok) { panel.innerHTML = '<div class="invite-empty">Войди в аккаунт в профиле, чтобы приглашать друзей.</div>'; return; }
+          if (!res.ok) { panel.innerHTML = '<div class="invite-empty">' + I18N.t("rooms.loginToInvite") + '</div>'; return; }
           var data = await res.json();
-          if (!data.friends.length) { panel.innerHTML = '<div class="invite-empty">Пока нет друзей — добавь на странице «Друзья».</div>'; return; }
+          if (!data.friends.length) { panel.innerHTML = '<div class="invite-empty">' + I18N.t("rooms.noFriendsToInvite") + '</div>'; return; }
           panel.innerHTML = "";
           data.friends.forEach(function (f) {
             var row = document.createElement("div");
@@ -402,15 +403,15 @@
             row.innerHTML = avaHtml +
               '<span class="dot ' + (f.online ? "on" : "") + '"></span>' +
               '<span class="n">' + escapeHtml(f.name) + '</span>' +
-              '<button' + (f.online ? "" : " disabled") + '>Позвать</button>';
+              '<button' + (f.online ? "" : " disabled") + '>' + I18N.t("rooms.invite") + '</button>';
             row.querySelector("button").onclick = function () {
               wsend({ type: "room_invite", name: f.name });
-              showToast("Приглашение отправлено!");
+              showToast(I18N.t("rooms.inviteSent"));
             };
             panel.appendChild(row);
           });
         } catch (e) {
-          panel.innerHTML = '<div class="invite-empty">Не получилось загрузить друзей.</div>';
+          panel.innerHTML = '<div class="invite-empty">' + I18N.t("rooms.friendsLoadFailed") + '</div>';
         }
       }
 
@@ -422,10 +423,10 @@
         codeEl.textContent = code;
         codeEl.onclick = function () {
           navigator.clipboard && navigator.clipboard.writeText(code);
-          showToast("Код скопирован!");
+          showToast(I18N.t("rooms.codeCopied"));
         };
         document.getElementById("membersTitle").textContent =
-          "Игроки (" + (msg.members || []).length + " / " + (msg.maxPlayers || 16) + ")";
+          I18N.t("rooms.playersCount", { n: (msg.members || []).length, max: msg.maxPlayers || 16 });
         var list = document.getElementById("memberList");
         list.innerHTML = "";
         (msg.members || []).forEach(function (m) {
@@ -434,8 +435,8 @@
           div.innerHTML =
             '<span class="ava">' + (m.avatar || "😎") + "</span>" +
             '<span class="name">' + m.name + "</span>" +
-            (m.isHost ? '<span class="badge-host">Хост</span>' : "") +
-            (m.id === myId ? '<span class="badge-you">Вы</span>' : "");
+            (m.isHost ? '<span class="badge-host">' + I18N.t("rooms.host") + '</span>' : "") +
+            (m.id === myId ? '<span class="badge-you">' + I18N.t("rooms.you") + '</span>' : "");
           list.appendChild(div);
         });
         var isHost = msg.hostId === myId;
@@ -502,7 +503,7 @@
       document.getElementById("btnDoJoin").onclick = function () {
         if (!checkName()) return;
         var code = document.getElementById("codeInput").value.trim();
-        if (code.length < 9) { document.getElementById("codeErr").textContent = "Код должен быть 9 символов."; return; }
+        if (code.length < 9) { document.getElementById("codeErr").textContent = I18N.t("rooms.codeLengthError"); return; }
         document.getElementById("codeErr").textContent = "";
         wsend({ type: "room_join", name: NAME, code: code });
       };
@@ -523,6 +524,10 @@
         panel.className = isHidden ? "invite-panel" : "invite-panel hidden";
         if (isHidden) renderInvitePanel();
       };
+
+      window.addEventListener("i18n:change", function () {
+        if (room) renderLobby(room);
+      });
 
       connect();
     })();

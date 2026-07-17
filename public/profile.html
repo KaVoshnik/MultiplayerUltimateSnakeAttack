@@ -10,14 +10,14 @@
 </head>
 <body data-page="profile">
   <nav class="siteNav">
-    <a href="/" class="brand">← ЛОББИ</a>
+    <a href="/" class="brand" data-i18n="nav.lobby">← ЛОББИ</a>
     <div class="links">
-      <a href="/game.html" data-page="game">Игра</a>
-      <a href="/shop.html" data-page="shop">Магазин</a>
-      <a href="/profile.html" data-page="profile" class="active">Профиль</a>
-      <a href="/inventory.html" data-page="inventory">Инвентарь</a>
-      <a href="/leaderboard.html" data-page="leaderboard">Рекорды</a>
-      <a href="/friends.html" data-page="friends">Друзья</a>
+      <a href="/game.html" data-page="game" data-i18n="nav.game">Игра</a>
+      <a href="/shop.html" data-page="shop" data-i18n="nav.shop">Магазин</a>
+      <a href="/profile.html" data-page="profile" class="active" data-i18n="nav.profile">Профиль</a>
+      <a href="/inventory.html" data-page="inventory" data-i18n="nav.inventory">Инвентарь</a>
+      <a href="/leaderboard.html" data-page="leaderboard" data-i18n="nav.leaderboard">Рекорды</a>
+      <a href="/friends.html" data-page="friends" data-i18n="nav.friends">Друзья</a>
     </div>
   </nav>
 
@@ -25,13 +25,13 @@
     <section class="glass profileAccount" id="profileAccount">
       <div class="accountGuest hidden" id="accountClaim">
         <div class="accountGuestText">
-          <h1>Восстановление доступа</h1>
-          <p>Твой аккаунт раньше был привязан к Google. Задай пароль один раз — и заходи по нему.</p>
+          <h1 data-i18n="profile.claimTitle">Восстановление доступа</h1>
+          <p data-i18n="profile.claimText">Твой аккаунт раньше был привязан к Google. Задай пароль один раз — и заходи по нему.</p>
         </div>
         <form class="authForm" id="claimForm">
-          <input id="claimPassword" type="password" minlength="6" maxlength="128" placeholder="Новый пароль" autocomplete="new-password" required />
+          <input id="claimPassword" type="password" minlength="6" maxlength="128" data-i18n-placeholder="profile.newPassword" placeholder="Новый пароль" autocomplete="new-password" required />
           <div class="authFormActions">
-            <button type="submit" class="btn primary">Задать пароль и войти</button>
+            <button type="submit" class="btn primary" data-i18n="profile.setPasswordLogin">Задать пароль и войти</button>
           </div>
           <p class="authFormError hidden" id="claimFormError"></p>
         </form>
@@ -39,15 +39,15 @@
 
       <div class="accountGuest" id="accountGuest">
         <div class="accountGuestText">
-          <h1>Твой профиль</h1>
-          <p>Войди или зарегистрируйся — сохраним прогресс, монеты и уникальный никнейм.</p>
+          <h1 data-i18n="profile.yourProfile">Твой профиль</h1>
+          <p data-i18n="profile.loginOrRegister">Войди или зарегистрируйся — сохраним прогресс, монеты и уникальный никнейм.</p>
         </div>
         <form class="authForm" id="authForm">
-          <input id="authName" maxlength="16" placeholder="Ник" autocomplete="username" required />
-          <input id="authPassword" type="password" minlength="6" maxlength="128" placeholder="Пароль" autocomplete="current-password" required />
+          <input id="authName" maxlength="16" data-i18n-placeholder="profile.nickPlaceholder" placeholder="Ник" autocomplete="username" required />
+          <input id="authPassword" type="password" minlength="6" maxlength="128" data-i18n-placeholder="profile.passwordPlaceholder" placeholder="Пароль" autocomplete="current-password" required />
           <div class="authFormActions">
-            <button type="submit" class="btn primary" id="btnLogin">Войти</button>
-            <button type="button" class="btn ghost" id="btnRegister">Зарегистрироваться</button>
+            <button type="submit" class="btn primary" id="btnLogin" data-i18n="common.enter">Войти</button>
+            <button type="button" class="btn ghost" id="btnRegister" data-i18n="profile.register">Зарегистрироваться</button>
           </div>
           <p class="authFormError hidden" id="authFormError"></p>
         </form>
@@ -60,64 +60,65 @@
             <img class="accountAvatarImg hidden" id="accountCustomAvatar" alt="" />
           </div>
           <div class="accountUserInfo">
-            <h1 id="accountDisplayName">Игрок</h1>
-            <span class="accountBadge">Аккаунт</span>
+            <h1 id="accountDisplayName" data-i18n="profile.player">Игрок</h1>
+            <span class="accountBadge" data-i18n="profile.account">Аккаунт</span>
           </div>
         </div>
-        <button type="button" class="btn ghost" id="btnLogout">Выйти</button>
-        <button type="button" class="btn primary hidden" id="btnFriendAction">Добавить в друзья</button>
-        <button type="button" class="btn ghost hidden" id="btnReportAvatar">Пожаловаться на аватар</button>
+        <button type="button" class="btn ghost" id="btnLogout" data-i18n="profile.logout">Выйти</button>
+        <button type="button" class="btn primary hidden" id="btnFriendAction" data-i18n="profile.addFriend">Добавить в друзья</button>
+        <button type="button" class="btn ghost hidden" id="btnReportAvatar" data-i18n="profile.reportAvatar">Пожаловаться на аватар</button>
       </div>
     </section>
 
     <div class="profileGrid" id="profileContent">
       <section class="glass profilePreview">
-        <h2>Превью змеи</h2>
+        <h2 data-i18n="profile.snakePreview">Превью змеи</h2>
         <canvas id="snakePreview" width="280" height="200"></canvas>
         <div class="equippedList" id="equippedList"></div>
       </section>
 
       <section class="glass profileForm">
-        <h2>Кастомизация</h2>
-        <label for="profileName">Никнейм (до 16 символов)</label>
-        <input id="profileName" maxlength="16" placeholder="Твой ник" disabled />
+        <h2 data-i18n="profile.customization">Кастомизация</h2>
+        <label for="profileName" data-i18n="profile.nicknameLabel">Никнейм (до 16 символов)</label>
+        <input id="profileName" maxlength="16" data-i18n-placeholder="profile.yourNick" placeholder="Твой ник" disabled />
 
-        <label>Аватарка</label>
+        <label data-i18n="profile.avatarLabel">Аватарка</label>
         <div class="avatarGrid" id="avatarGrid"></div>
 
-        <label>Своё фото</label>
+        <label data-i18n="profile.ownPhoto">Своё фото</label>
         <div class="avatarUploadRow">
           <input type="file" id="avatarUploadInput" accept="image/png,image/jpeg,image/webp" class="hidden" disabled />
-          <button type="button" class="btn ghost" id="btnUploadAvatar" disabled>Загрузить фото</button>
-          <button type="button" class="btn ghost hidden" id="btnRemoveCustomAvatar" disabled>Удалить фото</button>
+          <button type="button" class="btn ghost" id="btnUploadAvatar" disabled data-i18n="profile.uploadPhoto">Загрузить фото</button>
+          <button type="button" class="btn ghost hidden" id="btnRemoveCustomAvatar" disabled data-i18n="profile.removePhoto">Удалить фото</button>
         </div>
-        <p class="profileHint">PNG/JPEG/WEBP, до 1.5 МБ. Модерация ручная — на фото могут пожаловаться другие игроки.</p>
+        <p class="profileHint" data-i18n="profile.uploadHint">PNG/JPEG/WEBP, до 1.5 МБ. Модерация ручная — на фото могут пожаловаться другие игроки.</p>
 
-        <button type="button" class="btn primary" id="saveProfile" style="width:100%;margin-top:20px" disabled>
+        <button type="button" class="btn primary" id="saveProfile" style="width:100%;margin-top:20px" disabled data-i18n="profile.saveChanges">
           СОХРАНИТЬ ИЗМЕНЕНИЯ
         </button>
-        <p class="profileHint hidden" id="profileLoginHint">Войди в аккаунт, чтобы менять ник и аватар.</p>
+        <p class="profileHint hidden" id="profileLoginHint" data-i18n="profile.loginToEdit">Войди в аккаунт, чтобы менять ник и аватар.</p>
       </section>
 
       <section class="glass profileStats">
-        <h2>Статистика</h2>
+        <h2 data-i18n="profile.statistics">Статистика</h2>
         <div class="statsGrid">
-          <div class="statBox"><span>Игр</span><strong id="statGames">0</strong></div>
-          <div class="statBox"><span>Смертей</span><strong id="statDeaths">0</strong></div>
-          <div class="statBox"><span>Рекорд</span><strong id="statBest">0</strong></div>
-          <div class="statBox wide"><span>Время в игре</span><strong id="statTime">0м</strong></div>
-          <div class="statBox wide"><span>Монеты</span><strong id="statCoins">0</strong></div>
+          <div class="statBox"><span data-i18n="profile.games">Игр</span><strong id="statGames">0</strong></div>
+          <div class="statBox"><span data-i18n="profile.deaths">Смертей</span><strong id="statDeaths">0</strong></div>
+          <div class="statBox"><span data-i18n="game.best">Рекорд</span><strong id="statBest">0</strong></div>
+          <div class="statBox wide"><span data-i18n="profile.timePlayed">Время в игре</span><strong id="statTime">0м</strong></div>
+          <div class="statBox wide"><span data-i18n="game.coins">Монеты</span><strong id="statCoins">0</strong></div>
         </div>
       </section>
 
       <section class="glass profileAchievements">
-        <h2>Достижения <span class="countPill" id="achievementsCount">0/0</span></h2>
+        <h2><span data-i18n="profile.achievements">Достижения</span> <span class="countPill" id="achievementsCount">0/0</span></h2>
         <div class="achievementsGrid" id="achievementsGrid"></div>
       </section>
     </div>
   </main>
 
   <div class="toastWrap"></div>
+  <script src="js/i18n.js"></script>
   <script src="js/common.js"></script>
   <script src="js/custom-skins.js"></script>
   <script src="js/audio.js"></script>

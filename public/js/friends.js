@@ -20,6 +20,7 @@ const searchResults = document.querySelector("#friendsSearchResults");
 
 let loggedIn = false;
 let searchTimer = null;
+let lastFriendsData = null;
 
 function miniAvatarHtml(entry, className = "") {
   if (entry.customAvatarUrl) return `<img class="${className} lbAvatarImg" src="${escapeHtml(entry.customAvatarUrl)}" alt="" />`;
@@ -30,21 +31,25 @@ function miniAvatarHtml(entry, className = "") {
 // это просто шум, ничем не отличающийся от обычного захода.
 function streakBadgeHtml(streak) {
   if (!streak || streak < 2) return "";
-  return `<span class="streakBadge" title="${streak} дней подряд">🔥${streak}</span>`;
+  return `<span class="streakBadge" title="${I18N.t("profile.streakDays", { n: streak })}">🔥${streak}</span>`;
+}
+
+function friendStatusText(entry) {
+  return entry.room ? I18N.t("lobby.inRoom") : entry.online ? I18N.t("lobby.online") : I18N.t("lobby.offline");
 }
 
 function friendRow(entry, actionsHtml) {
   const li = document.createElement("li");
   li.className = "friendItem";
-  const statusText = entry.room ? "В комнате" : entry.online ? "В сети" : "Не в сети";
+  const statusText = friendStatusText(entry);
   li.innerHTML = `
     <div class="friendAvatarWrap">
       ${miniAvatarHtml(entry)}
-      <span class="onlineDot ${entry.online ? "on" : ""}" title="${entry.online ? "В сети" : "Не в сети"}"></span>
+      <span class="onlineDot ${entry.online ? "on" : ""}" title="${entry.online ? I18N.t("lobby.online") : I18N.t("lobby.offline")}"></span>
     </div>
     <div class="friendInfo">
       <div class="friendName">${escapeHtml(entry.name)} ${streakBadgeHtml(entry.streak)}</div>
-      <div class="friendMeta">${statusText} · рекорд ${entry.best || 0}</div>
+      <div class="friendMeta">${statusText} · ${I18N.t("friends.recordShort", { n: entry.best || 0 })}</div>
     </div>
     <div class="friendActions">${actionsHtml}</div>
   `;
@@ -70,6 +75,7 @@ async function callFriendAction(path, name) {
 }
 
 function renderLists(data) {
+  lastFriendsData = data;
   incomingList.innerHTML = "";
   friendsListEl.innerHTML = "";
   outgoingList.innerHTML = "";
@@ -84,33 +90,33 @@ function renderLists(data) {
 
   for (const entry of data.incoming) {
     const li = friendRow(entry, `
-      <button type="button" class="actionBtn accept">Принять</button>
-      <button type="button" class="actionBtn decline">Отклонить</button>
+      <button type="button" class="actionBtn accept">${I18N.t("friends.accept")}</button>
+      <button type="button" class="actionBtn decline">${I18N.t("friends.decline")}</button>
     `);
     li.querySelector(".accept").addEventListener("click", async () => {
-      if (await callFriendAction("/friends/accept", entry.name)) { showToast(`Теперь вы друзья с ${entry.name}`); loadFriends(); }
-      else showToast("Не получилось принять заявку.");
+      if (await callFriendAction("/friends/accept", entry.name)) { showToast(I18N.t("profile.nowFriends", { name: entry.name })); loadFriends(); }
+      else showToast(I18N.t("friends.acceptFailed"));
     });
     li.querySelector(".decline").addEventListener("click", async () => {
       if (await callFriendAction("/friends/decline", entry.name)) loadFriends();
-      else showToast("Не получилось отклонить заявку.");
+      else showToast(I18N.t("friends.declineFailed"));
     });
     incomingList.append(li);
   }
 
   for (const entry of data.friends) {
-    let actions = `<button type="button" class="actionBtn remove">Удалить</button>`;
+    let actions = `<button type="button" class="actionBtn remove">${I18N.t("friends.remove")}</button>`;
     if (entry.room?.joinable) {
-      actions = `<button type="button" class="actionBtn accept join">Присоединиться</button>` + actions;
+      actions = `<button type="button" class="actionBtn accept join">${I18N.t("friends.join")}</button>` + actions;
     }
     const li = friendRow(entry, actions);
     li.querySelector(".join")?.addEventListener("click", () => {
       location.href = `/rooms.html?code=${encodeURIComponent(entry.room.code)}`;
     });
     li.querySelector(".remove").addEventListener("click", async () => {
-      if (!confirm(`Удалить ${entry.name} из друзей?`)) return;
-      if (await callFriendAction("/friends/remove", entry.name)) { showToast(`${entry.name} удалён из друзей`); loadFriends(); }
-      else showToast("Не получилось удалить.");
+      if (!confirm(I18N.t("profile.confirmRemoveFriend", { name: entry.name }))) return;
+      if (await callFriendAction("/friends/remove", entry.name)) { showToast(I18N.t("profile.friendRemoved", { name: entry.name })); loadFriends(); }
+      else showToast(I18N.t("profile.removeFailed"));
     });
     friendsListEl.append(li);
   }
@@ -128,17 +134,17 @@ function renderLists(data) {
       </div>
       <div class="friendInfo">
         <div class="friendName">#${index + 1} ${escapeHtml(entry.name)} ${streakBadgeHtml(entry.streak)}</div>
-        <div class="friendMeta">Рекорд: ${entry.best || 0}</div>
+        <div class="friendMeta">${I18N.t("game.best")}: ${entry.best || 0}</div>
       </div>
     `;
     friendsTopList.append(li);
   });
 
   for (const entry of data.outgoing) {
-    const li = friendRow(entry, `<button type="button" class="actionBtn cancel">Отменить</button>`);
+    const li = friendRow(entry, `<button type="button" class="actionBtn cancel">${I18N.t("friends.cancelRequest")}</button>`);
     li.querySelector(".cancel").addEventListener("click", async () => {
       if (await callFriendAction("/friends/cancel", entry.name)) loadFriends();
-      else showToast("Не получилось отменить заявку.");
+      else showToast(I18N.t("profile.cancelFailed"));
     });
     outgoingList.append(li);
   }
@@ -156,7 +162,7 @@ async function loadFriends() {
     if (!res.ok) return;
     renderLists(await res.json());
   } catch {
-    showToast("Не удалось загрузить список друзей.");
+    showToast(I18N.t("friends.loadFailed"));
   }
 }
 
@@ -172,7 +178,7 @@ async function runSearch(query) {
     const players = await res.json();
     searchResults.innerHTML = "";
     if (!players.length) {
-      searchResults.innerHTML = `<div class="lbSearchEmpty">Никого не найдено</div>`;
+      searchResults.innerHTML = `<div class="lbSearchEmpty">${I18N.t("lb.nobodyFound")}</div>`;
     } else {
       for (const p of players) {
         const row = document.createElement("div");
@@ -181,13 +187,13 @@ async function runSearch(query) {
           ${miniAvatarHtml(p, "lbSearchAvatar")}
           <span class="lbSearchName">${escapeHtml(p.name)} ${streakBadgeHtml(p.streak)}</span>
           <span class="lbSearchMeta">🎮 ${p.games || 0}</span>
-          <button type="button" class="lbSearchAddBtn">Добавить</button>
+          <button type="button" class="lbSearchAddBtn">${I18N.t("profile.addFriend")}</button>
         `;
         row.querySelector(".lbSearchName").addEventListener("click", () => {
           location.href = `/profile.html?player=${encodeURIComponent(p.name)}`;
         });
         row.querySelector(".lbSearchAddBtn").addEventListener("click", async () => {
-          if (!loggedIn) { showToast("Войди в аккаунт, чтобы добавлять друзей."); return; }
+          if (!loggedIn) { showToast(I18N.t("friends.loginToAdd")); return; }
           const res2 = await fetch("/friends/request", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -195,9 +201,9 @@ async function runSearch(query) {
             body: JSON.stringify({ target: p.name }),
           });
           const data = await res2.json().catch(() => ({}));
-          if (res2.ok && data.status === "accepted") showToast(`Вы с ${p.name} теперь друзья! (взаимная заявка)`);
-          else if (res2.ok) showToast(`Заявка отправлена игроку ${p.name}`);
-          else showToast("Не получилось отправить заявку.");
+          if (res2.ok && data.status === "accepted") showToast(I18N.t("profile.mutualFriends", { name: p.name }));
+          else if (res2.ok) showToast(I18N.t("profile.requestSentTo", { name: p.name }));
+          else showToast(I18N.t("profile.requestFailed"));
           loadFriends();
         });
         searchResults.append(row);
@@ -205,7 +211,7 @@ async function runSearch(query) {
     }
     searchResults.classList.remove("hidden");
   } catch {
-    searchResults.innerHTML = `<div class="lbSearchEmpty">Ошибка поиска</div>`;
+    searchResults.innerHTML = `<div class="lbSearchEmpty">${I18N.t("lb.searchError")}</div>`;
     searchResults.classList.remove("hidden");
   }
 }
@@ -234,4 +240,8 @@ syncSessionUser({
     guestCard?.classList.remove("hidden");
     friendsContent?.classList.add("hidden");
   }
+});
+
+window.addEventListener("i18n:change", () => {
+  if (lastFriendsData) renderLists(lastFriendsData);
 });

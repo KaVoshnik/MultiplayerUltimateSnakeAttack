@@ -10,27 +10,27 @@
 </head>
 <body data-page="leaderboard">
   <nav class="siteNav">
-    <a href="/" class="brand">← ЛОББИ</a>
+    <a href="/" class="brand" data-i18n="nav.lobby">← ЛОББИ</a>
     <div class="links">
-      <a href="/game.html" data-page="game">Игра</a>
-      <a href="/shop.html" data-page="shop">Магазин</a>
-      <a href="/profile.html" data-page="profile">Профиль</a>
-      <a href="/inventory.html" data-page="inventory">Инвентарь</a>
-      <a href="/leaderboard.html" data-page="leaderboard" class="active">Рекорды</a>
-      <a href="/friends.html" data-page="friends">Друзья</a>
+      <a href="/game.html" data-page="game" data-i18n="nav.game">Игра</a>
+      <a href="/shop.html" data-page="shop" data-i18n="nav.shop">Магазин</a>
+      <a href="/profile.html" data-page="profile" data-i18n="nav.profile">Профиль</a>
+      <a href="/inventory.html" data-page="inventory" data-i18n="nav.inventory">Инвентарь</a>
+      <a href="/leaderboard.html" data-page="leaderboard" class="active" data-i18n="nav.leaderboard">Рекорды</a>
+      <a href="/friends.html" data-page="friends" data-i18n="nav.friends">Друзья</a>
     </div>
   </nav>
 
   <main class="pageWrap lbPage">
     <header class="pageHeader">
-      <h1>🏆 ЗАЛ СЛАВЫ</h1>
-      <p>Лучшие змеи сервера</p>
+      <h1 data-i18n="lb.hallOfFame">🏆 ЗАЛ СЛАВЫ</h1>
+      <p data-i18n="lb.bestSnakes">Лучшие змеи сервера</p>
       <div class="lbTabs">
-        <button type="button" class="lbTab active" data-sort="score">По очкам</button>
-        <button type="button" class="lbTab" data-sort="coins">По богатству</button>
+        <button type="button" class="lbTab active" data-sort="score" data-i18n="lb.byScore">По очкам</button>
+        <button type="button" class="lbTab" data-sort="coins" data-i18n="lb.byWealth">По богатству</button>
       </div>
       <div class="lbSearchWrap">
-        <input type="search" id="lbSearch" class="lbSearch" placeholder="Найти игрока по нику…" autocomplete="off" />
+        <input type="search" id="lbSearch" class="lbSearch" data-i18n-placeholder="lb.searchPlaceholder" placeholder="Найти игрока по нику…" autocomplete="off" />
         <div class="lbSearchResults hidden" id="lbSearchResults"></div>
       </div>
     </header>
@@ -40,10 +40,11 @@
     <section class="glass pageCard lbRest">
       <ol class="leaderList" id="leaderboard"></ol>
       <div class="lbPagination" id="pagination"></div>
-      <div class="emptyState hidden" id="emptyState">Пока никто не попал в рекорды.</div>
+      <div class="emptyState hidden" id="emptyState" data-i18n="lb.empty">Пока никто не попал в рекорды.</div>
     </section>
   </main>
 
+  <script src="js/i18n.js"></script>
   <script src="js/common.js"></script>
   <script src="js/leaderboard.js"></script>
 </body>
