@@ -520,6 +520,9 @@ function send(payload) {
   }
 }
 
+// Чисто хвастовские пороги комбо — совпадает с config/game.js COMBO_BRAG_MILESTONES.
+const COMBO_BRAG_MILESTONES = [50, 100, 200, 300, 400, 500];
+
 function updateHud(me, prevScore = 0, prevCombo = 0) {
   scoreEl.textContent = me?.score || 0;
   bestEl.textContent = me?.best || 0;
@@ -533,7 +536,12 @@ function updateHud(me, prevScore = 0, prevCombo = 0) {
       setTimeout(() => comboHud.classList.remove("pulse"), 400);
       if (me.combo >= 3) SnakeAudio.play("combo");
       const head = me.snake?.[0];
-      if (head) SnakeFX.spawnFloater(`COMBO ×${me.combo}`, head.x, head.y - 0.5, "#f9f06b");
+      if (head) {
+        const isBrag = COMBO_BRAG_MILESTONES.includes(me.combo);
+        const text = isBrag ? `👑 COMBO ×${me.combo}!!` : `COMBO ×${me.combo}`;
+        const color = isBrag ? "#ffd700" : "#f9f06b";
+        SnakeFX.spawnFloater(text, head.x, head.y - 0.5, color);
+      }
     }
   } else {
     comboHud.classList.add("hidden");
