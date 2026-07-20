@@ -4,6 +4,13 @@ const GRID = { width: 210, height: 140 };
 
 const SPAWN_FREEZE_MS = 3000;
 
+// Доп. неуязвимость к боссам после того, как заморозка спавна закончилась
+// и змейка реально начала двигаться. Итого игрок недостижим для боссов
+// (не таргетится и не может быть убит боссом) SPAWN_FREEZE_MS + это время
+// после спавна. От стены и плохой еды по-прежнему можно умереть в любой
+// момент — это защита именно от "спавн килла" боссами, а не иммунитет вообще.
+const SPAWN_BOSS_INVULN_MS = 2000;
+
 const DEFAULT_TICK_MS = 115;
 
 const BAD_FOOD_RATIO = 0.32;
@@ -45,6 +52,7 @@ const BONUS_TYPES = {
 module.exports = {
   GRID,
   SPAWN_FREEZE_MS,
+  SPAWN_BOSS_INVULN_MS,
   DEFAULT_TICK_MS,
   BAD_FOOD_RATIO,
   MAX_PLAYERS,
