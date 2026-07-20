@@ -3,6 +3,8 @@
 // Статические данные магазина/каталога — вынесено из server.js как есть,
 // это просто данные, без логики и без зависимостей от состояния сервера.
 
+const { PHRASES } = require("./phrases");
+
 const SHOP_CATALOG = [
   { id: "default", name: "Классик", emoji: "🟢", price: 0, rarity: "common", category: "skin", color: "#33d17a", headColor: "#ffffff" },
   { id: "fire", name: "Огненная", emoji: "🔥", price: 150, rarity: "common", category: "skin", color: "#f66151", headColor: "#ffbe6f" },
@@ -40,6 +42,14 @@ const SHOP_CATALOG = [
   { id: "custom_hat_1", name: "Своя шляпа 1", emoji: "🖼️", price: 0, rarity: "common", category: "snake_hat", customTexture: "hat1.png" },
   { id: "custom_hat_2", name: "Своя шляпа 2", emoji: "🖼️", price: 0, rarity: "common", category: "snake_hat", customTexture: "hat2.png" },
   { id: "custom_hat_3", name: "Своя шляпа 3", emoji: "🖼️", price: 0, rarity: "common", category: "snake_hat", customTexture: "hat3.png" },
+
+  // Колесо чата (R → 1-4 в игре, см. lib/phrases.js). Id каталога с префиксом
+  // phrase_, чтобы не пересекаться с id скинов/шляп; phraseId — ссылка на
+  // саму фразу (data/phrases.js), нужна и на сервере, и на клиенте (shop.js).
+  ...PHRASES.map((p) => ({
+    id: `phrase_${p.id}`, name: p.ru, emoji: "💬", price: p.price,
+    rarity: p.rarity || (p.price === 0 ? "common" : "rare"), category: "phrase", phraseId: p.id,
+  })),
 ];
 
 const AVATAR_PRESETS = [
@@ -60,6 +70,7 @@ const MIME = {
   ".json": "application/json; charset=utf-8",
   ".ico": "image/x-icon",
   ".png": "image/png",
+  ".ogg": "audio/ogg",
 };
 
 module.exports = { SHOP_CATALOG, AVATAR_PRESETS, COLORS, SHOP_SKINS, MIME };

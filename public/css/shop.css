@@ -439,3 +439,4 @@
 .itemAction.buy { color: var(--yellow); }
 .itemAction.equip { color: var(--green); }
 .itemAction.unequip { color: var(--red); }
+.itemAction.owned { color: var(--muted); }
