@@ -1,5 +1,9 @@
 const board = document.querySelector("#board");
 const ctx = board.getContext("2d");
+
+// Должно совпадать с config/game.js BONUS_BLINK_WARNING_MS на сервере —
+// за столько мс до исчезновения (bonus.expiresAt) бонус начинает мигать.
+const BONUS_BLINK_WARNING_MS = 5000;
 const canvasStage = document.querySelector("#canvasStage");
 const statusEl = document.querySelector("#connectionStatus");
 const scoreEl = document.querySelector("#score");
@@ -1153,6 +1157,7 @@ function drawFoodShape(kind, cx, cy, r, cell) {
 function drawBonuses(view) {
   const { cell, offsetX, offsetY } = view;
   const t = Date.now() / 1000;
+  const now = Date.now();
   for (const bonus of state.bonuses) {
     if (!isInCameraView(bonus.x, bonus.y, view)) continue;
     const x = offsetX + bonus.x * cell;
@@ -1160,7 +1165,18 @@ function drawBonuses(view) {
     const color = bonus.def?.color || "#c77dff";
     const pulse = 0.85 + Math.sin(t * 4 + bonus.x) * 0.08;
     const pad = cell * 0.14 * pulse;
+
+    // Последние BONUS_BLINK_WARNING_MS перед исчезновением бонус мигает,
+    // чтобы игрок видел, что он вот-вот пропадёт, а не заползал в пустую клетку.
+    const remaining = bonus.expiresAt ? bonus.expiresAt - now : null;
+    let alpha = 1;
+    if (remaining !== null && remaining <= BONUS_BLINK_WARNING_MS) {
+      const blinkT = Math.max(0, remaining) / 1000;
+      alpha = (Math.sin(blinkT * Math.PI * 6) + 1) / 2 * 0.75 + 0.25;
+    }
+
     ctx.save();
+    ctx.globalAlpha = alpha;
     ctx.strokeStyle = color;
     ctx.lineWidth = Math.max(2, cell * 0.06);
     ctx.setLineDash([cell * 0.12, cell * 0.08]);

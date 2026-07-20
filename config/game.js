@@ -49,6 +49,14 @@ const BONUS_TYPES = {
   ghost: { label: "GH", duration: 8000, color: "#8ff0a4", desc: "призрак" },
 };
 
+// Сколько бонус на карте лежит, прежде чем исчезнуть (см. _spawnBonus /
+// spawnBonuses). Раньше пропадал молча — игрок полз к нему и видел пустую
+// клетку. Теперь клиенту дополнительно шлётся expiresAt (см. compactBonus
+// в lib/game-sync.js), и последние BONUS_BLINK_WARNING_MS перед исчезновением
+// бонус мигает, чтобы было видно, что он вот-вот пропадёт.
+const BONUS_LIFETIME_MS = 15000;
+const BONUS_BLINK_WARNING_MS = 5000;
+
 module.exports = {
   GRID,
   SPAWN_FREEZE_MS,
@@ -60,5 +68,7 @@ module.exports = {
   AVATAR_UPLOAD_MAX_BYTES,
   KILL_REWARD_COINS,
   BONUS_TYPES,
+  BONUS_LIFETIME_MS,
+  BONUS_BLINK_WARNING_MS,
   PHRASE_COOLDOWN_MS,
 };
