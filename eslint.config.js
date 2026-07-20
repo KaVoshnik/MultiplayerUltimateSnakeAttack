@@ -49,6 +49,7 @@ const browserGlobals = {
 
   Image: "readonly",
   FileReader: "readonly",
+  Audio: "readonly",
 
   performance: "readonly",
   ResizeObserver: "readonly",

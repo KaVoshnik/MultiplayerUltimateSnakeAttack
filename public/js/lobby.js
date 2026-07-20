@@ -4,6 +4,7 @@ const audioToggle = document.querySelector("#audioToggle");
 const showStatsToggle = document.querySelector("#showStatsToggle");
 const liveFeed = document.querySelector("#liveFeed");
 let shopData = { avatar: "😎", coins: 0 };
+let catalog = [];
 let sessionUser = null;
 
 if (audioToggle) {
@@ -231,6 +232,7 @@ document.body.addEventListener("pointerdown", () => { SnakeAudio.ensure(); Snake
 document.querySelector("#btnSettings").addEventListener("click", () => {
   if (showStatsToggle) showStatsToggle.checked = Boolean(SnakeStore.load().showStats);
   refreshLangButtons();
+  renderPhraseWheelSettings();
   settingsModal.classList.remove("hidden");
 });
 document.querySelector("#closeSettings").addEventListener("click", () => settingsModal.classList.add("hidden"));
@@ -240,9 +242,50 @@ document.querySelector("#saveSettings").addEventListener("click", () => {
     audio: SnakeAudio.isEnabled(),
     showStats: showStatsToggle?.checked ?? false,
   });
+  savePhraseWheelSettings();
   settingsModal.classList.add("hidden");
   showToast(I18N.t("lobby.settingsSaved"));
 });
+
+// ---- Колесо чата (R → 1-4 в игре): выбор фраз для 4 слотов ----
+const PHRASE_WHEEL_EMPTY = "";
+
+function ownedPhraseItems() {
+  return catalog.filter((item) => item.category === "phrase" && ownsShopItem(shopData, item));
+}
+
+function renderPhraseWheelSettings() {
+  const wrap = document.querySelector("#phraseWheelSettings");
+  if (!wrap) return;
+  const loggedIn = Boolean(sessionUser?.loggedIn);
+  wrap.classList.toggle("hidden", !loggedIn || !catalog.length);
+  if (!loggedIn) return;
+
+  const owned = ownedPhraseItems();
+  const wheel = Array.isArray(shopData?.equipped?.phrases) && shopData.equipped.phrases.length === 4
+    ? shopData.equipped.phrases
+    : ["ops", "thanks_for_eat", "nyam", "wrong_way"];
+
+  wrap.querySelectorAll("select[data-slot]").forEach((select) => {
+    const slotIndex = Number(select.dataset.slot) - 1;
+    const current = wheel[slotIndex] || PHRASE_WHEEL_EMPTY;
+    select.innerHTML = `<option value="${PHRASE_WHEEL_EMPTY}">${escapeHtml(I18N.t("index.phraseWheelEmptySlot"))}</option>` +
+      owned.map((item) => `<option value="${item.phraseId}">${escapeHtml(I18N.itemName(item.id, item.name))}</option>`).join("");
+    select.value = owned.some((item) => item.phraseId === current) ? current : PHRASE_WHEEL_EMPTY;
+  });
+}
+
+function savePhraseWheelSettings() {
+  const wrap = document.querySelector("#phraseWheelSettings");
+  if (!wrap || wrap.classList.contains("hidden")) return;
+  const slots = [1, 2, 3, 4].map((slot) => {
+    const select = wrap.querySelector(`select[data-slot="${slot}"]`);
+    return select?.value || null;
+  });
+  if (socket?.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: "set_phrase_wheel", slots, name: sessionUser?.name || SnakeStore.getName() }));
+  }
+}
 
 function goPlay() {
   const name = sessionUser?.name || SnakeStore.getName();
@@ -311,6 +354,7 @@ function connect() {
     if (msg.type === "ping") return;
     if (msg.type === "shop_update") {
       shopData = msg.shopData;
+      if (msg.catalog) catalog = msg.catalog;
       updateUserBar(shopData, sessionUser?.name || SnakeStore.getName());
     }
     if (msg.type === "presence") {
@@ -326,6 +370,7 @@ function connect() {
       lastFeedItem = item;
     }
     if (msg.type === "hello") {
+      if (msg.catalog) catalog = msg.catalog;
       lastPresence = msg.presence ? { players: msg.presence.players, alive: msg.presence.alive } : null;
       const text = msg.presence
         ? presenceText(msg.presence.players, msg.presence.alive)
