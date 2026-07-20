@@ -71,6 +71,13 @@ const state = {
   _fpsFrames: 0,
   _fpsLast: 0,
   _pingSentAt: 0,
+  // Колесо чата (R → 1-4)
+  catalog: [],
+  wheel: [null, null, null, null],
+  phraseWheelOpen: false,
+  phraseWheelCloseTimer: null,
+  // playerId -> { text, until } — активные речевые пузыри над змейками
+  phraseBubbles: new Map(),
 };
 
 let isCoarsePointer = window.matchMedia("(hover: none) and (pointer: coarse)").matches;
@@ -107,6 +114,7 @@ window.addEventListener("i18n:change", () => {
 document.querySelector("#retryBtn").addEventListener("click", () => { send({ type: "restart" }); state.freezeEndsAt = 0; deathPanel.classList.add("hidden"); });
 
 document.addEventListener("keydown", (event) => {
+  if (handlePhraseWheelKey(event)) return;
   const direction = keys[event.code];
   if (!direction || !state.joined) return;
   event.preventDefault();
@@ -119,6 +127,103 @@ document.addEventListener("keydown", (event) => {
 });
 
 setupTouchControls();
+
+// ============================================================
+// КОЛЕСО ЧАТА (R → 1-4)
+// ============================================================
+
+const phraseWheelEl = document.getElementById("phraseWheel");
+
+// R — открыть/закрыть колесо. Пока оно открыто — цифры 1-4 отправляют
+// фразу из соответствующего слота и закрывают колесо; Escape закрывает
+// без отправки. Возвращает true, если событие обработано (чтобы не улетело
+// дальше в обработчик движения).
+function handlePhraseWheelKey(event) {
+  if (!state.joined) return false;
+  if (event.code === "KeyR") {
+    event.preventDefault();
+    togglePhraseWheel();
+    return true;
+  }
+  if (!state.phraseWheelOpen) return false;
+  if (event.code === "Escape") {
+    event.preventDefault();
+    closePhraseWheel();
+    return true;
+  }
+  const digit = event.code.match(/^Digit([1-4])$/) || event.code.match(/^Numpad([1-4])$/);
+  if (digit) {
+    event.preventDefault();
+    sayPhraseSlot(Number(digit[1]));
+    return true;
+  }
+  return false;
+}
+
+function togglePhraseWheel() {
+  if (state.phraseWheelOpen) closePhraseWheel();
+  else openPhraseWheel();
+}
+
+function openPhraseWheel() {
+  if (!phraseWheelEl) return;
+  state.phraseWheelOpen = true;
+  renderPhraseWheelSlots();
+  phraseWheelEl.classList.remove("hidden");
+  clearTimeout(state.phraseWheelCloseTimer);
+  // Автозакрытие, если игрок передумал — колесо не должно висеть вечно.
+  state.phraseWheelCloseTimer = setTimeout(closePhraseWheel, 5000);
+}
+
+function closePhraseWheel() {
+  state.phraseWheelOpen = false;
+  clearTimeout(state.phraseWheelCloseTimer);
+  phraseWheelEl?.classList.add("hidden");
+}
+
+// Локализованный текст фразы: RU-текст из каталога — гарантированный
+// фолбэк, а через I18N.itemName(phrase_<id>, ...) можно добавить EN-перевод
+// (см. public/js/i18n.js, ключи item.phrase_*).
+function phraseText(phraseId) {
+  const item = state.catalog.find((i) => i.category === "phrase" && i.phraseId === phraseId);
+  const fallback = item?.name || phraseId;
+  return typeof I18N !== "undefined" ? I18N.itemName(item ? item.id : `phrase_${phraseId}`, fallback) : fallback;
+}
+
+function renderPhraseWheelSlots() {
+  if (!phraseWheelEl) return;
+  for (let i = 0; i < 4; i++) {
+    const btn = phraseWheelEl.querySelector(`[data-slot="${i + 1}"]`);
+    if (!btn) continue;
+    const phraseId = state.wheel[i];
+    const labelEl = btn.querySelector(".phraseWheelText");
+    if (labelEl) labelEl.textContent = phraseId ? phraseText(phraseId) : "—";
+    btn.classList.toggle("empty", !phraseId);
+  }
+}
+
+function sayPhraseSlot(slot) {
+  const phraseId = state.wheel[slot - 1];
+  closePhraseWheel();
+  if (!phraseId) return;
+  send({ type: "say_phrase", slot });
+}
+
+if (phraseWheelEl) {
+  phraseWheelEl.querySelectorAll("[data-slot]").forEach((btn) => {
+    btn.addEventListener("click", () => sayPhraseSlot(Number(btn.dataset.slot)));
+  });
+}
+
+window.addEventListener("i18n:change", renderPhraseWheelSlots);
+
+// Пришла фраза от кого-то (сервер уже отфильтровал по AOI — если сообщение
+// дошло, значит игрок виден нам на экране/миникарте).
+function handleIncomingPhrase(message) {
+  const text = phraseText(message.phraseId);
+  state.phraseBubbles.set(message.id, { text, until: Date.now() + 3500 });
+  SnakeAudio.playPhrase(message.phraseId);
+}
 
 function setupTouchControls() {
   let touchStart = null;
@@ -323,9 +428,11 @@ function connect() {
       state.grid = message.grid;
       state.camera.ready = false;
       state.skins = message.skins || [];
+      if (message.catalog) state.catalog = message.catalog;
       if (message.shopData) {
         state.shopData = message.shopData;
         state.personalBest = message.shopData.stats?.best || state.personalBest;
+        syncPhraseWheel();
       }
       if (message.feed?.length) {
         state.feed = message.feed;
@@ -374,8 +481,24 @@ function connect() {
     if (message.type === "shop_update") {
       state.shopData = message.shopData;
       if (message.skins) state.skins = message.skins;
+      if (message.catalog) state.catalog = message.catalog;
+      syncPhraseWheel();
+    }
+    if (message.type === "phrase") {
+      handleIncomingPhrase(message);
     }
   });
+}
+
+// Подтягивает колесо чата (4 слота) из профиля игрока; если сервер ещё
+// не прислал equipped.phrases (старый кэш профиля и т.п.) — используем
+// 4 базовые бесплатные фразы как безопасный дефолт.
+function syncPhraseWheel() {
+  const phrases = state.shopData?.equipped?.phrases;
+  state.wheel = Array.isArray(phrases) && phrases.length === 4
+    ? phrases
+    : ["ops", "thanks_for_eat", "nyam", "wrong_way"];
+  renderPhraseWheelSlots();
 }
 
 function sendJoin() {
@@ -1232,6 +1355,7 @@ function drawPlayers(view) {
         ctx.globalAlpha = player.alive ? 1 : 0.35;
         drawSnakeEyes(px, py, cell, dirXn, dirYn);
         drawPlayerNameLabel(px, py, cell, player);
+        drawPhraseBubble(px, py, cell, player);
       }
     });
     ctx.globalAlpha = 1;
@@ -1267,6 +1391,53 @@ function drawPlayerNameLabel(x, y, cell, player) {
   ctx.fillStyle = getPlayerNickFill(player);
   ctx.strokeText(label, cx, cy);
   ctx.fillText(label, cx, cy);
+  ctx.restore();
+}
+
+// Речевой пузырь колеса чата над головой змейки — исчезает через 3.5с,
+// последние 400мс плавно гаснет.
+function drawPhraseBubble(x, y, cell, player) {
+  const bubble = state.phraseBubbles.get(player.id);
+  if (!bubble || !player.alive) return;
+  const now = Date.now();
+  const remaining = bubble.until - now;
+  if (remaining <= 0) { state.phraseBubbles.delete(player.id); return; }
+
+  const cx = x + cell / 2;
+  const anchorY = y - cell * 0.15; // низ пузыря — чуть выше головы
+  const fontSize = Math.max(10, Math.min(14, cell * 0.28));
+
+  ctx.save();
+  ctx.globalAlpha = remaining < 400 ? remaining / 400 : 1;
+  ctx.font = `700 ${fontSize}px sans-serif`;
+  const paddingX = 9;
+  const boxH = fontSize + 12;
+  const textW = ctx.measureText(bubble.text).width;
+  const boxW = Math.min(textW + paddingX * 2, cell * 6);
+
+  const boxX = cx - boxW / 2;
+  const boxY = anchorY - boxH - 6;
+
+  ctx.fillStyle = "rgba(10,14,22,0.9)";
+  ctx.strokeStyle = "rgba(61,232,138,0.55)";
+  ctx.lineWidth = 1;
+  roundRect(boxX, boxY, boxW, boxH, 8);
+  ctx.fill();
+  ctx.stroke();
+
+  // Хвостик, указывающий вниз на голову
+  ctx.beginPath();
+  ctx.moveTo(cx - 5, anchorY - 6);
+  ctx.lineTo(cx + 5, anchorY - 6);
+  ctx.lineTo(cx, anchorY);
+  ctx.closePath();
+  ctx.fillStyle = "rgba(10,14,22,0.9)";
+  ctx.fill();
+
+  ctx.fillStyle = "#fff";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(bubble.text, cx, boxY + boxH / 2, boxW - paddingX);
   ctx.restore();
 }
 
