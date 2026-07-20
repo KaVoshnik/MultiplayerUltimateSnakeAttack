@@ -126,6 +126,30 @@ const SnakeAudio = (() => {
     ambientLfo = null;
   }
 
+  // Озвучка колеса чата (R → 1-4 в игре). Файлы: /audio/phrases/<id>_ru.ogg
+  // и <id>_en.ogg. Сейчас там сгенерированные звуковые заглушки — актёрская
+  // озвучка ляжет на те же имена без изменений здесь. Кэшируем Audio-элементы
+  // по ключу "<id>_<lang>", чтобы не пересоздавать их на каждое произнесение.
+  const phraseCache = new Map();
+
+  function playPhrase(phraseId) {
+    if (!enabled || !phraseId) return;
+    const lang = typeof I18N !== "undefined" && I18N.getLang() === "en" ? "en" : "ru";
+    const key = `${phraseId}_${lang}`;
+    let audio = phraseCache.get(key);
+    if (!audio) {
+      audio = new Audio(`/audio/phrases/${key}.ogg`);
+      audio.volume = 0.55;
+      phraseCache.set(key, audio);
+    }
+    try {
+      audio.currentTime = 0;
+      // play() отдаёт промис — ловим отказ (автоплей-политика/файл ещё не
+      // залит), чтобы не сыпать необработанными rejection'ами в консоль.
+      audio.play().catch(() => { });
+    } catch { /* ignore */ }
+  }
+
   function setEnabled(on) {
     enabled = on;
     const data = { ...JSON.parse(localStorage.getItem("snakeSettings") || "{}"), audio: on };
@@ -140,5 +164,5 @@ const SnakeAudio = (() => {
   }
 
   loadSettings();
-  return { play, startAmbient, stopAmbient, setEnabled, ensure, isEnabled };
+  return { play, playPhrase, startAmbient, stopAmbient, setEnabled, ensure, isEnabled };
 })();

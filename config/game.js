@@ -25,6 +25,15 @@ const AVATAR_UPLOAD_MAX_BYTES = 1.5 * 1024 * 1024; // 1.5 МБ
 // так что используют то же значение, но напрямую не объявляют его.
 const KILL_REWARD_COINS = 50;
 
+// Колесо фраз (chat wheel, клавиша R в игре): кулдаун на произнесение
+// одной фразы — общий для всех 4 слотов на аккаунт, не по отдельности.
+const PHRASE_COOLDOWN_MS = 60 * 1000;
+
+// Дальность "слышимости" фразы намеренно не отдельная константа — фраза
+// рассылается тем же клиентам, что уже видят игрока в своей области
+// видимости (AOI, см. lib/game-sync.js PLAYER_AOI_RADIUS / lib/phrases.js),
+// то есть слышно ровно в радиусе видимости змейки на миникарте.
+
 const BONUS_TYPES = {
   shield: { label: "SH", duration: 10000, color: "#62a0ea", desc: "защита от яда" },
   speed_up: { label: "SP", duration: 8000, color: "#f9f06b", desc: "оверклок +30% очков" },
@@ -43,4 +52,5 @@ module.exports = {
   AVATAR_UPLOAD_MAX_BYTES,
   KILL_REWARD_COINS,
   BONUS_TYPES,
+  PHRASE_COOLDOWN_MS,
 };

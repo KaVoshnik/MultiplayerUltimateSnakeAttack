@@ -149,7 +149,12 @@ function renderItems() {
     const price = Number(item.price) || 0;
     let actionText = `${price} 🪙`;
     let actionClass = "buy";
-    if (owned) {
+    if (item.category === "phrase" && owned) {
+      // У фраз нет "экипировки" на месте в магазине — владение просто
+      // открывает фразу для колеса чата, а слот 1-4 выбирается в настройках.
+      actionText = I18N.t("shop.owned");
+      actionClass = "owned";
+    } else if (owned) {
       actionText = equipped ? I18N.t("shop.unequip") : I18N.t("shop.equip");
       actionClass = equipped ? "unequip" : "equip";
     } else if (coins < price) {
@@ -170,6 +175,10 @@ function renderItems() {
     card.addEventListener("click", () => {
       const name = SnakeStore.getName();
       if (!name) { showToast(I18N.t("shop.enterNickname")); return; }
+      if (item.category === "phrase" && owned) {
+        showToast(I18N.t("shop.phraseGoToSettings"));
+        return;
+      }
       if (owned) {
         if (equipped) send({ type: "unequip_item", itemId: item.id });
         else send({ type: "equip_item", itemId: item.id });

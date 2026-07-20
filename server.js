@@ -106,6 +106,9 @@ ctx.leaveRoom = (id) => roomsSetup.leaveRoom(ctx, id);
 ctx.trackDisconnectStats = (player) => statsRewards.trackDisconnectStats(ctx, player);
 ctx.recordScore = (player) => leaderboardMod.recordScore(ctx, player);
 ctx.removeAvatarFile = (url) => avatarRoutes.removeAvatarFile(ctx, url);
+// lib/phrases.js трактует ctx и Room одинаково (duck typing) — обоим нужен
+// .getProfile(name); у Room он уже инжектится в rooms-setup.js.
+ctx.getProfile = (name) => profiles.getProfile(ctx, name);
 
 // ---- игровой цикл / синк ----
 ctx.broadcastGameSync = () => gameLoop.broadcastGameSync(ctx);
