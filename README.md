@@ -48,14 +48,20 @@
 
 ## СОДЕРЖАНИЕ
 
-- [Трейлер и Галерея](#трейлер-и-галерея)
-- [Особенности](#особенности)
-- [Геймплей](#геймплей)
-- [Магазин и Кастомизация](#магазин-и-кастомизация)
-- [Таблица рекордов](#таблица-рекордов)
-- [Технологии](#технологии)
-- [Лицензия](#лицензия)
-- [Контрибьюторы](#контрибьюторы)
+- [ГАЛЕРЕЯ](#галерея)
+  - [ОСОБЕННОСТИ](#особенности)
+  - [ГЕЙМПЛЕЙ](#геймплей)
+  - [МАГАЗИН И КАСТОМИЗАЦИЯ](#магазин-и-кастомизация)
+    - [Категории скинов](#категории-скинов)
+  - [ТАБЛИЦА РЕКОРДОВ](#таблица-рекордов)
+    - [Система рейтинга](#система-рейтинга)
+  - [ТЕХНОЛОГИИ](#технологии)
+    - [Backend](#backend)
+    - [Frontend](#frontend)
+    - [DevOps](#devops)
+  - [ЛИЦЕНЗИЯ](#лицензия)
+  - [КОНТРИБЬЮТОРЫ](#контрибьюторы)
+  - [🎨 ДИЗАЙН И ИЛЛЮСТРАЦИИ](#-дизайн-и-иллюстрации)
 
 ---
 
@@ -102,8 +108,8 @@
       <h3>Геймплей</h3>
       <ul align="left">
         <li>Классическая змейка с фруктами</li>
-        <li>Яблоко, вишня, виноград</li>
-        <li>Избегайте ядов (гниль, паук)</li>
+        <li>Разнообразная еда</li>
+        <li>Избегайте гнили</li>
         <li>Сбор монет и очков</li>
       </ul>
     </td>
@@ -143,7 +149,8 @@
       <ul align="left">
         <li>Уникальные скины</li>
         <li>Магазин за монеты</li>
-        <li>Легендарные скины</li>
+        <li>Торговая площадка фруктами</li>
+        <li>Фразы для чата</li>
         <li>Особые эффекты</li>
       </ul>
     </td>
@@ -152,7 +159,7 @@
       <ul align="left">
         <li>Онлайн без лимита</li>
         <li>WebSocket real-time</li>
-        <li>Кооперативный режим</li>
+        <li>Личные комнаты</li>
         <li>Игра с друзьями</li>
       </ul>
     </td>
@@ -278,5 +285,30 @@
   </a>
   <a href="https://github.com/KaVoshnik/MultiplayerUltimateSnakeAttack">
     <img src="https://img.shields.io/github/watchers/KaVoshnik/MultiplayerUltimateSnakeAttack?style=social" alt="GitHub watchers" />
+  </a>
+</p>
+
+## 🎨 ДИЗАЙН И ИЛЛЮСТРАЦИИ
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <a href="https://github.com/KaVoshnik">
+        <img src="screenshots/PanikIcon.png" width="70" height="70" style="border-radius: 50%;" alt="@PANIK!" />
+        <br />
+        <strong style="color: #00ff88;">PANIK!</strong>
+      </a>
+    </td>
+  </tr>
+</table>
+<p align="center" style="margin-top: 10px;">
+  <strong>Особая благодарность PANIK! за помощь с дизайном для игры</strong>
+</p>
+<p align="center">
+  <a href="https://t.me/panik_tg">
+    <img src="https://img.shields.io/badge/Telegram-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white" alt="Telegram" />
+  </a>
+  <a href="https://www.tumblr.com/panika34">
+    <img src="https://img.shields.io/badge/Tumblr-36465D?style=for-the-badge&logo=tumblr&logoColor=white" alt="Tumblr" />
   </a>
 </p>

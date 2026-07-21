@@ -4,6 +4,13 @@ const GRID = { width: 210, height: 140 };
 
 const SPAWN_FREEZE_MS = 3000;
 
+// Доп. неуязвимость к боссам после того, как заморозка спавна закончилась
+// и змейка реально начала двигаться. Итого игрок недостижим для боссов
+// (не таргетится и не может быть убит боссом) SPAWN_FREEZE_MS + это время
+// после спавна. От стены и плохой еды по-прежнему можно умереть в любой
+// момент — это защита именно от "спавн килла" боссами, а не иммунитет вообще.
+const SPAWN_BOSS_INVULN_MS = 2000;
+
 const DEFAULT_TICK_MS = 115;
 
 const BAD_FOOD_RATIO = 0.32;
@@ -42,9 +49,32 @@ const BONUS_TYPES = {
   ghost: { label: "GH", duration: 8000, color: "#8ff0a4", desc: "призрак" },
 };
 
+// Сколько бонус на карте лежит, прежде чем исчезнуть (см. _spawnBonus /
+// spawnBonuses). Раньше пропадал молча — игрок полз к нему и видел пустую
+// клетку. Теперь клиенту дополнительно шлётся expiresAt (см. compactBonus
+// в lib/game-sync.js), и последние BONUS_BLINK_WARNING_MS перед исчезновением
+// бонус мигает, чтобы было видно, что он вот-вот пропадёт.
+const BONUS_LIFETIME_MS = 15000;
+const BONUS_BLINK_WARNING_MS = 5000;
+
+// Комбо раньше не сгорало никогда — можно было копить его бесконечно
+// долго между едой. Теперь на каждое съеденное хорошее яблоко ставится
+// таймер (player.comboExpires, см. lib/bonus-effects.js comboTimeoutMs),
+// и если не успеть съесть следующее до истечения — комбо сбрасывается в 0.
+// Чем выше текущее комбо, тем короче становится таймер (действует как
+// нарастающая сложность), но не короче COMBO_TIMEOUT_MIN_MS.
+const COMBO_TIMEOUT_BASE_MS = 12000;
+const COMBO_TIMEOUT_STEP_MS = 400;
+const COMBO_TIMEOUT_MIN_MS  = 5000;
+
+// Чисто хвастовские пороги комбо для события в ленте — никаких бонусов
+// не дают, просто красивая отметка на весь сервер/комнату.
+const COMBO_BRAG_MILESTONES = [50, 100, 200, 300, 400, 500];
+
 module.exports = {
   GRID,
   SPAWN_FREEZE_MS,
+  SPAWN_BOSS_INVULN_MS,
   DEFAULT_TICK_MS,
   BAD_FOOD_RATIO,
   MAX_PLAYERS,
@@ -52,5 +82,11 @@ module.exports = {
   AVATAR_UPLOAD_MAX_BYTES,
   KILL_REWARD_COINS,
   BONUS_TYPES,
+  BONUS_LIFETIME_MS,
+  BONUS_BLINK_WARNING_MS,
+  COMBO_TIMEOUT_BASE_MS,
+  COMBO_TIMEOUT_STEP_MS,
+  COMBO_TIMEOUT_MIN_MS,
+  COMBO_BRAG_MILESTONES,
   PHRASE_COOLDOWN_MS,
 };
