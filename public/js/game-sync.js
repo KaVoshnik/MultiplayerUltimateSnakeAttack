@@ -15,10 +15,11 @@ const GameSyncClient = (() => {
   }
 
   function expandBonus(compact) {
-    const [x, y, bonusType, color, label] = compact;
+    const [x, y, bonusType, color, label, expiresAt] = compact;
     return {
       x, y, bonusType,
       def: { color, label },
+      expiresAt: expiresAt || null,
     };
   }
 
