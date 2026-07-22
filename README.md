@@ -293,7 +293,7 @@
 <table align="center">
   <tr>
     <td align="center">
-      <a href="https://github.com/KaVoshnik">
+      <a href="https://t.me/panik_tg">
         <img src="screenshots/PanikIcon.png" width="70" height="70" style="border-radius: 50%;" alt="@PANIK!" />
         <br />
         <strong style="color: #00ff88;">PANIK!</strong>
