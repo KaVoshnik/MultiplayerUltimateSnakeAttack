@@ -249,6 +249,7 @@ async function bootstrap() {
     setInterval(() => net.pingClients(ctx), 25000);
     setInterval(() => db.cleanupAuthSessions().catch(() => { }), 60 * 60 * 1000);
     setInterval(() => db.cleanupClaimTokens().catch(() => { }), 60 * 60 * 1000);
+    setInterval(() => auth.authLimiter.cleanup(60 * 60 * 1000), 60 * 60 * 1000);
 
     console.log("Авторизация: локальный логин/пароль (без внешних провайдеров)");
     console.log(`Snake Attack → http://localhost:${PORT}`);
