@@ -28,7 +28,6 @@
       <div class="userChip">
         <span class="userAvatar" id="userAvatar">😎</span>
         <span class="userName" id="userName" data-i18n="index.guest">Гость</span>
-        <span class="userChipBadge hidden" id="userChipBadge"></span>
       </div>
     </div>
   </header>
@@ -60,6 +59,13 @@
           <span class="liveFeedLabel">// LIVE</span>
           <div class="liveFeed" id="liveFeed" data-i18n="index.waitingEvents">Ожидание событий…</div>
         </div>
+      </div>
+
+      <div class="challengesWidget glass hidden" id="challengesWidget">
+        <div class="challengesWidgetHead">
+          <span data-i18n="index.challengesTitle">Челленджи</span>
+        </div>
+        <div class="challengesRow" id="challengesRow"></div>
       </div>
 
       <button type="button" class="chestBanner hidden" id="chestBanner">

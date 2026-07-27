@@ -21,7 +21,6 @@ const state = {
   shopData: null,
   catalog: [],
   avatars: [],
-  challenges: null,
   selectedAvatar: "😎",
   oldName: "",
   loggedIn: false,
@@ -84,55 +83,6 @@ function renderAchievements() {
     `;
     grid.append(badge);
   }
-}
-
-// В отличие от достижений (отдельный HTTP-эндпоинт /achievements), набор
-// челленджей прилетает прямо внутри shop_update (см. lib/shop-actions.js) —
-// он персонален и небольшой, отдельный запрос не нужен.
-function renderChallenges() {
-  const dailyEl = document.querySelector("#challengesDaily");
-  const weeklyEl = document.querySelector("#challengesWeekly");
-  const countEl = document.querySelector("#challengesCount");
-  const data = state.challenges;
-  if (!dailyEl || !weeklyEl || !data) return;
-
-  const claimable = [...data.daily, ...data.weekly].filter((c) => c.completed && !c.claimed).length;
-  if (countEl) {
-    countEl.textContent = claimable > 0 ? `+${claimable}` : "";
-    countEl.classList.toggle("hidden", claimable === 0);
-  }
-
-  const renderList = (el, list) => {
-    el.innerHTML = "";
-    for (const c of list) {
-      const card = document.createElement("div");
-      card.className = `challengeCard${c.completed ? " completed" : ""}${c.claimed ? " claimed" : ""}`;
-      const actionHtml = c.claimed
-        ? `<span class="challengeClaimed">✓</span>`
-        : `<button type="button" class="btn small challengeClaimBtn" data-challenge-id="${c.id}"${c.completed ? "" : " disabled"}>+${c.reward}🪙</button>`;
-      card.innerHTML = `
-        <span class="challengeIcon">${c.icon}</span>
-        <div class="challengeInfo">
-          <div class="challengeName">${escapeHtml(c.name)}</div>
-          <div class="challengeDesc">${escapeHtml(c.desc)}</div>
-          <div class="challengeProgress">${Math.min(c.progress, c.target)}/${c.target}</div>
-        </div>
-        ${actionHtml}
-      `;
-      el.append(card);
-    }
-  };
-  renderList(dailyEl, data.daily);
-  renderList(weeklyEl, data.weekly);
-}
-
-document.querySelector("#challengesDaily")?.addEventListener("click", handleChallengeClaimClick);
-document.querySelector("#challengesWeekly")?.addEventListener("click", handleChallengeClaimClick);
-
-function handleChallengeClaimClick(event) {
-  const btn = event.target.closest(".challengeClaimBtn");
-  if (!btn || btn.disabled) return;
-  send({ type: "challenge_claim", challengeId: btn.dataset.challengeId, name: state.oldName });
 }
 
 
@@ -219,13 +169,11 @@ function connect() {
       if (state.loggedIn) state.wsAuthed = true;
       if (msg.catalog) state.catalog = msg.catalog;
       if (msg.avatars) state.avatars = msg.avatars;
-      state.challenges = msg.challenges || null;
       state.selectedAvatar = state.shopData.avatar || "😎";
       renderStats();
       renderEquipped();
       drawPreview();
       renderAvatars();
-      renderChallenges();
     }
     if (msg.type === "profile_saved") {
       if (msg.name) {

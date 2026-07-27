@@ -342,18 +342,52 @@ function presenceText(players, alive) {
   return I18N.t("lobby.presence", { players, alive });
 }
 
-// Значок рядом с ником в шапке: сколько сегодняшних/недельных челленджей
-// выполнено, но награда ещё не забрана. Сам виджет с прогрессом живёт на
-// /profile.html (#userBar уже открывает его по клику) — здесь достаточно
-// дать знать, что там есть что забрать.
-function updateChallengeBadge(challenges) {
-  const badge = document.querySelector("#userChipBadge");
-  if (!badge || !challenges) return;
-  const claimable = [...(challenges.daily || []), ...(challenges.weekly || [])]
-    .filter((c) => c.completed && !c.claimed).length;
-  badge.textContent = claimable > 0 ? `🎁${claimable}` : "";
-  badge.classList.toggle("hidden", claimable === 0);
+// Полноценный виджет прямо на главной (а не спрятанный в профиле) — иначе
+// про челленджи просто никто не узнает. Данные приходят внутри shop_update
+// (см. lib/shop-actions.js), отдельного запроса не нужно.
+function renderChallengesWidget(data) {
+  const widget = document.querySelector("#challengesWidget");
+  const row = document.querySelector("#challengesRow");
+  if (!widget || !row) return;
+  if (!data) { widget.classList.add("hidden"); return; }
+
+  const items = [
+    ...(data.daily || []).map((c) => ({ ...c, scope: "daily" })),
+    ...(data.weekly || []).map((c) => ({ ...c, scope: "weekly" })),
+  ];
+  if (!items.length) { widget.classList.add("hidden"); return; }
+
+  widget.classList.remove("hidden");
+  row.innerHTML = items.map((c) => {
+    const pct = Math.min(100, Math.round((c.progress / c.target) * 100));
+    const cls = `challengeChip${c.completed ? " completed" : ""}${c.claimed ? " claimed" : ""}`;
+    const scopeTag = c.scope === "weekly" ? `<span class="challengeChipScope" data-i18n="index.challengesWeekTag">нед</span>` : "";
+    const reward = c.claimed ? "✓" : `+${c.reward}🪙`;
+    return `
+      <button type="button" class="${cls}" data-challenge-id="${c.id}" ${c.completed && !c.claimed ? "" : "disabled"} title="${escapeHtml(c.desc)}">
+        <div class="challengeChipTop">
+          <span class="challengeChipIcon">${c.icon}</span>
+          <span class="challengeChipName">${escapeHtml(c.name)}</span>
+          ${scopeTag}
+        </div>
+        <div class="challengeChipBar"><div class="challengeChipBarFill" style="width:${pct}%"></div></div>
+        <span class="challengeChipProgress">${Math.min(c.progress, c.target)}/${c.target}</span>
+        <span class="challengeChipReward">${reward}</span>
+      </button>
+    `;
+  }).join("");
+  I18N.apply(row);
 }
+
+document.querySelector("#challengesRow")?.addEventListener("click", (event) => {
+  const chip = event.target.closest(".challengeChip");
+  if (!chip || chip.disabled || !socket || socket.readyState !== WebSocket.OPEN) return;
+  socket.send(JSON.stringify({
+    type: "challenge_claim",
+    challengeId: chip.dataset.challengeId,
+    name: sessionUser?.name || SnakeStore.getName(),
+  }));
+});
 
 function connect() {
   socket = new WebSocket(getWebSocketUrl());
@@ -369,7 +403,7 @@ function connect() {
       shopData = msg.shopData;
       if (msg.catalog) catalog = msg.catalog;
       updateUserBar(shopData, sessionUser?.name || SnakeStore.getName());
-      updateChallengeBadge(msg.challenges);
+      renderChallengesWidget(msg.challenges);
     }
     if (msg.type === "presence") {
       lastPresence = { players: msg.players, alive: msg.alive };
