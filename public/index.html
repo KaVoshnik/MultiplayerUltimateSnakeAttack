@@ -33,20 +33,32 @@
   </header>
 
   <div class="menuLayout">
-    <aside class="sidePanel cascade" style="--i:1" id="friendsPanel">
-      <div class="sidePanelHead">
-        <span class="sidePanelIcon" data-icon-key="friends">
-          <img src="img/icons/friends.png" alt="" class="iconImg" />
-          <span class="iconFallback">🧑‍🤝‍🧑</span>
-        </span>
-        <span class="sidePanelTitle" data-i18n="index.friendsOnline">ДРУЗЬЯ ОНЛАЙН</span>
-        <span class="sidePanelBadge hidden" id="friendsBadge">0</span>
-      </div>
-      <div class="sidePanelBody" id="friendsPanelBody">
-        <div class="sidePanelEmpty" data-i18n="common.loading">Загрузка…</div>
-      </div>
-      <a href="/friends.html" class="sidePanelFoot" data-i18n="index.allFriends">Все друзья →</a>
-    </aside>
+    <div class="sideColumn">
+      <aside class="sidePanel cascade" style="--i:1" id="friendsPanel">
+        <div class="sidePanelHead">
+          <span class="sidePanelIcon" data-icon-key="friends">
+            <img src="img/icons/friends.png" alt="" class="iconImg" />
+            <span class="iconFallback">🧑‍🤝‍🧑</span>
+          </span>
+          <span class="sidePanelTitle" data-i18n="index.friendsOnline">ДРУЗЬЯ ОНЛАЙН</span>
+          <span class="sidePanelBadge hidden" id="friendsBadge">0</span>
+        </div>
+        <div class="sidePanelBody" id="friendsPanelBody">
+          <div class="sidePanelEmpty" data-i18n="common.loading">Загрузка…</div>
+        </div>
+        <a href="/friends.html" class="sidePanelFoot" data-i18n="index.allFriends">Все друзья →</a>
+      </aside>
+
+      <aside class="sidePanel personalChallengesPanel cascade" style="--i:1" id="personalChallengesPanel">
+        <div class="sidePanelHead">
+          <span class="sidePanelIcon">🎯</span>
+          <span class="sidePanelTitle" data-i18n="index.challengesTitle">Челленджи</span>
+        </div>
+        <div class="sidePanelBody" id="personalChallengesBody">
+          <div class="sidePanelEmpty" data-i18n="common.loading">Загрузка…</div>
+        </div>
+      </aside>
+    </div>
 
     <main class="menuMain">
       <div class="menuTitleBlock cascade" style="--i:1">
@@ -61,11 +73,16 @@
         </div>
       </div>
 
-      <div class="challengesWidget glass hidden" id="challengesWidget">
-        <div class="challengesWidgetHead">
-          <span data-i18n="index.challengesTitle">Челленджи</span>
+      <div class="globalChallengeBar glass hidden" id="globalChallengeBar">
+        <div class="globalChallengeHead">
+          <span class="globalChallengeIcon" id="globalChallengeIcon">🚀</span>
+          <div class="globalChallengeText">
+            <strong id="globalChallengeName"></strong>
+            <span id="globalChallengeDesc"></span>
+          </div>
+          <span class="globalChallengeFraction" id="globalChallengeFraction"></span>
         </div>
-        <div class="challengesRow" id="challengesRow"></div>
+        <div class="globalChallengeTrack"><div class="globalChallengeFill" id="globalChallengeFill"></div></div>
       </div>
 
       <button type="button" class="chestBanner hidden" id="chestBanner">

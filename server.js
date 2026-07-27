@@ -17,6 +17,7 @@ const net = require("./lib/net");
 const profiles = require("./lib/profiles");
 const leaderboardMod = require("./lib/leaderboard");
 const statsRewards = require("./lib/stats-rewards");
+const challengesMod = require("./lib/challenges");
 const shopActions = require("./lib/shop-actions");
 const gameLoop = require("./lib/game-loop");
 const roomsSetup = require("./lib/rooms-setup");
@@ -109,6 +110,14 @@ ctx.removeAvatarFile = (url) => avatarRoutes.removeAvatarFile(ctx, url);
 // lib/phrases.js трактует ctx и Room одинаково (duck typing) — обоим нужен
 // .getProfile(name); у Room он уже инжектится в rooms-setup.js.
 ctx.getProfile = (name) => profiles.getProfile(ctx, name);
+
+// Общий недельный челлендж мутируется на каждое убийство/еду/смерть у любого
+// игрока — писать в БД на каждое такое событие было бы слишком часто.
+// persistGlobalChallenge только помечает состояние "грязным"; реальная запись
+// раз в 10с через setInterval ниже (bootstrap) — теряем максимум ~10с
+// прогресса при падении процесса, не критично для некритичного счётчика.
+let globalChallengeDirty = false;
+ctx.persistGlobalChallenge = () => { globalChallengeDirty = true; };
 
 // ---- игровой цикл / синк ----
 ctx.broadcastGameSync = () => gameLoop.broadcastGameSync(ctx);
@@ -210,6 +219,7 @@ server.on("upgrade", (req, socket) => {
     feed: ctx.feedLog.slice(0, 8),
     presence: gameSync.buildPresence(gameLoop.buildSyncCtx(ctx)),
     battlePass: getBattlePassConfig(),
+    globalChallenge: challengesMod.getGlobalChallengePayload(ctx.globalChallenge),
   });
 });
 
@@ -222,6 +232,7 @@ async function bootstrap() {
     await db.init();
     ctx.shopData = await db.loadAllPlayers();
     ctx.leaderboard = await db.loadLeaderboard(leaderboardMod.MAX_LEADERS);
+    ctx.globalChallenge = await db.getServerState("global_weekly_challenge");
     const listingRows = await db.loadFoodListings();
     for (const row of listingRows) {
       ctx.marketListings.set(row.id, {
@@ -250,6 +261,12 @@ async function bootstrap() {
     setInterval(() => db.cleanupAuthSessions().catch(() => { }), 60 * 60 * 1000);
     setInterval(() => db.cleanupClaimTokens().catch(() => { }), 60 * 60 * 1000);
     setInterval(() => auth.authLimiter.cleanup(60 * 60 * 1000), 60 * 60 * 1000);
+    setInterval(() => {
+      if (!globalChallengeDirty) return;
+      globalChallengeDirty = false;
+      db.setServerState("global_weekly_challenge", ctx.globalChallenge)
+        .catch((err) => console.error("Общий челлендж (persist):", err.message));
+    }, 10_000);
 
     console.log("Авторизация: локальный логин/пароль (без внешних провайдеров)");
     console.log(`Snake Attack → http://localhost:${PORT}`);

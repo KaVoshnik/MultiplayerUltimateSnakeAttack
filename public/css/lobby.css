@@ -550,107 +550,163 @@
 
 .chestArrow { font-size: 1.2rem; color: #ffd166; flex-shrink: 0; }
 
-.challengesWidget {
-  width: 100%;
-  max-width: 580px;
-  padding: 14px 16px;
-  margin-bottom: 16px;
-  border-radius: 14px;
-}
-
-.challengesWidgetHead {
-  margin-bottom: 10px;
-  font-family: var(--font-display);
-  font-size: .72rem;
-  font-weight: 700;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.challengesRow {
-  display: flex;
-  gap: 10px;
-  overflow-x: auto;
-  padding-bottom: 2px;
-}
-
-.challengeChip {
-  position: relative;
-  flex: 1 1 0;
-  min-width: 128px;
+/* ============================================================
+   Колонка слева: друзья + личные челленджи стопкой друг под другом,
+   сам грид .menuLayout остаётся 3-колоночным как был.
+   ============================================================ */
+.sideColumn {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid var(--panel-border);
-  background: rgba(0,0,0,.25);
-  color: var(--text);
-  font: inherit;
-  text-align: left;
-  cursor: default;
+  gap: 20px;
 }
 
-.challengeChipTop { display: flex; align-items: center; gap: 6px; }
-.challengeChipIcon { font-size: 1.05rem; flex-shrink: 0; }
-
-.challengeChipName {
-  flex: 1;
-  min-width: 0;
-  font-size: .72rem;
-  font-weight: 700;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.personalChallengeCard {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--panel-border);
 }
 
-.challengeChipScope {
-  flex-shrink: 0;
+.personalChallengeCard:last-child { border-bottom: none; padding-bottom: 0; }
+.personalChallengeCard:first-child { padding-top: 0; }
+
+.personalChallengeIcon { font-size: 1.15rem; flex-shrink: 0; line-height: 1.3; }
+
+.personalChallengeBody { flex: 1; min-width: 0; }
+
+.personalChallengeTop {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.personalChallengeName { font-size: .82rem; font-weight: 700; }
+
+.personalChallengeScope {
   font-size: .58rem;
   color: var(--muted);
   border: 1px solid var(--panel-border);
   border-radius: 6px;
   padding: 1px 4px;
+  text-transform: uppercase;
 }
 
-.challengeChipProgress { font-size: .66rem; color: var(--muted); }
+.personalChallengeDesc {
+  font-size: .72rem;
+  color: var(--muted);
+  margin-top: 2px;
+}
 
-.challengeChipBar {
+.personalChallengeBar {
   height: 4px;
   border-radius: 999px;
   background: rgba(255,255,255,.08);
   overflow: hidden;
+  margin-top: 6px;
 }
 
-.challengeChipBarFill {
+.personalChallengeBarFill {
   height: 100%;
   background: var(--green);
   border-radius: 999px;
   transition: width .3s;
 }
 
-.challengeChip.completed {
-  cursor: pointer;
-  border-color: #ffd166;
-  animation: chestGlow 2.4s ease infinite;
-}
-
-.challengeChip.completed .challengeChipBarFill { background: #ffd166; }
-
-.challengeChip.claimed {
-  opacity: .5;
-  animation: none;
-}
-
-.challengeChipReward {
-  align-self: flex-start;
-  font-size: .66rem;
-  font-weight: 800;
+.personalChallengeFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: .68rem;
   color: var(--muted);
 }
 
-.challengeChip.completed .challengeChipReward { color: #ffd166; }
+.personalChallengeClaim {
+  border: none;
+  border-radius: 8px;
+  padding: 4px 9px;
+  font-size: .68rem;
+  font-weight: 800;
+  background: rgba(255,255,255,.08);
+  color: var(--muted);
+  cursor: default;
+}
+
+.personalChallengeCard.completed .personalChallengeClaim {
+  background: #ffd166;
+  color: #1a1300;
+  cursor: pointer;
+  animation: chestGlow 2.4s ease infinite;
+}
+
+.personalChallengeCard.completed .personalChallengeBarFill { background: #ffd166; }
+.personalChallengeCard.claimed { opacity: .5; }
+
+/* На мобильном .sidePanel целиком прячется (см. @media 1180px ниже), но
+   личные челленджи — не второстепенный виджет вроде друзей/топа, а часть
+   основного игрового цикла, поэтому явно возвращаем видимость. */
+@media (max-width: 1180px) {
+  .personalChallengesPanel {
+    display: flex;
+    max-width: 480px;
+    width: 100%;
+    margin: 0 auto 20px;
+  }
+}
+
+/* ============================================================
+   Общий (серверный) недельный челлендж — одна полоса на всех, без кнопки
+   клейма, сидит прямо над кнопкой "Играть".
+   ============================================================ */
+.globalChallengeBar {
+  width: 100%;
+  max-width: 580px;
+  padding: 14px 18px;
+  margin-bottom: 16px;
+  border-radius: 14px;
+}
+
+.globalChallengeHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.globalChallengeIcon { font-size: 1.3rem; flex-shrink: 0; }
+
+.globalChallengeText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.globalChallengeText strong { font-size: .82rem; }
+.globalChallengeText span { font-size: .7rem; color: var(--muted); }
+
+.globalChallengeFraction {
+  flex-shrink: 0;
+  font-size: .72rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.globalChallengeTrack {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.08);
+  overflow: hidden;
+}
+
+.globalChallengeFill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--green), #7CFC9A);
+  transition: width .4s;
+}
 
 .menuGrid {
   display: grid;

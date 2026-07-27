@@ -222,3 +222,86 @@ test("getChallengesPayload: completed=true только когда progress >= t
     assert.equal(item.progress, 0, "свежий профиль не должен иметь прогресса");
   }
 });
+
+// ============================================================
+// ОБЩИЙ (СЕРВЕРНЫЙ) НЕДЕЛЬНЫЙ ЧЕЛЛЕНДЖ
+// ============================================================
+
+function makeFakeCtx() {
+  const broadcasts = [];
+  const persisted = [];
+  return {
+    globalChallenge: null,
+    broadcast: (payload) => broadcasts.push(payload),
+    persistGlobalChallenge: () => persisted.push(true),
+    _broadcasts: broadcasts,
+    _persisted: persisted,
+  };
+}
+
+test("getActiveGlobalWeekly: детерминирован по неделе и не зависит от личной недельной ротации", () => {
+  const now = new Date("2026-07-27T10:00:00Z");
+  const a = challenges.getActiveGlobalWeekly(now);
+  const b = challenges.getActiveGlobalWeekly(new Date("2026-07-30T10:00:00Z"));
+  assert.equal(a.id, b.id, "та же неделя — тот же общий челлендж");
+  assert.ok(a.kind.endsWith("_sum"), "у общего челленджа всегда суммирующий kind");
+});
+
+test("ensureFreshGlobalState: сбрасывает progress при смене недели, сохраняет в пределах недели", () => {
+  const week1 = new Date("2026-07-27T10:00:00Z");
+  const week2 = new Date("2026-08-03T10:00:00Z");
+  let state = challenges.ensureFreshGlobalState(null, week1);
+  state.progress = 500;
+  const sameWeek = challenges.ensureFreshGlobalState(state, week1);
+  assert.equal(sameWeek.progress, 500, "в пределах той же недели прогресс не трогаем");
+  const nextWeek = challenges.ensureFreshGlobalState(state, week2);
+  assert.equal(nextWeek.progress, 0, "на новой неделе прогресс должен обнулиться");
+});
+
+test("applyGlobalKillProgress: копит на ctx.globalChallenge и не трогает kind, если активен другой тип", () => {
+  const ctx = makeFakeCtx();
+  const now = new Date("2026-07-27T10:00:00Z");
+  const template = challenges.getActiveGlobalWeekly(now);
+
+  challenges.applyGlobalKillProgress(ctx, now);
+  if (template.kind === "kill_sum") {
+    assert.equal(ctx.globalChallenge.progress, 1);
+    assert.equal(ctx._broadcasts.length, 1, "изменение должно транслироваться всем сокетам");
+    assert.equal(ctx._persisted.length, 1, "изменение должно помечаться на персист");
+  } else {
+    assert.equal(ctx.globalChallenge, null, "убийство не должно двигать активный челлендж другого типа");
+    assert.equal(ctx._broadcasts.length, 0);
+  }
+});
+
+test("applyGlobalScoreProgress: суммирует очки нескольких игр, а не берёт максимум (в отличие от личного score)", () => {
+  const ctx = makeFakeCtx();
+  const now = new Date("2026-07-27T10:00:00Z");
+  const template = challenges.getActiveGlobalWeekly(now);
+  if (template.kind !== "score_sum") return; // применимо только когда выпал именно этот тип
+
+  challenges.applyGlobalScoreProgress(ctx, 100, now);
+  challenges.applyGlobalScoreProgress(ctx, 250, now);
+  assert.equal(ctx.globalChallenge.progress, 350, "общий счёт должен суммироваться, а не браться как максимум");
+});
+
+test("applyGlobalFoodProgress: игнорирует нулевой/пустой вклад (не шлёт лишний broadcast)", () => {
+  const ctx = makeFakeCtx();
+  const now = new Date("2026-07-27T10:00:00Z");
+  const template = challenges.getActiveGlobalWeekly(now);
+  if (template.kind !== "food_sum") return;
+
+  challenges.applyGlobalFoodProgress(ctx, { apple: 0, cherry: 0 }, now);
+  assert.equal(ctx._broadcasts.length, 0, "нулевой вклад не должен триггерить рассылку");
+});
+
+test("getGlobalChallengePayload: работает и с null-состоянием (первый запуск сервера), прогресс не превышает target", () => {
+  const now = new Date("2026-07-27T10:00:00Z");
+  const payload = challenges.getGlobalChallengePayload(null, now);
+  assert.equal(payload.progress, 0);
+  assert.ok(payload.target > 0);
+  assert.equal(payload.completed, false);
+
+  const overflowing = challenges.getGlobalChallengePayload({ weekKey: challenges.weeklyPeriodKey(now), progress: payload.target * 5 }, now);
+  assert.equal(overflowing.progress, overflowing.target, "прогресс в payload не должен превышать target даже если реальное число больше");
+});
