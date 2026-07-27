@@ -214,6 +214,21 @@
   overflow: hidden;
 }
 
+.userChipBadge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--green);
+  color: #08130c;
+  font-size: .65rem;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+}
+
+.userChipBadge.hidden { display: none; }
+
 .userAvatarImg {
   width: 100%;
   height: 100%;

@@ -342,6 +342,19 @@ function presenceText(players, alive) {
   return I18N.t("lobby.presence", { players, alive });
 }
 
+// Значок рядом с ником в шапке: сколько сегодняшних/недельных челленджей
+// выполнено, но награда ещё не забрана. Сам виджет с прогрессом живёт на
+// /profile.html (#userBar уже открывает его по клику) — здесь достаточно
+// дать знать, что там есть что забрать.
+function updateChallengeBadge(challenges) {
+  const badge = document.querySelector("#userChipBadge");
+  if (!badge || !challenges) return;
+  const claimable = [...(challenges.daily || []), ...(challenges.weekly || [])]
+    .filter((c) => c.completed && !c.claimed).length;
+  badge.textContent = claimable > 0 ? `🎁${claimable}` : "";
+  badge.classList.toggle("hidden", claimable === 0);
+}
+
 function connect() {
   socket = new WebSocket(getWebSocketUrl());
   socket.addEventListener("open", () => {
@@ -356,6 +369,7 @@ function connect() {
       shopData = msg.shopData;
       if (msg.catalog) catalog = msg.catalog;
       updateUserBar(shopData, sessionUser?.name || SnakeStore.getName());
+      updateChallengeBadge(msg.challenges);
     }
     if (msg.type === "presence") {
       lastPresence = { players: msg.players, alive: msg.alive };
