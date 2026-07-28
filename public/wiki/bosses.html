@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Боссы — Вики Snake Attack</title>
+  <meta name="description" content="VØIDR, NYX-7, SCR4P и GLTCH — четыре босса-преследователя Snake Attack, их повадки и как от них уворачиваться." />
+  <link rel="canonical" href="https://snakeattack.ru/wiki/bosses.html" />
+  <link rel="icon" href="../img/icons/favicon.png" type="image/png" />
+  <link rel="stylesheet" href="../css/common.css" />
+  <link rel="stylesheet" href="wiki.css" />
+</head>
+<body class="wikiBody">
+  <div class="wikiTopline"></div>
+
+  <header class="wikiHeader">
+    <a class="wikiBrand" href="index.html">
+      <span class="wikiBrandMark">🐍</span>
+      <span class="wikiBrandText"><strong>SNAKE ATTACK</strong><span>Вики</span></span>
+    </a>
+    <div class="wikiHeaderActions">
+      <a class="btn ghost small" href="../index.html">На сайт</a>
+      <a class="btn primary small" href="../index.html">Играть</a>
+    </div>
+  </header>
+
+  <div class="wikiShell">
+    <nav class="wikiSidebar">
+      <div class="sideLabel">Разделы</div>
+      <a class="wikiSideLink" href="mechanics.html"><span class="ico">🍇</span>Механики</a>
+      <a class="wikiSideLink active" href="bosses.html"><span class="ico">👾</span>Боссы</a>
+      <a class="wikiSideLink" href="quests.html"><span class="ico">🗺️</span>Квесты</a>
+      <a class="wikiSideLink" href="shop.html"><span class="ico">🎨</span>Магазин и скины</a>
+      <a class="wikiSideLink" href="achievements.html"><span class="ico">🏅</span>Достижения</a>
+      <a class="wikiSideLink" href="faq.html"><span class="ico">❓</span>FAQ</a>
+    </nav>
+
+    <main class="wikiMain">
+      <p class="wikiEyebrow">Боссы</p>
+      <h1 class="wikiTitle">Четыре преследователя карты</h1>
+      <p class="wikiLede">
+        Каждый босс патрулирует свою домашнюю точку на карте и ведёт себя иначе —
+        у каждого свой способ представлять опасность. Сразу после спавна и ещё
+        пару секунд после того, как змейка тронется с места, боссы вас не видят —
+        это защита от «спавн-килла», а не иммунитет вообще: от стены и яда
+        умереть можно в любой момент.
+      </p>
+
+      <div class="wikiGrid cols-2">
+        <div class="hudPanel">
+          <span class="cM-tl hudCornerMini"></span><span class="cM-tr hudCornerMini"></span>
+          <span class="cM-bl hudCornerMini"></span><span class="cM-br hudCornerMini"></span>
+          <div class="hudPanelHead">
+            <span class="hudPanelIcon" style="background:rgba(246,97,81,.15); color:#f66151;">💨</span>
+            <div><div class="hudPanelName">VØIDR</div><div class="hudPanelTrait">Рывок</div></div>
+          </div>
+          <p class="hudPanelDesc">
+            Самый агрессивный из четырёх — при погоне может резко ускориться рывком
+            на пару клеток за раз. После рывка нужен небольшой отдых, прежде чем
+            рвануть снова, так что убежать в промежутке — реально.
+          </p>
+          <div class="hudStats">
+            <span class="hudStat">Дальность погони <b>увеличенная</b></span>
+            <span class="hudStat">Особо охотится на <b>«разогретых»</b></span>
+          </div>
+        </div>
+
+        <div class="hudPanel">
+          <span class="cM-tl hudCornerMini"></span><span class="cM-tr hudCornerMini"></span>
+          <span class="cM-bl hudCornerMini"></span><span class="cM-br hudCornerMini"></span>
+          <div class="hudPanelHead">
+            <span class="hudPanelIcon" style="background:rgba(124,58,237,.15); color:#7c3aed;">🍖</span>
+            <div><div class="hudPanelName">NYX-7</div><div class="hudPanelTrait">Пожиратель</div></div>
+          </div>
+          <p class="hudPanelDesc">
+            В обычном режиме подъедает разбросанную по карте плохую еду. Стоит ему
+            подобрать достаточно — впадает в кратковременную ярость и становится
+            заметно опаснее для игроков поблизости. После приступа ярости нужен
+            долгий кулдаун, прежде чем взбеситься снова.
+          </p>
+          <div class="hudStats">
+            <span class="hudStat">Триггер ярости <b>4 съеденных</b></span>
+            <span class="hudStat">Кулдаун ярости <b>~минута</b></span>
+          </div>
+        </div>
+
+        <div class="hudPanel">
+          <span class="cM-tl hudCornerMini"></span><span class="cM-tr hudCornerMini"></span>
+          <span class="cM-bl hudCornerMini"></span><span class="cM-br hudCornerMini"></span>
+          <div class="hudPanelHead">
+            <span class="hudPanelIcon" style="background:rgba(234,88,12,.15); color:#ea580c;">☠️</span>
+            <div><div class="hudPanelName">SCR4P</div><div class="hudPanelTrait">Отравитель</div></div>
+          </div>
+          <p class="hudPanelDesc">
+            Территориальный — держится своей зоны и движется зигзагом. Периодически
+            оставляет за собой яд, а иногда — облако яда по площади вокруг себя.
+            Опаснее не в прямой погоне, а тем, что засоряет пространство рядом с собой.
+          </p>
+          <div class="hudStats">
+            <span class="hudStat">Поведение <b>зигзаг</b></span>
+            <span class="hudStat">Яд по площади <b>периодически</b></span>
+          </div>
+        </div>
+
+        <div class="hudPanel">
+          <span class="cM-tl hudCornerMini"></span><span class="cM-tr hudCornerMini"></span>
+          <span class="cM-bl hudCornerMini"></span><span class="cM-br hudCornerMini"></span>
+          <div class="hudPanelHead">
+            <span class="hudPanelIcon" style="background:rgba(46,204,113,.15); color:#2ecc71;">👁️</span>
+            <div><div class="hudPanelName">GLTCH</div><div class="hudPanelTrait">Засада</div></div>
+          </div>
+          <p class="hudPanelDesc">
+            Большую часть времени «спит» и сквозь него можно проходить безопасно.
+            Время от времени телепортируется рядом с целью — сначала показывается
+            предупреждение на клетке, куда он материализуется, затем он ненадолго
+            появляется и представляет опасность, после чего снова исчезает.
+          </p>
+          <div class="hudStats">
+            <span class="hudStat">В режиме сна <b>не опасен</b></span>
+            <span class="hudStat">Предупреждение <b>есть, следи за меткой</b></span>
+          </div>
+        </div>
+      </div>
+
+      <section class="wikiSection">
+        <h2>Разогрев (heat) <small>чем активнее играешь, тем ты заметнее</small></h2>
+        <p>
+          У некоторых боссов есть «вес разогрева» — грубо говоря, чем ты активнее
+          набираешь очки и держишься на виду, тем сильнее боссы (особенно VØIDR)
+          тянутся именно к тебе, а не к случайной ближайшей цели. Держаться
+          осторожнее в моменты, когда за спиной уже длинный хвост — не паранойя.
+        </p>
+      </section>
+
+      <div class="wikiHeroActions">
+        <a class="btn primary" href="quests.html">Далее: квесты →</a>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

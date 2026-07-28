@@ -61,6 +61,7 @@ const I18N = (() => {
     "index.battlepass": "ПРОПУСК",
     "index.inventory": "ИНВЕНТАРЬ",
     "index.settingsBtn": "НАСТРОЙКИ",
+    "index.wiki": "ВИКИ",
     "index.topPlayers": "ТОП ИГРОКОВ",
     "index.fullTable": "Вся таблица →",
     "index.howToPlay": "КАК ИГРАТЬ?",
@@ -105,6 +106,7 @@ const I18N = (() => {
     "index.battlepass": "BATTLE PASS",
     "index.inventory": "INVENTORY",
     "index.settingsBtn": "SETTINGS",
+    "index.wiki": "WIKI",
     "index.topPlayers": "TOP PLAYERS",
     "index.fullTable": "Full table →",
     "index.howToPlay": "HOW TO PLAY?",
@@ -217,6 +219,7 @@ const I18N = (() => {
     "nav.friends": "Друзья",
     "nav.rooms": "Комнаты",
     "nav.battlepass": "Пропуск",
+    "nav.wiki": "Вики",
   });
   Object.assign(en, {
     "nav.lobby": "← LOBBY",
@@ -228,6 +231,7 @@ const I18N = (() => {
     "nav.friends": "Friends",
     "nav.rooms": "Rooms",
     "nav.battlepass": "Battle Pass",
+    "nav.wiki": "Wiki",
   });
 
   // ---- common.js dynamic strings ----

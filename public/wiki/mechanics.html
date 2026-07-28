@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Механики — Вики Snake Attack</title>
+  <meta name="description" content="Как работает еда, яд, бонусы и система комбо в Snake Attack." />
+  <link rel="canonical" href="https://snakeattack.ru/wiki/mechanics.html" />
+  <link rel="icon" href="../img/icons/favicon.png" type="image/png" />
+  <link rel="stylesheet" href="../css/common.css" />
+  <link rel="stylesheet" href="wiki.css" />
+</head>
+<body class="wikiBody">
+  <div class="wikiTopline"></div>
+
+  <header class="wikiHeader">
+    <a class="wikiBrand" href="index.html">
+      <span class="wikiBrandMark">🐍</span>
+      <span class="wikiBrandText"><strong>SNAKE ATTACK</strong><span>Вики</span></span>
+    </a>
+    <div class="wikiHeaderActions">
+      <a class="btn ghost small" href="../index.html">На сайт</a>
+      <a class="btn primary small" href="../index.html">Играть</a>
+    </div>
+  </header>
+
+  <div class="wikiShell">
+    <nav class="wikiSidebar">
+      <div class="sideLabel">Разделы</div>
+      <a class="wikiSideLink active" href="mechanics.html"><span class="ico">🍇</span>Механики</a>
+      <a class="wikiSideLink" href="bosses.html"><span class="ico">👾</span>Боссы</a>
+      <a class="wikiSideLink" href="quests.html"><span class="ico">🗺️</span>Квесты</a>
+      <a class="wikiSideLink" href="shop.html"><span class="ico">🎨</span>Магазин и скины</a>
+      <a class="wikiSideLink" href="achievements.html"><span class="ico">🏅</span>Достижения</a>
+      <a class="wikiSideLink" href="faq.html"><span class="ico">❓</span>FAQ</a>
+    </nav>
+
+    <main class="wikiMain">
+      <p class="wikiEyebrow">Механики</p>
+      <h1 class="wikiTitle">Из чего состоит раунд</h1>
+      <p class="wikiLede">
+        Классическая змейка — но с добавками: у еды есть виды и вес выпадения,
+        комбо сгорает по таймеру, а по карте раскиданы временные бонусы.
+        Разбираем каждую систему по отдельности.
+      </p>
+
+      <section class="wikiSection">
+        <h2>Еда <small>чем длиннее змейка, тем выше очки</small></h2>
+        <p>
+          На карте два типа еды: хорошая — даёт очки и растит змейку, и плохая —
+          обрывает жизнь при попадании в голову. Хорошая еда не равновероятна:
+          редкие виды выпадают реже и стоят больше очков.
+        </p>
+        <div class="wikiGrid" style="margin-top:16px;">
+          <div class="hudPanel">
+            <span class="cM-tl hudCornerMini"></span><span class="cM-tr hudCornerMini"></span>
+            <span class="cM-bl hudCornerMini"></span><span class="cM-br hudCornerMini"></span>
+            <div class="hudPanelHead">
+              <span class="hudPanelIcon" style="background:rgba(61,232,138,.12);">🍎</span>
+              <div><div class="hudPanelName">Яблоко</div><div class="hudPanelTrait">часто выпадает</div></div>
+            </div>
+            <div class="hudStats"><span class="hudStat">Очки <b>6</b></span></div>
+          </div>
+          <div class="hudPanel">
+            <span class="cM-tl hudCornerMini"></span><span class="cM-tr hudCornerMini"></span>
+            <span class="cM-bl hudCornerMini"></span><span class="cM-br hudCornerMini"></span>
+            <div class="hudPanelHead">
+              <span class="hudPanelIcon" style="background:rgba(242,95,76,.12);">🍒</span>
+              <div><div class="hudPanelName">Вишня</div><div class="hudPanelTrait">часто выпадает</div></div>
+            </div>
+            <div class="hudStats"><span class="hudStat">Очки <b>7</b></span></div>
+          </div>
+          <div class="hudPanel">
+            <span class="cM-tl hudCornerMini"></span><span class="cM-tr hudCornerMini"></span>
+            <span class="cM-bl hudCornerMini"></span><span class="cM-br hudCornerMini"></span>
+            <div class="hudPanelHead">
+              <span class="hudPanelIcon" style="background:rgba(199,125,255,.12);">🍇</span>
+              <div><div class="hudPanelName">Виноград</div><div class="hudPanelTrait">часто выпадает</div></div>
+            </div>
+            <div class="hudStats"><span class="hudStat">Очки <b>6</b></span></div>
+          </div>
+          <div class="hudPanel">
+            <span class="cM-tl hudCornerMini"></span><span class="cM-tr hudCornerMini"></span>
+            <span class="cM-bl hudCornerMini"></span><span class="cM-br hudCornerMini"></span>
+            <div class="hudPanelHead">
+              <span class="hudPanelIcon" style="background:rgba(255,209,102,.12);">🍍</span>
+              <div><div class="hudPanelName">Ананас</div><div class="hudPanelTrait">редкий</div></div>
+            </div>
+            <div class="hudStats"><span class="hudStat">Очки <b>12</b></span></div>
+          </div>
+          <div class="hudPanel">
+            <span class="cM-tl hudCornerMini"></span><span class="cM-tr hudCornerMini"></span>
+            <span class="cM-bl hudCornerMini"></span><span class="cM-br hudCornerMini"></span>
+            <div class="hudPanelHead">
+              <span class="hudPanelIcon" style="background:rgba(91,164,245,.12);">🥥</span>
+              <div><div class="hudPanelName">Кокос</div><div class="hudPanelTrait">очень редкий</div></div>
+            </div>
+            <div class="hudStats"><span class="hudStat">Очки <b>20</b></span></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="wikiSection">
+        <h2>Опасная еда <small>смертельно при попадании головой</small></h2>
+        <p>
+          Гниль, паук, ядовитый гриб и кость — если змейка врезается в них головой,
+          жизнь заканчивается. Бонус «Щит» временно снимает эту опасность (см. ниже).
+        </p>
+      </section>
+
+      <section class="wikiSection">
+        <h2>Комбо <small>сгорает, если не есть подряд</small></h2>
+        <p>
+          Каждое съеденное хорошее яблоко ставит таймер на следующее — не успел
+          продолжить серию, комбо сбрасывается в ноль. Чем выше текущее комбо,
+          тем короче становится время на следующий приём пищи, так что серию
+          сложнее держать чем дальше, тем сильнее.
+        </p>
+      </section>
+
+      <section class="wikiSection">
+        <h2>Бонусы <small>появляются на карте каждые 8 секунд</small></h2>
+        <p class="muted">Один из пяти случайных эффектов, подбирается на ограниченное время.</p>
+        <div class="wikiGrid cols-2" style="margin-top:16px;">
+          <div class="hudPanel">
+            <span class="cM-tl hudCornerMini"></span><span class="cM-tr hudCornerMini"></span>
+            <span class="cM-bl hudCornerMini"></span><span class="cM-br hudCornerMini"></span>
+            <div class="hudPanelHead">
+              <span class="hudPanelIcon" style="background:rgba(98,160,234,.15); color:#62a0ea;">🛡️</span>
+              <div><div class="hudPanelName">Щит</div><div class="hudPanelTrait">SH</div></div>
+            </div>
+            <p class="hudPanelDesc">Защита от яда — плохую еду можно врезаться безнаказанно, пока действует.</p>
+            <div class="hudStats"><span class="hudStat">Длительность <b>10 сек</b></span></div>
+          </div>
+          <div class="hudPanel">
+            <span class="cM-tl hudCornerMini"></span><span class="cM-tr hudCornerMini"></span>
+            <span class="cM-bl hudCornerMini"></span><span class="cM-br hudCornerMini"></span>
+            <div class="hudPanelHead">
+              <span class="hudPanelIcon" style="background:rgba(249,240,107,.15); color:#f9f06b;">⚡</span>
+              <div><div class="hudPanelName">Оверклок</div><div class="hudPanelTrait">SP</div></div>
+            </div>
+            <p class="hudPanelDesc">+30% к очкам за еду, съеденную во время действия бонуса.</p>
+            <div class="hudStats"><span class="hudStat">Длительность <b>8 сек</b></span></div>
+          </div>
+          <div class="hudPanel">
+            <span class="cM-tl hudCornerMini"></span><span class="cM-tr hudCornerMini"></span>
+            <span class="cM-bl hudCornerMini"></span><span class="cM-br hudCornerMini"></span>
+            <div class="hudPanelHead">
+              <span class="hudPanelIcon" style="background:rgba(220,138,221,.15); color:#dc8add;">🐌</span>
+              <div><div class="hudPanelName">Замедление</div><div class="hudPanelTrait">SL</div></div>
+            </div>
+            <p class="hudPanelDesc">Снижает скорость змейки — минус, если подобрать случайно на бегу.</p>
+            <div class="hudStats"><span class="hudStat">Длительность <b>10 сек</b></span></div>
+          </div>
+          <div class="hudPanel">
+            <span class="cM-tl hudCornerMini"></span><span class="cM-tr hudCornerMini"></span>
+            <span class="cM-bl hudCornerMini"></span><span class="cM-br hudCornerMini"></span>
+            <div class="hudPanelHead">
+              <span class="hudPanelIcon" style="background:rgba(61,232,138,.15); color:#33d17a;">x2</span>
+              <div><div class="hudPanelName">Двойные очки</div><div class="hudPanelTrait">DOUBLE</div></div>
+            </div>
+            <p class="hudPanelDesc">Все очки за еду удваиваются, пока действует.</p>
+            <div class="hudStats"><span class="hudStat">Длительность <b>12 сек</b></span></div>
+          </div>
+          <div class="hudPanel">
+            <span class="cM-tl hudCornerMini"></span><span class="cM-tr hudCornerMini"></span>
+            <span class="cM-bl hudCornerMini"></span><span class="cM-br hudCornerMini"></span>
+            <div class="hudPanelHead">
+              <span class="hudPanelIcon" style="background:rgba(143,240,164,.15); color:#8ff0a4;">👻</span>
+              <div><div class="hudPanelName">Призрак</div><div class="hudPanelTrait">GH</div></div>
+            </div>
+            <p class="hudPanelDesc">Змейка проходит сквозь других игроков, не сталкиваясь с ними.</p>
+            <div class="hudStats"><span class="hudStat">Длительность <b>8 сек</b></span></div>
+          </div>
+        </div>
+        <p class="muted" style="margin-top:14px;">
+          Бонус лежит на карте 15 секунд, последние 5 — мигает, предупреждая, что вот-вот исчезнет.
+        </p>
+      </section>
+
+      <div class="wikiHeroActions">
+        <a class="btn primary" href="bosses.html">Далее: боссы →</a>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
