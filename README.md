@@ -22,7 +22,7 @@
 <br>
 
 <p align="center">
-  <a href="https://dastogram.ru">
+  <a href="https://snakeattack.ru/">
     <img src="https://img.shields.io/badge/PLAY-ONLINE-brightgreen?style=for-the-badge" alt="Играть онлайн" />
   </a>
   <a href="https://github.com/KaVoshnik/MultiplayerUltimateSnakeAttack">
