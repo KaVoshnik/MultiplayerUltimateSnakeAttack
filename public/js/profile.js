@@ -85,7 +85,7 @@ function renderAchievements() {
   }
 }
 
-// Приоритет: своя загруженная фотка > эмодзи-пресет.
+
 function applyAvatarVisuals({ customAvatarUrl, avatar }) {
   const customImg = document.querySelector("#accountCustomAvatar");
   const emojiEl = document.querySelector("#accountAvatarEmoji");
