@@ -51,6 +51,9 @@ const I18N = (() => {
     "index.friendsOnline": "ДРУЗЬЯ ОНЛАЙН",
     "index.allFriends": "Все друзья →",
     "index.waitingEvents": "Ожидание событий…",
+    "index.challengesTitle": "Челленджи дня",
+    "index.challengesWeekTag": "нед",
+    "index.challengesDayTag": "день",
     "index.chestTitle": "Ежедневный сундук ждёт!",
     "index.chestSubtitle": "Открой, чтобы получить награду",
     "index.play": "ИГРАТЬ",
@@ -58,6 +61,7 @@ const I18N = (() => {
     "index.battlepass": "ПРОПУСК",
     "index.inventory": "ИНВЕНТАРЬ",
     "index.settingsBtn": "НАСТРОЙКИ",
+    "index.wiki": "ВИКИ",
     "index.topPlayers": "ТОП ИГРОКОВ",
     "index.fullTable": "Вся таблица →",
     "index.howToPlay": "КАК ИГРАТЬ?",
@@ -92,6 +96,9 @@ const I18N = (() => {
     "index.friendsOnline": "FRIENDS ONLINE",
     "index.allFriends": "All friends →",
     "index.waitingEvents": "Waiting for events…",
+    "index.challengesTitle": "Today's challenges",
+    "index.challengesWeekTag": "week",
+    "index.challengesDayTag": "day",
     "index.chestTitle": "Daily chest is ready!",
     "index.chestSubtitle": "Open it to claim your reward",
     "index.play": "PLAY",
@@ -99,6 +106,7 @@ const I18N = (() => {
     "index.battlepass": "BATTLE PASS",
     "index.inventory": "INVENTORY",
     "index.settingsBtn": "SETTINGS",
+    "index.wiki": "WIKI",
     "index.topPlayers": "TOP PLAYERS",
     "index.fullTable": "Full table →",
     "index.howToPlay": "HOW TO PLAY?",
@@ -211,6 +219,7 @@ const I18N = (() => {
     "nav.friends": "Друзья",
     "nav.rooms": "Комнаты",
     "nav.battlepass": "Пропуск",
+    "nav.wiki": "Вики",
   });
   Object.assign(en, {
     "nav.lobby": "← LOBBY",
@@ -222,6 +231,7 @@ const I18N = (() => {
     "nav.friends": "Friends",
     "nav.rooms": "Rooms",
     "nav.battlepass": "Battle Pass",
+    "nav.wiki": "Wiki",
   });
 
   // ---- common.js dynamic strings ----
