@@ -21,7 +21,6 @@ const PHRASES = [
   { id: "crawl_away", ru: "Ползи отсюда", en: "Crawl away from here", price: 4500, rarity: "rare" },
   { id: "no_effort", ru: "Я даже не старался", en: "Didn't even try", price: 4800, rarity: "rare" },
   { id: "worm_king", ru: "Король червей вступил в игру", en: "The Worm King has entered the game", price: 5200, rarity: "rare" },
-  { id: "my_territory", ru: "Здесь ползаю я", en: "This is my turf", price: 4700, rarity: "rare" },
   { id: "slippery", ru: "Скользко получилось", en: "That was slippery", price: 4500, rarity: "rare" },
   { id: "one_more", ru: "Еще один", en: "One more", price: 4500, rarity: "rare" },
   { id: "pro_random", ru: "Это был проффесиональный рандом", en: "That was professional RNG", price: 5000, rarity: "rare" },
@@ -30,7 +29,6 @@ const PHRASES = [
 
   // ---- Самые дорогие (легендарные) ----
   { id: "vip_worm", ru: "VIP червь на сервере", en: "VIP worm on the server", price: 9000, rarity: "legendary" },
-  { id: "legend_here", ru: "Легенда уже здесь", en: "The legend has arrived", price: 9500, rarity: "legendary" },
   { id: "length_matters", ru: "Длинна имеет значение", en: "Length matters", price: 10000, rarity: "legendary" },
 ];
 

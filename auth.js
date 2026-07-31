@@ -4,6 +4,13 @@
 // (Google/Яндекс/VK и т.п.) — всё живёт на нашем сервере, никуда не уходит.
 
 const crypto = require("crypto");
+const { RateLimiterRegistry } = require("./lib/rate-limiter");
+const { getClientIp } = require("./lib/utils");
+
+// Отдельный от WS реестр: здесь ключ — IP, а не clientId, и нет "disconnect",
+// по которому можно было бы чистить запись, поэтому периодически подчищаем
+// протухшие записи вручную (см. вызов authLimiter.cleanup() в server.js).
+const authLimiter = new RateLimiterRegistry();
 
 const SESSION_COOKIE = "snake_session";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -102,6 +109,10 @@ function validateCredentials(name, password) {
   return null;
 }
 
+function rateLimited(res, sendJson) {
+  sendJson(res, { ok: false, error: "Слишком много попыток. Попробуй чуть позже." });
+}
+
 async function handleRequest(req, res, url, ctx) {
   const { db, sendJson } = ctx;
 
@@ -128,6 +139,10 @@ async function handleRequest(req, res, url, ctx) {
   }
 
   if (url.pathname === "/auth/register" && req.method === "POST") {
+    if (!authLimiter.check(getClientIp(req), "auth_register").allowed) {
+      rateLimited(res, sendJson);
+      return true;
+    }
     let payload;
     try {
       payload = await readJsonBody(req);
@@ -159,6 +174,10 @@ async function handleRequest(req, res, url, ctx) {
   }
 
   if (url.pathname === "/auth/login" && req.method === "POST") {
+    if (!authLimiter.check(getClientIp(req), "auth_login").allowed) {
+      rateLimited(res, sendJson);
+      return true;
+    }
     let payload;
     try {
       payload = await readJsonBody(req);
@@ -180,6 +199,10 @@ async function handleRequest(req, res, url, ctx) {
   }
 
   if (url.pathname === "/auth/claim" && req.method === "POST") {
+    if (!authLimiter.check(getClientIp(req), "auth_claim").allowed) {
+      rateLimited(res, sendJson);
+      return true;
+    }
     let payload;
     try {
       payload = await readJsonBody(req);
@@ -232,4 +255,5 @@ module.exports = {
   handleRequest,
   hashPassword,
   verifyPassword,
+  authLimiter,
 };

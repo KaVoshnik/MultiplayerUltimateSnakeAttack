@@ -97,6 +97,43 @@ test("RateLimiterRegistry.remove: очищает состояние клиент
   assert.equal(registry.size(), 0);
 });
 
+test("RateLimiterRegistry: auth_login режет брутфорс по IP после 5 попыток", () => {
+  const registry = new RateLimiterRegistry();
+  const t0 = 1000;
+  for (let i = 0; i < 5; i++) {
+    assert.equal(registry.check("1.2.3.4", "auth_login", t0).allowed, true, `попытка ${i + 1} должна пройти`);
+  }
+  assert.equal(registry.check("1.2.3.4", "auth_login", t0).allowed, false, "6-я попытка подряд должна быть отклонена");
+});
+
+test("RateLimiterRegistry: auth_login не блокирует другой IP", () => {
+  const registry = new RateLimiterRegistry();
+  const t0 = 1000;
+  for (let i = 0; i < 5; i++) registry.check("1.2.3.4", "auth_login", t0);
+  assert.equal(registry.check("1.2.3.4", "auth_login", t0).allowed, false);
+  assert.equal(registry.check("5.6.7.8", "auth_login", t0).allowed, true, "лимит по одному IP не должен затрагивать другой");
+});
+
+test("RateLimiterRegistry: auth_register сильнее ограничен, чем auth_login (защита от спама аккаунтов)", () => {
+  const registry = new RateLimiterRegistry();
+  const t0 = 1000;
+  for (let i = 0; i < 3; i++) {
+    assert.equal(registry.check("9.9.9.9", "auth_register", t0).allowed, true);
+  }
+  assert.equal(registry.check("9.9.9.9", "auth_register", t0).allowed, false, "4-я регистрация подряд должна быть отклонена");
+});
+
+test("RateLimiterRegistry.cleanup: удаляет только записи, не тронутые дольше maxIdleMs", () => {
+  const registry = new RateLimiterRegistry();
+  registry.check("stale-ip", "auth_login", 1000);
+  registry.check("fresh-ip", "auth_login", 50_000);
+
+  registry.cleanup(10_000, 60_000); // "сейчас" = 60000, порог простоя = 10с
+  assert.equal(registry.size(), 1, "должна остаться только недавно активная запись");
+  const stillFresh = registry.check("fresh-ip", "auth_login", 60_000);
+  assert.equal(stillFresh.allowed, true, "запись fresh-ip не должна была быть удалена");
+});
+
 test("RateLimiterRegistry: глобальный лимит режет комбинированный флуд по разным типам сообщений", () => {
   const registry = new RateLimiterRegistry();
   const t0 = 1000;

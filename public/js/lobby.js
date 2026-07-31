@@ -119,7 +119,7 @@ async function loadLeaderboardPanel() {
     const res = await fetch("/leaderboard");
     if (!res.ok) return;
     const entries = await res.json();
-    const top = entries.slice(0, 6);
+    const top = entries.slice(0, 10);
     if (!top.length) {
       body.innerHTML = `<div class="sidePanelEmpty">${I18N.t("lobby.leaderboardEmpty")}</div>`;
       return;
@@ -342,6 +342,75 @@ function presenceText(players, alive) {
   return I18N.t("lobby.presence", { players, alive });
 }
 
+// Личные челленджи (1 дневной + 1 недельный) — теперь под панелью друзей,
+// а не спрятаны в профиле. Данные приходят внутри shop_update/hello.
+function renderPersonalChallenges(data) {
+  const body = document.querySelector("#personalChallengesBody");
+  if (!body) return;
+  const items = [
+    ...(data?.daily || []).map((c) => ({ ...c, scope: "daily" })),
+    ...(data?.weekly || []).map((c) => ({ ...c, scope: "weekly" })),
+  ];
+  if (!items.length) {
+    body.innerHTML = `<div class="sidePanelEmpty" data-i18n="common.loading">Загрузка…</div>`;
+    I18N.apply(body);
+    return;
+  }
+
+  body.innerHTML = items.map((c) => {
+    const pct = Math.min(100, Math.round((c.progress / c.target) * 100));
+    const cls = `personalChallengeCard${c.completed ? " completed" : ""}${c.claimed ? " claimed" : ""}`;
+    const scopeLabel = c.scope === "weekly" ? "index.challengesWeekTag" : "index.challengesDayTag";
+    const scopeFallback = c.scope === "weekly" ? "нед" : "день";
+    const claimLabel = c.claimed ? "✓" : `+${c.reward}🪙`;
+    return `
+      <div class="${cls}" data-challenge-id="${c.id}">
+        <span class="personalChallengeIcon">${c.icon}</span>
+        <div class="personalChallengeBody">
+          <div class="personalChallengeTop">
+            <span class="personalChallengeName">${escapeHtml(c.name)}</span>
+            <span class="personalChallengeScope" data-i18n="${scopeLabel}">${scopeFallback}</span>
+          </div>
+          <div class="personalChallengeDesc">${escapeHtml(c.desc)}</div>
+          <div class="personalChallengeBar"><div class="personalChallengeBarFill" style="width:${pct}%"></div></div>
+          <div class="personalChallengeFoot">
+            <span>${Math.min(c.progress, c.target)}/${c.target}</span>
+            <button type="button" class="personalChallengeClaim" data-challenge-id="${c.id}" ${c.completed && !c.claimed ? "" : "disabled"}>${claimLabel}</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join("");
+  I18N.apply(body);
+}
+
+document.querySelector("#personalChallengesBody")?.addEventListener("click", (event) => {
+  const btn = event.target.closest(".personalChallengeClaim");
+  if (!btn || btn.disabled || !socket || socket.readyState !== WebSocket.OPEN) return;
+  socket.send(JSON.stringify({
+    type: "challenge_claim",
+    challengeId: btn.dataset.challengeId,
+    name: sessionUser?.name || SnakeStore.getName(),
+  }));
+});
+
+// Общий (серверный) недельный челлендж — один счётчик на всех игроков,
+// без клейма, просто полоса прогресса над кнопкой "Играть". Обновляется и
+// через hello/shop_update, и вживую через отдельный broadcast global_challenge
+// (см. lib/challenges.js: notifyGlobalChange).
+function renderGlobalChallengeBar(data) {
+  const bar = document.querySelector("#globalChallengeBar");
+  if (!bar || !data) return;
+  bar.classList.remove("hidden");
+  document.querySelector("#globalChallengeIcon").textContent = data.icon;
+  document.querySelector("#globalChallengeName").textContent = data.name;
+  document.querySelector("#globalChallengeDesc").textContent = data.desc;
+  document.querySelector("#globalChallengeFraction").textContent =
+    `${data.progress.toLocaleString("ru-RU")}/${data.target.toLocaleString("ru-RU")}`;
+  const pct = Math.min(100, Math.round((data.progress / data.target) * 100));
+  document.querySelector("#globalChallengeFill").style.width = `${pct}%`;
+}
+
 function connect() {
   socket = new WebSocket(getWebSocketUrl());
   socket.addEventListener("open", () => {
@@ -356,6 +425,8 @@ function connect() {
       shopData = msg.shopData;
       if (msg.catalog) catalog = msg.catalog;
       updateUserBar(shopData, sessionUser?.name || SnakeStore.getName());
+      renderPersonalChallenges(msg.challenges);
+      renderGlobalChallengeBar(msg.globalChallenge);
     }
     if (msg.type === "presence") {
       lastPresence = { players: msg.players, alive: msg.alive };
@@ -378,7 +449,9 @@ function connect() {
       document.querySelector("#onlineCount").textContent = text;
       const modalCount = document.querySelector("#playOnlineCount");
       if (modalCount) modalCount.textContent = text;
+      renderGlobalChallengeBar(msg.globalChallenge);
     }
+    if (msg.type === "global_challenge") renderGlobalChallengeBar(msg);
     if (msg.type === "room_invite") showInviteToast(msg.from, msg.code);
     if (msg.type === "achievement_unlocked") { showAchievementToast(msg.achievement); SnakeAudio.play("achievement"); }
   });

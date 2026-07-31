@@ -153,6 +153,16 @@ async function init() {
     );
 
     CREATE INDEX IF NOT EXISTS idx_food_listings_seller ON food_listings (seller_name);
+
+    -- Общее (не по-игроку) состояние сервера — сейчас единственный
+    -- потребитель это общий недельный челлендж (см. lib/challenges.js:
+    -- globalChallenge), но таблица сделана как generic key/value, чтобы под
+    -- следующую такую штуку не нужна была новая миграция.
+    CREATE TABLE IF NOT EXISTS server_state (
+      key VARCHAR(64) PRIMARY KEY,
+      value JSONB NOT NULL DEFAULT '{}'::jsonb,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
   `);
 
   await migratePlayersTable();
@@ -496,6 +506,19 @@ async function deleteFoodListing(id) {
   await pool.query("DELETE FROM food_listings WHERE id = $1::uuid", [id]);
 }
 
+async function getServerState(key) {
+  const { rows } = await pool.query("SELECT value FROM server_state WHERE key = $1", [key]);
+  return rows[0]?.value ?? null;
+}
+
+async function setServerState(key, value) {
+  await pool.query(
+    `INSERT INTO server_state (key, value, updated_at) VALUES ($1, $2::jsonb, NOW())
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+    [key, JSON.stringify(value)],
+  );
+}
+
 // Один жалобщик — одна жалоба на цель (ON CONFLICT игнорируем повторную).
 async function reportAvatar(reporterName, targetName) {
   await pool.query(
@@ -658,6 +681,8 @@ module.exports = {
   loadFoodListings,
   upsertFoodListing,
   deleteFoodListing,
+  getServerState,
+  setServerState,
   reportAvatar,
   loadAvatarReports,
   clearAvatarReports,
