@@ -2,6 +2,12 @@
 
 const GRID = { width: 210, height: 140 };
 
+// Версия WS-протокола, шлётся клиенту в hello.protocolVersion. Бампать при
+// любом breaking-изменении формата игровых сообщений (turn/snapshot/delta
+// и т.п.) — тогда клиент со старой открытой вкладкой сможет сам предложить
+// обновить страницу вместо непредсказуемого поведения на рассинхроне.
+const PROTOCOL_VERSION = 1;
+
 const SPAWN_FREEZE_MS = 3000;
 
 // Доп. неуязвимость к боссам после того, как заморозка спавна закончилась
@@ -73,6 +79,7 @@ const COMBO_BRAG_MILESTONES = [50, 100, 200, 300, 400, 500];
 
 module.exports = {
   GRID,
+  PROTOCOL_VERSION,
   SPAWN_FREEZE_MS,
   SPAWN_BOSS_INVULN_MS,
   DEFAULT_TICK_MS,

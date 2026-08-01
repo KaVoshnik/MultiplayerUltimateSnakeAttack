@@ -428,6 +428,7 @@ function connect() {
       return;
     }
     if (message.type === "hello") {
+      checkProtocolVersion(message);
       state.id = message.id;
       state.grid = message.grid;
       state.camera.ready = false;

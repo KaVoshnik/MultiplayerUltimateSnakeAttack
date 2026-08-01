@@ -118,6 +118,22 @@
 .itemCard.rarity-epic::before { background: linear-gradient(135deg, rgba(199,125,255,.15), transparent); }
 .itemCard.rarity-legendary::before { background: linear-gradient(135deg, rgba(255,209,102,.18), transparent); }
 
+/* Коллаб — единственная редкость с мерцающим цветным фоном самой карточки
+   (не через ::before, тот уже занят под фоновую подсветку по наведению),
+   чтобы визуально выделять лимитированные скины со стримерами сильнее,
+   чем даже legendary. */
+.itemCard.rarity-collab::before { background: linear-gradient(135deg, rgba(92,184,47,.16), rgba(255,209,102,.1)); }
+.itemCard.rarity-collab {
+  border-color: rgba(92,184,47,.5);
+  background-image: linear-gradient(120deg, rgba(92,184,47,.35), rgba(255,209,102,.35), rgba(92,184,47,.35));
+  background-size: 220% 100%;
+  animation: collabShimmer 4s linear infinite;
+}
+@keyframes collabShimmer {
+  0% { background-position: 0% 0; }
+  100% { background-position: 220% 0; }
+}
+
 .itemCard:hover {
   transform: translateY(-3px);
   border-color: var(--green);
@@ -429,6 +445,7 @@
 .itemRarity.rare { background: rgba(91,164,245,.2); color: var(--blue); }
 .itemRarity.epic { background: rgba(199,125,255,.2); color: var(--purple); }
 .itemRarity.legendary { background: rgba(255,209,102,.2); color: var(--yellow); }
+.itemRarity.collab { background: rgba(92,184,47,.25); color: #eaffb0; font-weight: 800; }
 
 .itemAction {
   font-size: .8rem;

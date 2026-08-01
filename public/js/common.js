@@ -3,6 +3,20 @@ function getWebSocketUrl() {
   return `${proto}://${location.host}`;
 }
 
+// Версия протокола, которую понимает ЭТОТ загруженный JS. Держать в шаге
+// с config/game.js PROTOCOL_VERSION на сервере вручную (константа, не
+// узнаётся динамически) — цель не автосинхронизация, а просто дать игроку
+// со старой открытой вкладкой понятный сигнал "обновись", а не тихий баг.
+const EXPECTED_PROTOCOL_VERSION = 1;
+
+// Вызывать из обработчика "hello" на любой странице. Не блокирует работу —
+// просто мягкий тост-предупреждение, если сервер уехал вперёд по протоколу.
+function checkProtocolVersion(msg) {
+  if (msg.protocolVersion !== undefined && msg.protocolVersion !== EXPECTED_PROTOCOL_VERSION) {
+    showToast("Доступна новая версия игры — обновите страницу (F5)");
+  }
+}
+
 function connectWebSocket(handlers = {}) {
   const socket = new WebSocket(getWebSocketUrl());
   socket.addEventListener("open", () => handlers.onOpen?.(socket));

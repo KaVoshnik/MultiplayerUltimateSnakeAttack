@@ -23,6 +23,7 @@ const gameLoop = require("./lib/game-loop");
 const roomsSetup = require("./lib/rooms-setup");
 const messageHandlers = require("./lib/message-handlers");
 const { corsHeaders, getLanAddresses, getRequestOrigin, sendJson } = require("./lib/utils");
+const logger = require("./lib/logger");
 const routes = require("./routes");
 const avatarRoutes = require("./routes/avatar");
 const { SHOP_CATALOG, SHOP_SKINS, AVATAR_PRESETS } = require("./data/shop-catalog");
@@ -75,6 +76,7 @@ const ctx = {
   tickCount: 0,
   tickJournal: gameSync.createJournal(),
   tickInterval: null,
+  lastTickAt: Date.now(), // обновляется в lib/game-loop.js tick(); читается в /health для readiness-проверки
 
   // профили
   profileIndex: new Map(), // lowerName -> canonicalName
@@ -155,11 +157,11 @@ const server = http.createServer((req, res) => {
   auth.handleRequest(req, res, url, authCtx).then((handled) => {
     if (handled) return;
     routes.handleHttpRequest(req, res, url, ctx).catch((err) => {
-      console.error("HTTP handler:", err.message);
+      logger.error("http_handler_failed", { path: url.pathname, error: err.message });
       if (!res.headersSent) { res.writeHead(500); res.end("Server error"); }
     });
   }).catch((err) => {
-    console.error("HTTP:", err.message);
+    logger.error("http_request_failed", { path: url.pathname, error: err.message });
     res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
     res.end("Server error");
   });
@@ -213,6 +215,7 @@ server.on("upgrade", (req, socket) => {
 
   ctx.send(id, {
     type: "hello", id, grid: GRID,
+    protocolVersion: gameConfig.PROTOCOL_VERSION,
     leaderboard: leaderboardMod.getEnrichedLeaderboard(ctx),
     skins: SHOP_SKINS, catalog: SHOP_CATALOG, avatars: AVATAR_PRESETS,
     shopData: profiles.defaultShopEntry(),
@@ -243,8 +246,7 @@ async function bootstrap() {
     profiles.rebuildProfileIndex(ctx);
     console.log(`PostgreSQL: ${Object.keys(ctx.shopData).length} игроков, ${ctx.leaderboard.length} рекордов, ${ctx.marketListings.size} лотов рынка`);
   } catch (err) {
-    console.error("PostgreSQL недоступен:", err.message);
-    console.error("Проверь DATABASE_URL и что база запущена. Пример: npm run db:reset");
+    logger.error("db_connect_failed", { error: err.message, hint: "Проверь DATABASE_URL и что база запущена. Пример: npm run db:reset" });
     process.exit(1);
   }
 

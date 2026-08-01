@@ -659,8 +659,15 @@ async function close() {
   if (pool) await pool.end();
 }
 
+// Лёгкая readiness-проверка для /health — просто убедиться, что пул жив и
+// БД реально отвечает, а не просто "процесс не упал" (liveness).
+async function ping() {
+  await pool.query("SELECT 1");
+}
+
 module.exports = {
   init,
+  ping,
   loadAllPlayers,
   loadLeaderboard,
   upsertPlayer,

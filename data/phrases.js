@@ -30,6 +30,8 @@ const PHRASES = [
   // ---- Самые дорогие (легендарные) ----
   { id: "vip_worm", ru: "VIP червь на сервере", en: "VIP worm on the server", price: 9000, rarity: "legendary" },
   { id: "length_matters", ru: "Длинна имеет значение", en: "Length matters", price: 10000, rarity: "legendary" },
+
+  { id: "six_seven", ru: "Сикс Севен!", en: "Six seven!", price: null, rarity: "collab", bundleOnly: true },
 ];
 
 // Слоты колеса чата по умолчанию (1-4) — 4 бесплатные фразы, в этом порядке.

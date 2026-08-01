@@ -441,6 +441,7 @@ function connect() {
       lastFeedItem = item;
     }
     if (msg.type === "hello") {
+      checkProtocolVersion(msg);
       if (msg.catalog) catalog = msg.catalog;
       lastPresence = msg.presence ? { players: msg.presence.players, alive: msg.presence.alive } : null;
       const text = msg.presence

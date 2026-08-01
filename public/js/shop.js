@@ -127,7 +127,7 @@ function renderItems() {
   }
 
   const [sortBy, dir] = sortSelect.value.split("-");
-  const filtered = state.catalog.filter((i) => i.category === state.activeTab);
+  const filtered = state.catalog.filter((i) => i.category === state.activeTab && !i.bundleOnly);
   const sorted = sortCatalog(filtered, sortBy, dir);
 
   itemGrid.innerHTML = "";
@@ -149,6 +149,13 @@ function renderItems() {
     const price = Number(item.price) || 0;
     let actionText = `${price} 🪙`;
     let actionClass = "buy";
+    if (item.promoFreeUntil && price === 0 && !owned) {
+      // Промо-раздача (сейчас — pepesnake): пока price эффективно 0
+      // (см. getEffectivePrice на сервере), показываем дедлайн вместо "0 🪙",
+      // чтобы было понятно, что это не постоянная цена.
+      const until = new Date(item.promoFreeUntil);
+      actionText = `${I18N.t("shop.free")} · ${I18N.t("shop.promoUntil")} ${until.toLocaleDateString(I18N.getLang() === "en" ? "en-US" : "ru-RU", { day: "2-digit", month: "2-digit" })}`;
+    }
     if (item.category === "phrase" && owned) {
       // У фраз нет "экипировки" на месте в магазине — владение просто
       // открывает фразу для колеса чата, а слот 1-4 выбирается в настройках.

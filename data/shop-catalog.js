@@ -43,14 +43,45 @@ const SHOP_CATALOG = [
   { id: "custom_hat_2", name: "Своя шляпа 2", emoji: "🖼️", price: 0, rarity: "common", category: "snake_hat", customTexture: "hat2.png" },
   { id: "custom_hat_3", name: "Своя шляпа 3", emoji: "🖼️", price: 0, rarity: "common", category: "snake_hat", customTexture: "hat3.png" },
 
+  // Коллаб-скин со стримером Pwgood. Редкость "collab" — отдельная от
+  // common/rare/epic/legendary (см. стили в public/css/shop.css и
+  // RARITY_LABELS в public/js/common.js). До promoFreeUntil раздаётся
+  // бесплатно (см. getEffectivePrice ниже), после — обычная покупка за
+  // price. bundledPhrase — при покупке в lib/shop-actions.js игроку сразу
+  // же выдаётся и фраза "six_seven" (см. data/phrases.js), отдельно её
+  // купить нельзя.
+  {
+    id: "pepesnake", name: "Пепезмей", emoji: "🐸", price: 30000, rarity: "collab", category: "skin",
+    color: "#5cb82f", headColor: "#eaffb0", bundledPhrase: "six_seven", promoFreeUntil: "2026-09-01T00:00:00+03:00",
+  },
+
   // Колесо чата (R → 1-4 в игре, см. lib/phrases.js). Id каталога с префиксом
   // phrase_, чтобы не пересекаться с id скинов/шляп; phraseId — ссылка на
   // саму фразу (data/phrases.js), нужна и на сервере, и на клиенте (shop.js).
   ...PHRASES.map((p) => ({
     id: `phrase_${p.id}`, name: p.ru, emoji: "💬", price: p.price,
     rarity: p.rarity || (p.price === 0 ? "common" : "rare"), category: "phrase", phraseId: p.id,
+    bundleOnly: p.bundleOnly || false,
   })),
 ];
+
+// Цена с учётом временных промо-акций (сейчас — только pepesnake, но
+// механизм общий на будущее: просто добавь promoFreeUntil любому товару).
+// До указанной даты — бесплатно (0), после — обычная item.price.
+function getEffectivePrice(item) {
+  if (item.promoFreeUntil && Date.now() < Date.parse(item.promoFreeUntil)) return 0;
+  return Number(item.price) || 0;
+}
+
+// Версия каталога для отправки клиенту — с уже посчитанной актуальной
+// ценой (см. getEffectivePrice) и без мутации оригинального SHOP_CATALOG,
+// т.к. он общий на все запросы/игроков и просто require()-ится один раз
+// на старте процесса.
+function getPublicCatalog() {
+  return SHOP_CATALOG.map((item) => (
+    item.promoFreeUntil ? { ...item, price: getEffectivePrice(item) } : item
+  ));
+}
 
 const AVATAR_PRESETS = [
   "😎", "🤠", "🧙‍♂️", "🦸‍♂️", "🧝‍♂️", "👾", "🤖", "👽", "🐍", "🐲",
@@ -73,4 +104,4 @@ const MIME = {
   ".ogg": "audio/ogg",
 };
 
-module.exports = { SHOP_CATALOG, AVATAR_PRESETS, COLORS, SHOP_SKINS, MIME };
+module.exports = { SHOP_CATALOG, AVATAR_PRESETS, COLORS, SHOP_SKINS, MIME, getEffectivePrice, getPublicCatalog };

@@ -10,7 +10,26 @@ const { sendJson, getRequestOrigin } = require("../lib/utils");
 
 async function handle(req, res, url, ctx) {
   if (url.pathname === "/health") {
-    sendJson(res, { ok: true, uptime: process.uptime(), players: ctx.players.size, sockets: ctx.sockets.size });
+    // Раньше это была чистая liveness-проверка (процесс жив), но не readiness —
+    // при упавшем PostgreSQL или зависшем тик-цикле /health всё равно отвечал
+    // ok: true, хотя магазин/профили/рынок уже не работали бы. Теперь реально
+    // проверяем БД и свежесть тика, и отдаём 503 при нездоровье — это понимает
+    // любой reverse-proxy / docker healthcheck / pm2 из коробки.
+    const dbOk = await ctx.db.ping().then(() => true).catch(() => false);
+    const tickLagMs = Date.now() - (ctx.lastTickAt ?? Date.now());
+    // Тик может легитимно "молчать" когда никого нет в лобби (game-loop.js
+    // не делает ранний выход из-за lastTickAt), поэтому лаг проверяем только
+    // при наличии игроков — иначе пустой сервер ложно считался бы нездоровым.
+    const tickOk = ctx.players.size === 0 || tickLagMs < 2000;
+    const healthy = dbOk && tickOk;
+    sendJson(res, {
+      ok: healthy,
+      uptime: process.uptime(),
+      players: ctx.players.size,
+      sockets: ctx.sockets.size,
+      db: dbOk,
+      tickLagMs,
+    }, healthy ? 200 : 503);
     return true;
   }
   if (url.pathname === "/info") {

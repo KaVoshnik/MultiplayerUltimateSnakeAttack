@@ -77,6 +77,7 @@ const projectGlobals = {
   escapeHtml: "readonly",
 
   getWebSocketUrl: "readonly",
+  checkProtocolVersion: "readonly",
 
   formatPlayTime: "readonly",
   sortCatalog: "readonly",
